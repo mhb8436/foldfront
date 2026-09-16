@@ -3,8 +3,8 @@ import { NavLink, useLocation } from 'react-router-dom'
 import {
   BarChart3,
   Bell,
-  ChevronDown,
   Dna,
+  FolderOpen,
   LayoutGrid,
   Layers,
   MessageSquare,
@@ -24,6 +24,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { StatusDot } from './Common'
+import { ProjectPicker } from './ProjectPicker'
 
 /**
  * The console shell.
@@ -47,6 +48,7 @@ const NAV: Array<{ section: string; items: Item[] }> = [
     section: '설계',
     items: [
       { to: '/dashboard', label: '대시보드', icon: LayoutGrid },
+      { to: '/projects', label: '프로젝트', icon: FolderOpen },
       {
         label: '설계 실행',
         icon: Play,
@@ -190,11 +192,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
         <div className="flex-1" />
 
-        <Button variant="outline" size="sm" className="hidden font-normal md:inline-flex">
-          <span className="text-muted-foreground">프로젝트</span>
-          <span className="font-medium">전체</span>
-          <ChevronDown className="text-muted-foreground size-3.5" />
-        </Button>
+        <ProjectPicker />
 
         <div className="text-muted-foreground flex items-center gap-1.5 text-[12.5px]">
           <StatusDot status={health === null ? 'pending' : health ? 'succeeded' : 'failed'} />

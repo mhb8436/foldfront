@@ -492,6 +492,56 @@ async def test_요약은_승인_대기_모델을_가려낸다(client):
     assert [m["model_id"] for m in body["models"]["pending_approval"]] == ["waiting"]
 
 
+async def test_요약을_프로젝트로_좁힌다(client):
+    """A project sees its own runs and nobody else's."""
+    from foldfront.db.models import Run
+    from foldfront.db.repositories import Repos
+
+    r = Repos()
+    await r.runs.create(Run(run_id="run-mine", workflow_id="wf", project_id="proj-a"))
+    await r.runs.create(Run(run_id="run-theirs", workflow_id="wf", project_id="proj-b"))
+    await r.runs.create(Run(run_id="run-loose", workflow_id="wf"))
+
+    scoped = (await client.get("/api/v1/summary", params={"project_id": "proj-a"})).json()
+
+    assert scoped["runs"]["total"] == 1
+    assert [x["run_id"] for x in scoped["runs"]["recent"]] == ["run-mine"]
+    assert scoped["scope"]["project_id"] == "proj-a"
+
+
+async def test_프로젝트_없이_요약하면_전부_낸다(client):
+    """Including runs made before projects existed, which belong to none.
+
+    Hiding those by default would make them unreachable from the console.
+    """
+    from foldfront.db.models import Run
+    from foldfront.db.repositories import Repos
+
+    r = Repos()
+    await r.runs.create(Run(run_id="run-mine", workflow_id="wf", project_id="proj-a"))
+    await r.runs.create(Run(run_id="run-loose", workflow_id="wf"))
+
+    whole = (await client.get("/api/v1/summary")).json()
+
+    assert whole["runs"]["total"] == 2
+    assert whole["scope"]["project_id"] is None
+
+
+async def test_요약의_큐와_모델은_프로젝트로_좁히지_않는다(client):
+    """A queue is shared. Showing a project its own slice of it would suggest
+    nothing else was waiting for the same GPUs."""
+    from foldfront.db.models import ModelVersion
+    from foldfront.db.repositories import Repos
+
+    await Repos().models.register(
+        ModelVersion(model_id="af2", version="v1", endpoint_id="ep")
+    )
+
+    scoped = (await client.get("/api/v1/summary", params={"project_id": "proj-a"})).json()
+
+    assert scoped["models"]["total"] == 1
+
+
 async def test_요약은_감사_기록을_함께_낸다(client):
     """The audit branch had no records under test and shipped broken once:
     search() returns documents, not dictionaries."""

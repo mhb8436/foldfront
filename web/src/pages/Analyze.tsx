@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 
+import { useProject } from '@/lib/project'
 import { api, type Artifact, type Run } from '../api/client'
 import { useAsync } from '../hooks/useAsync'
 import { PageHeader } from '../components/Shell'
@@ -12,7 +13,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 /** Comparison between runs, and ranking of the candidates they produced. */
 export function Analyze() {
-  const runs = useAsync(() => api.listRuns({ limit: 100 }), [])
+  const { filter } = useProject()
+  const runs = useAsync(() => api.listRuns({ project_id: filter, limit: 100 }), [filter])
   const [left, setLeft] = useState('')
   const [right, setRight] = useState('')
 

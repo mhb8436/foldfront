@@ -35,7 +35,8 @@ const SCALE = 2
 
 const SHOTS = [
   { file: 'dashboard.png', path: '/dashboard', budget: 6000 },
-  { file: 'setup.png', path: '/setup', budget: 5000 },
+  { file: 'projects.png', path: '/projects?project=proj-6bd50a36abea', budget: 6000 },
+  { file: 'setup.png', path: '/setup?project=proj-6bd50a36abea', budget: 5000 },
   { file: 'studio.png', path: '/studio', budget: 9000 },
   //  The node editor open over the canvas. Reached by address rather than by
   //  clicking, because Chrome's --screenshot cannot click.

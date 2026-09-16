@@ -401,3 +401,25 @@ async def test_피드백_데이터셋을_추출한다(repos: Repos):
     rows = await repos.feedback.export_dataset()
     assert len(rows) == 2
     assert {r["subject_id"] for r in rows} == {"s1", "s2"}
+
+
+@pytest.mark.asyncio
+async def test_프로젝트로_거른_워크플로에_공용_템플릿이_남는다(repos):
+    """A project sees its own workflows and the shared ones.
+
+    Filtering to a project's own would hide every built-in template, because
+    those carry no project - and a studio that opens empty reads as broken.
+    """
+    await repos.workflows.save(
+        Workflow(workflow_id="wf-shared", name="공용", project_id=None, is_template=True)
+    )
+    await repos.workflows.save(
+        Workflow(workflow_id="wf-mine", name="내 것", project_id="proj-a")
+    )
+    await repos.workflows.save(
+        Workflow(workflow_id="wf-theirs", name="남의 것", project_id="proj-b")
+    )
+
+    found = {w.workflow_id for w in await repos.workflows.list(project_id="proj-a")}
+
+    assert found == {"wf-shared", "wf-mine"}

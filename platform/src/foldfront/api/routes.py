@@ -467,23 +467,31 @@ async def me(identity: CurrentIdentity) -> dict[str, Any]:
 
 
 @router.get("/summary", tags=["Operations"], summary="Everything the dashboard shows")
-async def summary(recent: int = Query(default=5, le=20)) -> dict[str, Any]:
+async def summary(
+    recent: int = Query(default=5, le=20),
+    project_id: str | None = None,
+) -> dict[str, Any]:
     """Everything the dashboard shows, in one call.
 
     The same numbers are reachable through the individual endpoints, but a
     landing screen asking for six of them would be six round trips before it
     could draw anything.
+
+    `project_id` narrows what belongs to a project - its runs and its
+    workflows. Jobs, GPUs and the model registry stay whole, because they are:
+    a queue is shared, and a project's view of it would suggest the rest of
+    the institute was not also waiting. The console says which is which.
     """
     r = repos()
 
-    runs = await r.runs.list(limit=200)
+    runs = await r.runs.list(project_id=project_id, limit=200)
     by_status: dict[str, int] = {}
     for run in runs:
         by_status[str(run.status)] = by_status.get(str(run.status), 0) + 1
 
     jobs = await r.jobs.stats()
     models = await r.models.list()
-    workflows = await r.workflows.list()
+    workflows = await r.workflows.list(project_id=project_id)
 
     #  What is occupied right now, rather than what was registered as needed
     gpu_in_use = sum(j.resources.gpu_count for j in await r.jobs.leased())
@@ -528,6 +536,8 @@ async def summary(recent: int = Query(default=5, le=20)) -> dict[str, Any]:
              "target_id": a.target_id, "result": a.result, "created_at": a.created_at}
             for a in await r.audit.search(limit=recent)
         ],
+        #  So the console can label what the numbers above are about
+        "scope": {"project_id": project_id},
     }
 
 

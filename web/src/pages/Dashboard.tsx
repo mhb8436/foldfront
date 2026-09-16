@@ -17,6 +17,7 @@ import {
 } from '../components/Common'
 import { stageTerm } from '@/lib/glossary'
 import { useIdentity } from '@/lib/identity'
+import { useProject } from '@/lib/project'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -30,7 +31,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
  * link to the view that owns them.
  */
 export function Dashboard() {
-  const summary = usePolling(() => api.summary(6), 8000, [])
+  const { current, filter } = useProject()
+  const summary = usePolling(() => api.summary(6, filter), 8000, [filter])
   const s = summary.data
   const { canRun } = useIdentity()
 
@@ -43,7 +45,11 @@ export function Dashboard() {
     <>
       <PageHeader
         title="대시보드"
-        description="지금 무엇이 돌고 있고 무엇이 손을 기다리는지 봅니다. 8초마다 갱신됩니다."
+        description={
+          current
+            ? `${current.name}의 실행과 워크플로입니다. 8초마다 갱신됩니다.`
+            : '지금 무엇이 돌고 있고 무엇이 손을 기다리는지 봅니다. 8초마다 갱신됩니다.'
+        }
         actions={
           <>
             <Button variant="outline" size="sm" onClick={() => summary.reload()}>
@@ -68,13 +74,13 @@ export function Dashboard() {
           status="running"
           label="진행 중"
           value={byStatus.running ?? 0}
-          caption={`GPU ${s?.jobs.gpu_in_use ?? 0}개 점유`}
+          caption={`GPU ${s?.jobs.gpu_in_use ?? 0}개 점유${current ? ' · 전체 기준' : ''}`}
         />
         <Stat
           status="pending"
           label="대기"
           value={s?.jobs.by_status.queued ?? 0}
-          caption="큐에서 점유 대기"
+          caption={current ? '큐에서 점유 대기 · 전체 기준' : '큐에서 점유 대기'}
         />
         <Stat
           status="succeeded"
