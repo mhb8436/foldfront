@@ -215,3 +215,37 @@ describe('주소로 프로젝트 열기', () => {
     expect(screen.getByTestId('probe')).toHaveTextContent('없음|전체')
   })
 })
+
+describe('새로고침과 선택', () => {
+  function Panel() {
+    const { current, select, reload } = useProject()
+    return (
+      <>
+        <span data-testid="now">{current?.project_id ?? '전체'}</span>
+        <button onClick={() => select('proj-b')}>B 로</button>
+        <button onClick={() => reload()}>새로고침</button>
+      </>
+    )
+  }
+
+  it('주소로 왔더라도 이후의 선택을 새로고침이 되돌리지 않는다', async () => {
+    //  Found in review: the address was re-read on every reload(), so
+    //  creating a round or pressing 새로고침 snapped back to the linked project.
+    window.history.replaceState({}, '', '/projects?project=proj-a')
+    stub([project(), project({ project_id: 'proj-b', name: '결합 친화도' })])
+    render(
+      <ProjectProvider>
+        <Panel />
+      </ProjectProvider>,
+    )
+    await waitFor(() => expect(screen.getByTestId('now')).toHaveTextContent('proj-a'))
+
+    fireEvent.click(screen.getByText('B 로'))
+    await waitFor(() => expect(screen.getByTestId('now')).toHaveTextContent('proj-b'))
+    fireEvent.click(screen.getByText('새로고침'))
+
+    await waitFor(() => expect(api.listProjects).toHaveBeenCalledTimes(2))
+    expect(screen.getByTestId('now')).toHaveTextContent('proj-b')
+    expect(window.localStorage.getItem('foldfront.project')).toBe('proj-b')
+  })
+})

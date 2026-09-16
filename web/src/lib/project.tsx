@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 
 import { api, type Project, type Round } from '../api/client'
 
@@ -73,6 +73,10 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const [rounds, setRounds] = useState<Round[]>([])
   const [loading, setLoading] = useState(true)
   const [nonce, setNonce] = useState(0)
+  //  The address is consulted once, on arrival. reload() re-runs this
+  //  effect, and reading the address again then would revert whatever the
+  //  person has chosen since.
+  const arrived = useRef(false)
 
   useEffect(() => {
     let alive = true
@@ -81,9 +85,12 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       .then((r) => {
         if (!alive) return
         setProjects(r.items)
+        const asked = arrived.current
+          ? null
+          : new URLSearchParams(window.location.search).get('project')
+        arrived.current = true
         //  A remembered project that has since been deleted falls back to the
         //  whole installation rather than filtering everything away.
-        const asked = new URLSearchParams(window.location.search).get('project')
         const wanted = asked ?? remembered()
         const known = wanted && r.items.some((p) => p.project_id === wanted)
         setCurrentId(known ? wanted : null)

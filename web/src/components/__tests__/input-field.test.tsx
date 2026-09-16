@@ -158,3 +158,29 @@ describe('입력 칸', () => {
     await waitFor(() => expect(upload).toHaveBeenCalledWith(file))
   })
 })
+
+describe('검증에서 드러난 것', () => {
+  it('헤더 없는 서열은 경로가 아니라 헤더가 없다고 말한다', () => {
+    //  The most common paste. By the server's rule it is a path, and the
+    //  old hint said so - which pointed the person away from the fix.
+    show()
+    fireEvent.change(screen.getByLabelText('대상 서열'), {
+      target: { value: 'MKALIVLGLVLLSVTVQGKVFERCELARTLKRLG' },
+    })
+    expect(screen.getByText(/FASTA 헤더가 없습니다/)).toBeInTheDocument()
+  })
+
+  it('mmCIF 는 체인을 지어내지 않는다', () => {
+    //  Reading column 22 of a whitespace-tokenised mmCIF row yielded a letter
+    //  of the residue name, and Setup filled 「체인 G, M」 from it.
+    const { onSummary } = show('pdb')
+    fireEvent.change(screen.getByLabelText('대상 서열'), {
+      target: {
+        value: 'data_1ABC\nloop_\n_atom_site.group_PDB\nATOM   1    N  N   . MET A 1 1   ?\nATOM   2    C  CA  . GLY A 1 2   ?',
+      },
+    })
+
+    expect(screen.getByText(/mmCIF 파일입니다/)).toBeInTheDocument()
+    expect(onSummary).toHaveBeenLastCalledWith(expect.objectContaining({ cif: true, chains: [] }))
+  })
+})

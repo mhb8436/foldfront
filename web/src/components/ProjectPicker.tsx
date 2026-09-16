@@ -41,7 +41,9 @@ export function ProjectPicker() {
   if (!loading && projects.length === 0) return null
 
   return (
-    <div ref={ref} className="relative hidden md:block">
+    //  Always shown. The filter applies at every width, and a filter you
+    //  cannot see reads as missing data.
+    <div ref={ref} className="relative">
       <Button
         variant="outline"
         size="sm"

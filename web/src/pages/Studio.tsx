@@ -41,6 +41,7 @@ import { ContextMenu, type MenuItem, type MenuState } from './studio/ContextMenu
 import { Inspector, KindMark, type InspectorEdge } from './studio/Inspector'
 import { inspect, type IssueField } from './studio/checks'
 import { useIdentity } from '@/lib/identity'
+import { useProject } from '@/lib/project'
 import { cn } from '@/lib/utils'
 
 /**
@@ -157,7 +158,10 @@ function toFlowEdges(wf: Workflow): Edge[] {
 }
 
 export function Studio() {
-  const workflows = useAsync(() => api.listWorkflows(), [])
+  const { filter: projectFilter } = useProject()
+  //  Own and shared, as the dashboard lists them. Another project's workflow
+  //  offered here could be edited and saved under this one.
+  const workflows = useAsync(() => api.listWorkflows({ project_id: projectFilter }), [projectFilter])
   const [current, setCurrent] = useState<Workflow | null>(null)
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])

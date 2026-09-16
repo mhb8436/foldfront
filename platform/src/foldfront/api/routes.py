@@ -20,7 +20,8 @@ from typing import Any, Literal
 
 from pathlib import Path
 
-from fastapi import APIRouter, Body, Depends, File, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, Query, Request
+from starlette.datastructures import UploadFile as FormFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -90,6 +91,25 @@ async def start_run(body: StartRunBody, identity: CurrentIdentity) -> dict[str, 
     wf = await r.workflows.get(body.workflow_id, body.workflow_version)
     if wf is None:
         raise ApiError(E.WORKFLOW_NOT_FOUND, workflow_id=body.workflow_id)
+
+    #  Pasted content passes no upload cap, and the engine copies the request
+    #  into every job. Past this size it is a file, and the console offers one.
+    for field, value in body.request.items():
+        if isinstance(value, str) and len(value.encode("utf-8")) > MAX_INLINE_INPUT_BYTES:
+            raise ApiError(
+                E.INPUT_INLINE_TOO_LARGE, field=field,
+                limit_mb=MAX_INLINE_INPUT_BYTES // (1024 * 1024),
+            )
+
+    #  A round belongs to one project. Filed under another project's round,
+    #  a run appears in neither project's rounds table.
+    if body.round_id:
+        rounds = await r.rounds.list(body.project_id) if body.project_id else []
+        if not any(rd.round_id == body.round_id for rd in rounds):
+            raise ApiError(
+                E.ROUND_NOT_IN_PROJECT, round_id=body.round_id,
+                project_id=body.project_id or "(없음)",
+            )
 
     try:
         run = await ExecutionService(r).start(
@@ -461,9 +481,15 @@ async def list_rounds(project_id: str) -> dict[str, Any]:
 
 @router.post("/rounds", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["Projects"], summary="Create a round")
 async def create_round(round_: Round, identity: CurrentIdentity) -> dict[str, Any]:
+    r = repos()
+    known = {p.project_id for p in await r.projects.list(include_archived=True)}
+    if round_.project_id not in known:
+        raise ApiError(E.PROJECT_NOT_FOUND, project_id=round_.project_id)
     if not round_.round_id:
         round_.round_id = new_id("round")
-    r = repos()
+    #  The number is the server's to give. Two browsers counting rounds at the
+    #  same moment would both have said 「3차」.
+    round_.index = len(await r.rounds.list(round_.project_id)) + 1
     saved = await r.rounds.create(round_)
     await r.audit.record(
         "round.create", actor_id=identity.user_id, target_type="round",
@@ -509,10 +535,17 @@ INPUT_SUFFIXES = {
 #  mistaken upload cannot fill the disk.
 MAX_INPUT_BYTES = 32 * 1024 * 1024
 
+#  Multipart framing around the file: boundary lines and part headers.
+MULTIPART_OVERHEAD = 16 * 1024
+
+#  Content pasted straight into a run request. It is copied into every job the
+#  run builds, so past this it belongs in a file and a path.
+MAX_INLINE_INPUT_BYTES = 1 * 1024 * 1024
+
 
 @router.post("/inputs", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))],
              tags=["Runs"], summary="Upload a file for a run to read")
-async def upload_input(identity: CurrentIdentity, file: UploadFile = File(...)) -> dict[str, Any]:
+async def upload_input(identity: CurrentIdentity, request: Request) -> dict[str, Any]:
     """Take a sequence or structure file and return the path a run can name.
 
     A console has no other way to supply one: a browser cannot know a path on
@@ -522,7 +555,24 @@ async def upload_input(identity: CurrentIdentity, file: UploadFile = File(...)) 
     The name that arrives is never used to build the path. It is a label, kept
     so a person recognises what they uploaded; the stored name is generated
     here, which makes a traversal impossible rather than merely caught.
+
+    The size is checked before the body is read, not after. Declaring the file
+    as a parameter would have had the framework spool the whole request to
+    disk first and only then hand it here to be refused - a 280MB upload
+    reached the temp directory in full before the 413. So the body is taken
+    by hand: Content-Length is required, judged, and only then parsed.
     """
+    declared = request.headers.get("content-length")
+    if declared is None or not declared.isdigit():
+        raise ApiError(E.INPUT_LENGTH_REQUIRED)
+    if int(declared) > MAX_INPUT_BYTES + MULTIPART_OVERHEAD:
+        raise ApiError(E.INPUT_TOO_LARGE, limit_mb=MAX_INPUT_BYTES // (1024 * 1024))
+
+    form = await request.form(max_files=1, max_fields=1)
+    file = form.get("file")
+    if not isinstance(file, FormFile):
+        raise ApiError(E.INPUT_MISSING)
+
     original = Path(file.filename or "").name
     suffix = Path(original).suffix.lower()
     kind = INPUT_SUFFIXES.get(suffix)
@@ -617,7 +667,9 @@ async def notices(identity: CurrentIdentity) -> dict[str, Any]:
 
     if admin:
         for m in await r.models.list():
-            if str(m.approval_status) == "approved":
+            #  Pending, not merely unapproved: a rejected model was decided,
+            #  and a bell that kept ringing for it would never reach zero.
+            if str(m.approval_status) != "pending":
                 continue
             items.append(_notice(
                 "model.approval", f"{m.model_id}:{m.version}",
@@ -724,7 +776,7 @@ async def summary(
             "pending_approval": [
                 {"model_id": m.model_id, "version": m.version, "kind": str(m.kind)}
                 for m in models
-                if str(m.approval_status) != "approved"
+                if str(m.approval_status) == "pending"
             ],
         },
         "workflows": {

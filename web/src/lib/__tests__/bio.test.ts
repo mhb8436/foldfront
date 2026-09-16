@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { formatResidues, looksLikePath, parseFasta, summarizePdb } from '../bio'
+import { formatResidues, looksLikeBareSequence, looksLikePath, parseFasta, summarizePdb } from '../bio'
 
 describe('FASTA 요약', () => {
   it('기록 수와 길이를 센다', () => {
@@ -100,5 +100,32 @@ describe('잔기 수 표기', () => {
 
   it('전부 같은 길이면 하나로 적는다', () => {
     expect(formatResidues(r(9, 9, 9, 9, 9))).toBe('9 잔기')
+  })
+})
+
+describe('검증에서 드러난 것', () => {
+  it('공백이 있으면 내용이다 — 한 줄짜리 기록도', () => {
+    //  The server rule is whitespace, not newline; a one-line ATOM record
+    //  with its newline trimmed is still content.
+    expect(looksLikePath('ATOM      1  N')).toBe(false)
+  })
+
+  it('경로 뒤의 줄바꿈은 경로다', () => {
+    expect(looksLikePath('/data/targets/lys.pdb\n')).toBe(true)
+  })
+
+  it('헤더 없는 서열을 알아본다', () => {
+    expect(looksLikeBareSequence('MKALIVLGLVLLSVTVQG')).toBe(true)
+    expect(looksLikeBareSequence('/data/lys.fasta')).toBe(false)
+    expect(looksLikeBareSequence('>lys')).toBe(false)
+    expect(looksLikeBareSequence('MKAL')).toBe(false)
+  })
+
+  it('mmCIF 를 PDB 로 읽지 않는다', () => {
+    const cif = 'data_1ABC\nloop_\n_atom_site.group_PDB\nATOM   1    N  N   . MET A 1 1   ?'
+    const s = summarizePdb(cif)
+    expect(s.cif).toBe(true)
+    expect(s.ok).toBe(false)
+    expect(s.chains).toEqual([])
   })
 })

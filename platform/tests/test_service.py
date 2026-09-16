@@ -544,3 +544,119 @@ async def test_없는_실행을_점검하면_그렇다고_한다(seeded: Repos):
     report = await ExecutionService(seeded).reconcile("run-없음")
 
     assert report["ok"] is False
+
+
+#  ---------------------------------------------------------------- 검증에서 드러난 것
+#
+#  Found by adversarial review, each reproduced before it was fixed.
+
+
+async def test_병렬_노드_둘이_동시에_끝나도_사건_번호가_충돌하지_않는다(seeded: Repos):
+    """events.append read seq then inserted it; two workers finishing parallel
+    nodes of one run collided on uq_run_seq about one time in thirty, and the
+    exception escaped complete_node before the next level was queued."""
+    import asyncio
+
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(builtin_pipeline_workflow())
+    run = await svc.start(wf)
+
+    await asyncio.gather(*(seeded.events.append(run.run_id, f"동시 {i}") for i in range(40)))
+
+    seqs = [e.seq for e in await seeded.events.list(run.run_id, limit=500)]
+    assert len(seqs) == len(set(seqs))
+    assert len(seqs) >= 41  # 시작 사건 + 40
+
+
+async def test_같은_노드를_두_번_큐에_넣을_수_없다(seeded: Repos):
+    """A worker finishing a node and a reconcile pass on the same run can both
+    decide the next node is ready. The index lets one of them win."""
+    from foldfront.db.models import Job
+
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(builtin_pipeline_workflow())
+    run = await svc.start(wf)
+
+    twin = Job(job_id="job-twin", run_id=run.run_id, node_id="msa", model_id="msa")
+
+    assert await seeded.jobs.enqueue(twin) is None
+    assert [j.node_id for j in await seeded.jobs.list_for_run(run.run_id)] == ["msa"]
+
+
+async def test_끝난_실행에_늦게_온_결과는_반영하지_않는다(seeded: Repos):
+    """A worker can finish after its run was cancelled, or after reconcile
+    closed it. What was reported stays reported."""
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(builtin_pipeline_workflow())
+    run = await svc.start(wf)
+    await svc.cancel(run.run_id)
+
+    late = await svc.complete_node(run.run_id, "msa", succeeded=True, result={"depth": 1})
+
+    assert late["ok"] is False and late.get("late") is True
+    after = await seeded.runs.get(run.run_id)
+    assert after.status is RunStatus.CANCELLED
+    assert all(s.status is not RunStatus.SUCCEEDED for s in after.stages)
+    #  큐에 새 작업이 생기지 않는다
+    assert [j for j in await seeded.jobs.list_for_run(run.run_id) if j.status == JobStatus.QUEUED] == []
+
+
+async def test_정합성_점검은_시작하지_않은_실행을_시작하지_않는다(seeded: Repos):
+    """A forked run is PENDING until someone starts it. Queueing its work from
+    an operator's sweep would be starting it on that person's behalf."""
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(builtin_pipeline_workflow())
+    run = await svc.start(wf)
+    child = await seeded.runs.fork(run.run_id, from_stage="rfd3")
+    assert child.status is RunStatus.PENDING
+
+    report = await svc.reconcile_all()
+
+    assert [r["run_id"] for r in report["repaired"]] == []
+    assert await seeded.jobs.list_for_run(child.run_id) == []
+    assert (await seeded.runs.get(child.run_id)).status is RunStatus.PENDING
+
+
+async def test_빈_결과와_없는_결과를_구분한다(seeded: Repos):
+    """{} is a reply. None is a result that was never recorded."""
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(builtin_pipeline_workflow())
+    run = await svc.start(wf)
+    job = (await seeded.jobs.list_for_run(run.run_id))[0]
+    await seeded.jobs.finish(job.job_id, status=JobStatus.SUCCEEDED, result={})
+
+    await svc.reconcile(run.run_id)
+
+    stages = {s.name: s for s in (await seeded.runs.get(run.run_id)).stages}
+    assert stages["msa"].status is RunStatus.SUCCEEDED
+
+
+async def test_살아있는_작업이_있는_노드는_죽은_쌍둥이로_판정하지_않는다(seeded: Repos):
+    """Before the index, a node could have two jobs. A failed one beside a
+    leased one is not the node's outcome; the worker holding the lease is."""
+    from foldfront.db.models import Job
+
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(builtin_pipeline_workflow())
+    run = await svc.start(wf)
+    live = (await seeded.jobs.list_for_run(run.run_id))[0]
+    await seeded.jobs.col.update_one({"job_id": live.job_id}, {"$set": {"status": "leased"}})
+    dead = Job(job_id="job-dead", run_id=run.run_id, node_id="msa", model_id="msa",
+               status=JobStatus.FAILED, error="lease 만료")
+    await seeded.jobs.col.insert_one(dead.model_dump())
+
+    report = await svc.reconcile(run.run_id)
+
+    assert report["repaired"] == []
+    assert (await seeded.runs.get(run.run_id)).status is RunStatus.RUNNING
+
+
+async def test_전체_점검은_한_쪽만_보지_않고_끝까지_넘긴다(seeded: Repos):
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(builtin_pipeline_workflow())
+    for _ in range(5):
+        await svc.start(wf)
+
+    report = await svc.reconcile_all(limit=2)
+
+    assert report["checked"] == 5

@@ -159,6 +159,18 @@ class ExecutionService:
         error: str | None = None,
     ) -> dict[str, Any]:
         """A node finished. Record it and enqueue whatever that unblocked."""
+        run = await self.repos.runs.get(run_id)
+        if run is None:
+            return {"ok": False, "error": "실행을 찾지 못했습니다"}
+        if run.status not in (RunStatus.PENDING, RunStatus.RUNNING):
+            #  A worker can finish a job after its run was cancelled, or after
+            #  a reconcile closed the run because the lease had expired. What
+            #  was reported stays reported; the late result is noted, not applied.
+            await self.repos.events.append(
+                run_id, f"{node_id} 의 결과가 늦게 도착했으나 실행은 이미 {run.status} 로 끝나 반영하지 않습니다",
+                stage=node_id, level="warning",
+            )
+            return {"ok": False, "late": True, "error": f"실행이 이미 끝났습니다: {run.status}"}
         loaded = await self.load_plan(run_id)
         if loaded is None:
             return {"ok": False, "error": "실행 계획을 복원하지 못했습니다"}
@@ -287,7 +299,10 @@ class ExecutionService:
                         passed_control = True  # skips may have propagated
                         continue
 
-                await self.repos.jobs.enqueue(job)
+                if await self.repos.jobs.enqueue(job) is None:
+                    #  Someone else queued this node between our read of
+                    #  `existing` and this insert. Their job is the job.
+                    continue
                 await self.repos.runs.upsert_stage(run_id, StageState(
                     name=node_id, status=RunStatus.PENDING,
                 ))
@@ -326,23 +341,27 @@ class ExecutionService:
         that actually recorded one, and a node with no job is queued again -
         which is what would have happened had the job never been lost.
 
-        Safe to run on anything: a run that agrees with its jobs is left
-        alone, and the report says so.
+        Only a RUNNING run is repaired. A PENDING run was never started - a
+        fork waiting for someone to start it, for one - and queueing its work
+        would be starting it on that person's behalf. A finished run is
+        history: moving it would rewrite what was reported.
         """
         run = await self.repos.runs.get(run_id)
         if run is None:
             return {"ok": False, "error": "실행을 찾지 못했습니다"}
-        if run.status not in (RunStatus.PENDING, RunStatus.RUNNING):
-            #  A finished run disagreeing with its jobs is history, not a fault
-            #  to repair: moving it now would rewrite what was reported.
+        if run.status is not RunStatus.RUNNING:
             return {"ok": True, "run_id": run_id, "status": str(run.status), "repaired": []}
 
         stages = {s.name: s for s in run.stages}
         jobs = await self.repos.jobs.list_for_run(run_id)
         repaired: list[dict[str, Any]] = []
+        #  A node with a live job is a worker's to finish. A dead twin of it -
+        #  possible before the unique index existed - must not be read as the
+        #  node's outcome while the live one is still running.
+        live_nodes = {j.node_id for j in jobs if str(j.status) in ("queued", "leased", "running")}
 
         for job in jobs:
-            if not job.node_id:
+            if not job.node_id or job.node_id in live_nodes:
                 continue
             stage = stages.get(job.node_id)
             settled = stage is not None and stage.status in (
@@ -352,10 +371,10 @@ class ExecutionService:
                 continue
 
             if str(job.status) == "succeeded":
-                #  An empty result is not the same as no result: a node that
-                #  really returned nothing is recorded as such, and one whose
-                #  result was lost fails rather than feeding nothing onward.
-                if job.result:
+                #  None means the result was never recorded; {} means the model
+                #  really replied with nothing. The first fails rather than
+                #  feeding nothing onward, the second is recorded as it came.
+                if job.result is not None:
                     await self.complete_node(
                         run_id, job.node_id, succeeded=True, result=dict(job.result),
                     )
@@ -375,7 +394,7 @@ class ExecutionService:
 
         #  Re-read: completing a node above may have finished the run.
         run = await self.repos.runs.get(run_id)
-        if run is None or run.status not in (RunStatus.PENDING, RunStatus.RUNNING):
+        if run is None or run.status is not RunStatus.RUNNING:
             return {"ok": True, "run_id": run_id,
                     "status": str(run.status) if run else "unknown", "repaired": repaired}
 
@@ -412,21 +431,28 @@ class ExecutionService:
         return {"ok": True, "run_id": run_id,
                 "status": str(run.status) if run else "unknown", "repaired": repaired}
 
-    async def reconcile_all(self, *, limit: int = 200) -> dict[str, Any]:
+    async def reconcile_all(self, *, limit: int = 200, max_runs: int = 5000) -> dict[str, Any]:
         """Reconcile every run that is still supposed to be going.
 
-        One query per live run, which is fine while live runs number in the
-        hundreds. If that stops being true, narrow the candidates first - a
-        run with an active job needs no attention.
+        Paged through to the end rather than the newest `limit`: the runs most
+        likely to be stuck are the oldest, and a single page sorted newest-first
+        would be the one window that never contains them. One query per live
+        run on top of that, which is fine while live runs number in the
+        hundreds; `max_runs` is the backstop if they do not.
         """
         checked = 0
         repaired: list[dict[str, Any]] = []
-        for status in (RunStatus.RUNNING, RunStatus.PENDING):
-            for run in await self.repos.runs.list(status=status, limit=limit):
+        skip = 0
+        while checked < max_runs:
+            page = await self.repos.runs.list(status=RunStatus.RUNNING, limit=limit, skip=skip)
+            for run in page:
                 checked += 1
                 report = await self.reconcile(run.run_id)
                 if report.get("repaired"):
                     repaired.append(report)
+            if len(page) < limit:
+                break
+            skip += limit
         return {"checked": checked, "repaired": repaired}
 
     # ------------------------------------------------------------ cancel

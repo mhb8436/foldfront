@@ -41,7 +41,8 @@ def test_설계는_원본_필드_이름을_그대로_쓴다():
 
 def test_설계_체인을_주지_않으면_해당_필드를_넣지_않는다():
     """빈 값을 보내면 엔드포인트가 전 체인을 고정으로 읽을 수 있다. 아예 빼는 편이 안전하다."""
-    p = build_payload("proteinmpnn", {"target_pdb": "ATOM\n"})
+    #  A real record line: a bare word with no whitespace reads as a path.
+    p = build_payload("proteinmpnn", {"target_pdb": "ATOM      1  N\n"})
 
     assert "pdb_path_chains" not in p
 
@@ -80,11 +81,19 @@ def test_필요한_입력이_없으면_실행_전에_막는다():
         build_payload("soluprot", {})
 
 
-def test_없는_파일을_가리키면_사유를_낸다():
-    with pytest.raises(PayloadError) as caught:
-        build_payload("mmseqs", {"target_fasta": "/없는/경로.fasta"})
+def test_없는_파일을_가리키면_사유를_낸다(tmp_path, monkeypatch):
+    from foldfront.core.config import get_settings
 
-    assert "없습니다" in str(caught.value)
+    monkeypatch.setenv("PIPELINE_OUTPUT_ROOT", str(tmp_path))
+    get_settings.cache_clear()
+    try:
+        with pytest.raises(PayloadError) as caught:
+            build_payload("mmseqs", {"target_fasta": "inputs/없는.fasta"})
+    finally:
+        get_settings.cache_clear()
+
+    assert "입력 파일이 없습니다" in str(caught.value)
+    assert "없는.fasta" in str(caught.value)
 
 
 def test_구성기가_없는_모델은_요청을_그대로_넘긴다():

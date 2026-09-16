@@ -74,6 +74,17 @@ INDEXES: dict[str, list[IndexModel]] = {
             name="ix_dequeue",
         ),
         IndexModel([("run_id", ASCENDING)], name="ix_run"),
+        #  One live job per node of a run. Two writers can both decide a node is
+        #  ready; this makes the second insert fail instead of running the
+        #  model twice. Fixed-chain jobs carry no node_id and are left out.
+        IndexModel(
+            [("run_id", ASCENDING), ("node_id", ASCENDING)],
+            unique=True, name="uq_run_node_active",
+            partialFilterExpression={
+                "node_id": {"$type": "string"},
+                "status": {"$in": ["queued", "leased", "running"]},
+            },
+        ),
         #  Reclaims leases that expired
         IndexModel([("status", ASCENDING), ("lease_expires_at", ASCENDING)], name="ix_lease"),
     ],

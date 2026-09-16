@@ -74,13 +74,13 @@ export function Dashboard() {
           status="running"
           label="진행 중"
           value={byStatus.running ?? 0}
-          caption={`GPU ${s?.jobs.gpu_in_use ?? 0}개 점유${current ? ' · 전체 기준' : ''}`}
+          caption={current ? `${current.name} 기준` : `GPU ${s?.jobs.gpu_in_use ?? 0}개 점유`}
         />
         <Stat
           status="pending"
           label="대기"
           value={s?.jobs.by_status.queued ?? 0}
-          caption={current ? '큐에서 점유 대기 · 전체 기준' : '큐에서 점유 대기'}
+          caption={`큐 대기 · GPU ${s?.jobs.gpu_in_use ?? 0}개 점유${current ? ' · 전체 기준' : ''}`}
         />
         <Stat
           status="succeeded"
@@ -125,7 +125,7 @@ export function Dashboard() {
 
       <Panel
         title="최근 실행"
-        description={`전체 ${s?.runs.total ?? 0}건`}
+        description={current ? `${current.name} ${s?.runs.total ?? 0}건` : `전체 ${s?.runs.total ?? 0}건`}
         actions={
           <Button variant="outline" size="sm" asChild>
             <Link to="/monitor">

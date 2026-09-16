@@ -53,6 +53,12 @@ class E(StrEnum):
     INPUT_TYPE_REJECTED = "input.type_rejected"
     INPUT_TOO_LARGE = "input.too_large"
     INPUT_EMPTY = "input.empty"
+    INPUT_MISSING = "input.missing"
+    INPUT_LENGTH_REQUIRED = "input.length_required"
+    INPUT_INLINE_TOO_LARGE = "input.inline_too_large"
+    INPUT_OUTSIDE_ROOT = "input.outside_root"
+    ROUND_NOT_IN_PROJECT = "round.not_in_project"
+    PROJECT_NOT_FOUND = "project.not_found"
     MODEL_NOT_FOUND = "model.not_found"
     MODEL_UNRESOLVABLE = "model.unresolvable"
 
@@ -74,6 +80,12 @@ STATUS: dict[E, int] = {
     E.INPUT_TYPE_REJECTED: 415,
     E.INPUT_TOO_LARGE: 413,
     E.INPUT_EMPTY: 400,
+    E.INPUT_MISSING: 400,
+    E.INPUT_LENGTH_REQUIRED: 411,
+    E.INPUT_INLINE_TOO_LARGE: 413,
+    E.INPUT_OUTSIDE_ROOT: 400,
+    E.ROUND_NOT_IN_PROJECT: 400,
+    E.PROJECT_NOT_FOUND: 404,
     E.MODEL_NOT_FOUND: 404,
     E.MODEL_UNRESOLVABLE: 404,
 }
@@ -97,6 +109,12 @@ MESSAGES: dict[str, dict[E, str]] = {
         E.INPUT_TYPE_REJECTED: "받지 않는 파일 형식입니다: {suffix}. 서열(FASTA)이나 구조(PDB·mmCIF) 파일을 올리십시오.",
         E.INPUT_TOO_LARGE: "파일이 너무 큽니다. {limit_mb}MB 이하만 올릴 수 있습니다.",
         E.INPUT_EMPTY: "빈 파일입니다.",
+        E.INPUT_MISSING: "올릴 파일이 없습니다. file 항목으로 보내십시오.",
+        E.INPUT_LENGTH_REQUIRED: "파일 크기를 먼저 알려야 합니다. Content-Length 없는 전송은 받지 않습니다.",
+        E.INPUT_INLINE_TOO_LARGE: "붙여넣은 내용이 너무 큽니다({field}). {limit_mb}MB 를 넘으면 파일로 올리십시오.",
+        E.INPUT_OUTSIDE_ROOT: "저장 위치 밖의 파일은 읽지 않습니다.",
+        E.ROUND_NOT_IN_PROJECT: "회차 {round_id} 는 프로젝트 {project_id} 의 것이 아닙니다.",
+        E.PROJECT_NOT_FOUND: "프로젝트를 찾지 못했습니다: {project_id}",
         E.MODEL_NOT_FOUND: "모델을 찾지 못했습니다: {model_id}",
         E.MODEL_UNRESOLVABLE: "모델의 실행 위치를 해석하지 못했습니다: {reason}",
     },
@@ -115,6 +133,12 @@ MESSAGES: dict[str, dict[E, str]] = {
         E.INPUT_TYPE_REJECTED: "That file type is not accepted: {suffix}. Upload a sequence (FASTA) or a structure (PDB, mmCIF).",
         E.INPUT_TOO_LARGE: "That file is too large. The limit is {limit_mb}MB.",
         E.INPUT_EMPTY: "That file is empty.",
+        E.INPUT_MISSING: "No file to upload. Send it as the 'file' field.",
+        E.INPUT_LENGTH_REQUIRED: "The upload must declare its size. Requests without Content-Length are refused.",
+        E.INPUT_INLINE_TOO_LARGE: "Pasted content is too large ({field}). Above {limit_mb}MB, upload it as a file.",
+        E.INPUT_OUTSIDE_ROOT: "Files outside the storage root are not read.",
+        E.ROUND_NOT_IN_PROJECT: "Round {round_id} does not belong to project {project_id}.",
+        E.PROJECT_NOT_FOUND: "No such project: {project_id}",
         E.MODEL_NOT_FOUND: "No such model: {model_id}",
         E.MODEL_UNRESOLVABLE: "The model could not be resolved to an endpoint: {reason}",
     },
