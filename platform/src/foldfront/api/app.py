@@ -1,8 +1,9 @@
-"""FastAPI 응용.
+"""The FastAPI application.
 
-현행 RAPID 는 표준 라이브러리 BaseHTTPRequestHandler 로 HTTP 를 직접 구현한다.
-외부 연계에 OpenAPI 수준의 명세가 필요하므로 FastAPI 로 옮긴다.
-MCP JSON-RPC 표면은 현행 구현을 승계하여 이 응용 위에 얹는다.
+The original serves HTTP from BaseHTTPRequestHandler in the standard library.
+Anything integrating with this needs a specification to work from, which is
+what moving to FastAPI buys. The MCP JSON-RPC surface is carried over and
+mounted on top of the same application.
 """
 
 from __future__ import annotations
@@ -48,19 +49,20 @@ async def _api_error(request: Request, exc: ApiError) -> JSONResponse:
 
 
 app.include_router(router)
-#  원본 MCP 도구와 신규 계층 도구를 한 표면으로 낸다
+#  One surface for the original tools and the ones added here
 app.include_router(mcp_router)
 
 
 @app.get("/healthz", tags=["운영"])
 async def healthz() -> dict[str, object]:
-    """상태 확인. 현행 배포 절차가 /healthz 를 보므로 경로를 같게 둔다."""
+    """Health check. The path matches the original so existing deployment
+    scripts keep working."""
     db = get_db()
     ping = await db.command("ping")
     return {
         "status": "ok",
         "database": get_settings().mongo_db,
         "mongo_ok": bool(ping.get("ok")),
-        #  인증이 꺼진 채로 운영에 올라가면 여기서 드러난다
+        #  Makes it visible when a deployment reaches production unauthenticated
         "auth": auth_mode(),
     }

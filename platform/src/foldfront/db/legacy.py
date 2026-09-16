@@ -1,22 +1,23 @@
-"""레거시 결과 데이터 마이그레이션.
+"""Migration of existing result data.
 
-현행 RAPID 는 파일시스템에 저장한다.
+The original stores runs on the filesystem.
 
     <PIPELINE_OUTPUT_ROOT>/
       <run_id>/
         request.json  summary.json  status.json
         events.jsonl  orchestration_trace.jsonl
         feedback.jsonl  experiments.jsonl
-        <단계별 아티팩트>
+        <artifacts, per stage>
       workspace/projects/<project_id>/
         project.json
         rounds/<round_id>.json
 
-이 모듈은 그 구조를 읽어 MongoDB 로 옮긴다. 원칙 셋을 지킨다.
+This reads that layout and moves it into MongoDB under three rules.
 
-1. **원본을 지우지 않는다.** 읽기만 한다. 마이그레이션이 잘못되어도 되돌릴 수 있다.
-2. **필드 이름을 바꾸지 않는다.** request.json 은 통째로 보존한다.
-3. **다시 돌려도 결과가 같다.** 같은 run 을 두 번 넣지 않는다(멱등).
+1. **Nothing is deleted.** The migration only reads, so a bad run of it costs
+   nothing but the time to drop the collections and try again.
+2. **No field is renamed.** request.json is preserved whole.
+3. **Running it twice changes nothing.** The same run is never inserted twice.
 """
 
 from __future__ import annotations
@@ -40,7 +41,7 @@ from foldfront.db.models import (
 )
 from foldfront.db.repositories import Repos
 
-#  현행이 쓰는 파일 이름. 바꾸지 않는다.
+#  The filenames the original writes. Not ours to rename.
 REQUEST_JSON = "request.json"
 SUMMARY_JSON = "summary.json"
 STATUS_JSON = "status.json"
@@ -48,7 +49,7 @@ EVENTS_JSONL = "events.jsonl"
 FEEDBACK_JSONL = "feedback.jsonl"
 EXPERIMENTS_JSONL = "experiments.jsonl"
 
-#  확장자 → 아티팩트 종류
+#  Extension to artifact kind
 KIND_BY_SUFFIX = {
     ".pdb": "pdb", ".cif": "pdb", ".fasta": "fasta", ".fa": "fasta",
     ".a3m": "a3m", ".json": "json", ".jsonl": "json", ".svg": "svg",
@@ -56,7 +57,7 @@ KIND_BY_SUFFIX = {
     ".html": "report", ".pdf": "report", ".png": "image", ".zip": "archive",
 }
 
-#  run 디렉토리 최상위의 관리 파일. 아티팩트로 등록하지 않는다.
+#  Bookkeeping files at the top of a run directory; not artifacts
 CONTROL_FILES = {
     REQUEST_JSON, SUMMARY_JSON, STATUS_JSON, EVENTS_JSONL,
     FEEDBACK_JSONL, EXPERIMENTS_JSONL, "orchestration_trace.jsonl",
@@ -65,7 +66,7 @@ CONTROL_FILES = {
 
 @dataclass
 class MigrationReport:
-    """무엇을 옮겼는지 센다. 이관 결과를 확인하는 근거다."""
+    """Counts what moved, so a migration can be checked afterwards."""
 
     runs: int = 0
     runs_skipped: int = 0
@@ -114,7 +115,7 @@ def _read_jsonl(path: Path) -> Iterator[dict[str, Any]]:
 
 
 def _to_datetime(value: Any) -> datetime | None:
-    """현행은 ISO 문자열과 epoch 초를 섞어 쓴다. 둘 다 받는다."""
+    """The original mixes ISO strings and epoch seconds. Accept both."""
     if value is None:
         return None
     if isinstance(value, datetime):
@@ -134,7 +135,9 @@ def _to_datetime(value: Any) -> datetime | None:
 
 
 def _map_status(raw: Any) -> RunStatus:
-    """현행 상태 문자열을 승계한다. 모르는 값은 실패로 보지 않고 대기로 둔다."""
+    """Carry over the original status strings. An unrecognised one becomes
+    pending rather than failed - calling something a failure on the strength of
+    not recognising it would be worse than waiting."""
     text = str(raw or "").strip().lower()
     table = {
         "succeeded": RunStatus.SUCCEEDED, "success": RunStatus.SUCCEEDED,
@@ -152,7 +155,7 @@ def _kind_of(path: Path) -> str:
 
 
 def _stage_of(rel: Path) -> str | None:
-    """아티팩트가 어느 단계 산출물인지 최상위 디렉토리 이름으로 추정한다."""
+    """Infer which stage produced an artifact from its top directory."""
     parts = rel.parts
     return parts[0] if len(parts) > 1 else None
 
@@ -162,7 +165,7 @@ def looks_like_run_dir(path: Path) -> bool:
 
 
 class LegacyMigrator:
-    """현행 출력 디렉토리를 MongoDB 로 옮긴다."""
+    """Move the original output directory into MongoDB."""
 
     def __init__(self, repos: Repos, *, register_artifacts: bool = True) -> None:
         self.repos = repos
@@ -224,7 +227,8 @@ class LegacyMigrator:
             finished_at=_to_datetime(status_doc.get("finished_at") or summary.get("finished_at")),
             error=status_doc.get("error") or summary.get("error"),
         )
-        #  파일 수정 시각을 생성 시각으로 삼는다 — 원본의 시간 정보를 최대한 살린다
+        #  Modification time stands in for creation time; it is the best the
+        #  filesystem kept of when the artifact was produced
         created = _to_datetime((run_dir / REQUEST_JSON).stat().st_mtime)
         if created:
             run.created_at = created
@@ -242,7 +246,8 @@ class LegacyMigrator:
     def _stages_from(
         self, status_doc: dict[str, Any], summary: dict[str, Any]
     ) -> list[StageState]:
-        """현행 status.json 의 단계 표현이 판마다 다르다. 사전과 목록 둘 다 받는다."""
+        """status.json spells stages differently across versions of the
+        original. Accept both the mapping and the list form."""
         raw = status_doc.get("stages") or summary.get("stages") or {}
         stages: list[StageState] = []
 
@@ -360,7 +365,7 @@ class LegacyMigrator:
             await self.repos.artifacts.col.insert_many(docs)
             report.artifacts += len(docs)
 
-    # ---------------------------------------------------------- 프로젝트
+    # ---------------------------------------------------------- projects
 
     async def _migrate_projects(self, root: Path, report: MigrationReport) -> None:
         projects_root = root / "workspace" / "projects"
@@ -408,7 +413,7 @@ class LegacyMigrator:
                 report.rounds += 1
 
 
-# ---------------------------------------------------------------- 보조
+# ---------------------------------------------------------------- helpers
 
 
 def _basename(value: Any) -> str | None:

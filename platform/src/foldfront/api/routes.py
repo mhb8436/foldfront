@@ -1,7 +1,8 @@
 """HTTP Tool API.
 
-OpenAPI 3.1 명세가 자동으로 나온다. 현행 RAPID 의 MCP 도구 이름을 경로에 대응시켜
-외부 IDE·에이전트가 같은 개념으로 접근하게 한다.
+The OpenAPI 3.1 document is generated from these signatures. Paths mirror the
+names of the original MCP tools so an IDE or an agent meets the same concepts
+under either surface.
 
     pipeline.run          → POST /api/v1/runs
     pipeline.status       → GET  /api/v1/runs/{run_id}
@@ -53,7 +54,7 @@ def service() -> ExecutionService:
     return ExecutionService(Repos())
 
 
-# ---------------------------------------------------------------- 요청 본문
+# ---------------------------------------------------------------- request bodies
 
 
 class StartRunBody(BaseModel):
@@ -78,7 +79,7 @@ class LeaseBody(BaseModel):
     model_id: str | None = None
 
 
-# ---------------------------------------------------------------- 실행
+# ---------------------------------------------------------------- runs
 
 
 @router.post("/runs", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["실행"], summary="워크플로로 실행을 시작한다")
@@ -145,12 +146,13 @@ async def list_artifacts(
 
 @router.get("/runs/{run_id}/artifacts/content", tags=["실행"], summary="산출물 내용")
 async def artifact_content(run_id: str, path: str) -> FileResponse:
-    """산출물 실체를 내려준다 (구조 열람).
+    """Serve the artifact itself, which is what the structure viewer reads.
 
-    경로를 그대로 파일시스템에 넘기지 않는다. 두 겹으로 막는다.
-      1) 저장소에 **등록된** 산출물이어야 한다. 임의 경로는 애초에 조회되지 않는다.
-      2) 실제 경로를 해석한 뒤 저장 루트 안에 있는지 다시 확인한다.
-         등록 자체가 오염된 경우(`..` 가 섞인 경로)까지 막는다.
+    The path is never handed to the filesystem as given. Two checks stand in
+    the way. It must belong to an artifact registered for this run, so an
+    arbitrary path is not looked up at all. Then the resolved path is compared
+    against the storage root, which also catches a registration that was itself
+    poisoned with a traversal.
     """
     art = await repos().artifacts.get(run_id, path)
     if art is None:
@@ -183,7 +185,7 @@ async def complete_node(run_id: str, node_id: str, body: CompleteNodeBody) -> di
 
 @router.post("/runs/{run_id}/fork", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["실행"], summary="실행을 갈라 새 run 을 만든다")
 async def fork_run(run_id: str, from_stage: str | None = None) -> dict[str, Any]:
-    """덮어쓰지 않는 것이 기본이다."""
+    """Forking never writes to the run it came from."""
     child = await repos().runs.fork(run_id, from_stage=from_stage)
     if child is None:
         raise ApiError(E.RUN_NOT_FOUND, run_id=run_id)
@@ -198,7 +200,7 @@ async def cancel_run(run_id: str, reason: str = "사용자 취소") -> dict[str,
     return run.model_dump()
 
 
-# ---------------------------------------------------------------- 워크플로
+# ---------------------------------------------------------------- workflows
 
 
 @router.get("/workflows", tags=["워크플로"], summary="워크플로 목록 (식별자별 최신 버전)")
@@ -227,7 +229,7 @@ async def workflow_versions(workflow_id: str) -> dict[str, Any]:
 
 @router.post("/workflows", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["워크플로"], summary="워크플로를 저장한다 (새 버전으로 쌓인다)")
 async def save_workflow(workflow: Workflow) -> dict[str, Any]:
-    """저장 시점에 그래프를 검증한다. 실행할 때 알면 늦다."""
+    """Validate on save. Finding a defect at run time costs GPU hours."""
     try:
         graph = build_graph(workflow)
     except GraphError as exc:
@@ -245,7 +247,8 @@ async def save_workflow(workflow: Workflow) -> dict[str, Any]:
     return {
         "workflow": saved.model_dump(),
         "levels": [list(layer) for layer in graph.levels],
-        #  등록되지 않은 모델은 경고만 한다 — 모델보다 워크플로를 먼저 설계할 수 있다
+        #  Unregistered models warn rather than refuse: designing a workflow
+        #  before registering its models is a reasonable order to work in
         "unregistered_models": missing,
     }
 
@@ -283,7 +286,7 @@ async def list_models(
 
 @router.post("/models", dependencies=[Depends(require(Role.ADMIN))], tags=["모델"], summary="모델 버전을 등록한다")
 async def register_model(mv: ModelVersion, actor_id: str | None = None) -> dict[str, Any]:
-    """URL 을 직접 고치지 않고 고유 ID 로 등록한다."""
+    """Register by id, so no URL has to be edited to add a model."""
     r = repos()
     saved = await r.models.register(mv)
     await r.audit.record(
@@ -299,7 +302,7 @@ async def register_model(mv: ModelVersion, actor_id: str | None = None) -> dict[
 async def resolve_model(
     model_id: str, version: str | None = None, max_gpu: int | None = None
 ) -> dict[str, Any]:
-    """모델 식별자를 실행 엔드포인트로 해석한다."""
+    """Resolve a model id to the endpoint that will run it."""
     from foldfront.engine.router import ModelRouter, RoutingError
 
     try:
@@ -330,7 +333,7 @@ async def approve_model(
     model_id: str, version: str, approved_by: str,
     decision: Literal["approved", "rejected"] = "approved",
 ) -> dict[str, Any]:
-    """승인·검증·롤백 절차."""
+    """Approve, reject or roll back a registered version."""
     r = repos()
     mv = await r.models.approve(model_id, version, approved_by=approved_by, decision=decision)
     if mv is None:
@@ -342,12 +345,12 @@ async def approve_model(
     return mv.model_dump()
 
 
-# ---------------------------------------------------------------- 작업 큐
+# ---------------------------------------------------------------- job queue
 
 
 @router.post("/jobs/lease", dependencies=[Depends(require(Role.SERVICE, Role.ADMIN))], tags=["작업"], summary="작업을 하나 꺼낸다 (워커가 호출한다)")
 async def lease_job(body: LeaseBody) -> dict[str, Any] | None:
-    """우선순위가 높고 오래 기다린 작업부터 내준다."""
+    """Hand out work: highest priority, longest waiting."""
     job = await repos().jobs.lease(
         worker_id=body.worker_id,
         lease_seconds=body.lease_seconds,
@@ -359,7 +362,7 @@ async def lease_job(body: LeaseBody) -> dict[str, Any] | None:
 
 @router.get("/jobs/stats", tags=["작업"], summary="큐 적체 현황")
 async def job_stats() -> dict[str, Any]:
-    """작업 큐 적체 현황."""
+    """How much work is queued, and in what state."""
     r = repos()
     stats = await r.jobs.stats()
     return {"by_status": stats, "total": sum(stats.values())}
@@ -367,11 +370,11 @@ async def job_stats() -> dict[str, Any]:
 
 @router.post("/jobs/reclaim", dependencies=[Depends(require(Role.SERVICE, Role.ADMIN))], tags=["작업"], summary="만료된 lease 를 회수한다")
 async def reclaim_jobs() -> dict[str, Any]:
-    """워커가 죽어도 작업이 영원히 잠기지 않는다."""
+    """Return jobs whose worker died, so nothing stays locked."""
     return {"reclaimed": await repos().jobs.reclaim_expired()}
 
 
-# ---------------------------------------------------------------- 프로젝트
+# ---------------------------------------------------------------- projects
 
 
 @router.get("/projects", tags=["프로젝트"], summary="프로젝트 목록")
@@ -400,7 +403,7 @@ async def create_round(round_: Round) -> dict[str, Any]:
     return (await repos().rounds.create(round_)).model_dump()
 
 
-# ---------------------------------------------------------------- 감사
+# ---------------------------------------------------------------- audit
 
 
 @router.get("/audit", dependencies=[Depends(require(Role.ADMIN))], tags=["운영"], summary="감사 로그 조회")
@@ -409,7 +412,7 @@ async def search_audit(
     target_type: str | None = None, target_id: str | None = None,
     limit: int = Query(default=200, le=1000),
 ) -> dict[str, Any]:
-    """감사 기록 조회."""
+    """Search the audit trail."""
     items = await repos().audit.search(
         actor_id=actor_id, action=action, target_type=target_type,
         target_id=target_id, limit=limit,

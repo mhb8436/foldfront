@@ -84,7 +84,7 @@ async def test_검증_실패_사유를_응답에_싣지_않는다(monkeypatch):
     monkeypatch.setattr("pipeline_mcp.oidc.load_oidc_settings", lambda: _Settings())
 
     def _boom(token, settings):
-        raise ValueError("서명 키 kid=abc123 을 찾지 못했다")
+        raise ValueError("서명 키 kid=abc123 을 찾지 못했")
 
     monkeypatch.setattr("pipeline_mcp.oidc.verify_oidc_token", _boom)
 

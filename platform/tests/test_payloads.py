@@ -84,7 +84,7 @@ def test_없는_파일을_가리키면_사유를_낸다():
     with pytest.raises(PayloadError) as caught:
         build_payload("mmseqs", {"target_fasta": "/없는/경로.fasta"})
 
-    assert "없다" in str(caught.value)
+    assert "없습니다" in str(caught.value)
 
 
 def test_구성기가_없는_모델은_요청을_그대로_넘긴다():

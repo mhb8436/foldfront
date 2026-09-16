@@ -1,6 +1,7 @@
-"""MongoDB 연결과 인덱스 정의.
+"""MongoDB connection and index definitions.
 
-컬렉션 이름은 한 곳에서만 정한다 — 오타로 빈 컬렉션이 생기는 것을 막는다.
+Collection names are declared once. A typo elsewhere would otherwise create an
+empty collection and read nothing from it, with no error to show for it.
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ from foldfront.core.config import get_settings
 
 
 class C:
-    """컬렉션 이름."""
+    """Collection names."""
 
     RUNS = "runs"
     RUN_EVENTS = "run_events"
@@ -30,8 +31,9 @@ class C:
     USERS = "users"
 
 
-#  인덱스 — 조회 경로에 맞춘다.
-#  이 동시 50명·3초 이내를 요구하므로 목록 조회가 전부 인덱스를 타야 한다.
+#  Indexes follow the paths the console actually queries by.
+#  Every list view has to hit an index: the console polls them continuously,
+#  and a collection scan under that load is what takes a cluster down.
 INDEXES: dict[str, list[IndexModel]] = {
     C.RUNS: [
         IndexModel([("run_id", ASCENDING)], unique=True, name="uq_run_id"),
@@ -49,7 +51,7 @@ INDEXES: dict[str, list[IndexModel]] = {
         IndexModel([("run_id", ASCENDING), ("path", ASCENDING)], unique=True, name="uq_run_path"),
         IndexModel([("run_id", ASCENDING), ("stage", ASCENDING)], name="ix_run_stage"),
         IndexModel([("kind", ASCENDING)], name="ix_kind"),
-        #  수명주기가 지난 중간 산출물을 찾는다
+        #  Finds intermediate artifacts whose retention has passed
         IndexModel([("retain_until", ASCENDING)], name="ix_retain", sparse=True),
     ],
     C.MODELS: [
@@ -66,13 +68,13 @@ INDEXES: dict[str, list[IndexModel]] = {
     ],
     C.JOBS: [
         IndexModel([("job_id", ASCENDING)], unique=True, name="uq_job_id"),
-        #  큐에서 꺼낼 때 쓰는 인덱스. 우선순위 높고 오래 기다린 것부터
+        #  The order the queue pops in: highest priority, longest waiting
         IndexModel(
             [("status", ASCENDING), ("priority", DESCENDING), ("queued_at", ASCENDING)],
             name="ix_dequeue",
         ),
         IndexModel([("run_id", ASCENDING)], name="ix_run"),
-        #  만료된 lease 회수
+        #  Reclaims leases that expired
         IndexModel([("status", ASCENDING), ("lease_expires_at", ASCENDING)], name="ix_lease"),
     ],
     C.PROJECTS: [
@@ -93,7 +95,7 @@ INDEXES: dict[str, list[IndexModel]] = {
     ],
     C.EXPERIMENTS: [
         IndexModel([("run_id", ASCENDING), ("created_at", DESCENDING)], name="ix_run_created"),
-        #  파생 데이터셋 추출 시 지표별로 훑는다
+        #  Scanned by metric when a derived dataset is pulled
         IndexModel([("metric", ASCENDING), ("created_at", DESCENDING)], name="ix_metric", sparse=True),
     ],
     C.REPORTS: [
@@ -101,7 +103,7 @@ INDEXES: dict[str, list[IndexModel]] = {
         IndexModel([("run_id", ASCENDING), ("version", DESCENDING)], name="ix_run_version"),
     ],
     C.AUDIT: [
-        #  누가·무엇을·언제
+        #  Who did what, and when
         IndexModel([("created_at", DESCENDING)], name="ix_created"),
         IndexModel([("actor_id", ASCENDING), ("created_at", DESCENDING)], name="ix_actor"),
         IndexModel([("action", ASCENDING), ("created_at", DESCENDING)], name="ix_action"),
@@ -130,7 +132,7 @@ def get_db() -> AsyncIOMotorDatabase:
 
 
 async def ensure_indexes(db: AsyncIOMotorDatabase | None = None) -> dict[str, int]:
-    """인덱스를 만든다. 기동 시 한 번 호출한다. 이미 있으면 아무 일도 하지 않는다."""
+    """Create the indexes. Called once at startup; a no-op if they exist."""
     db = db if db is not None else get_db()
     created: dict[str, int] = {}
     for name, models in INDEXES.items():

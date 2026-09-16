@@ -1,9 +1,9 @@
-"""운영·시연용 명령.
+"""Operational and demonstration commands.
 
-    uv run python -m foldfront.cli seed        # 기본 모델·워크플로 등록
-    uv run python -m foldfront.cli demo        # 모의 실행 한 벌
-    uv run python -m foldfront.cli worker      # 워커 기동
-    uv run python -m foldfront.cli migrate <경로>   # 레거시 이관
+    uv run python -m foldfront.cli seed          register default models and workflows
+    uv run python -m foldfront.cli demo          produce a set of mock runs
+    uv run python -m foldfront.cli worker        start a worker
+    uv run python -m foldfront.cli migrate PATH  import an existing output directory
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ from foldfront.engine.dag import BUILTIN_STAGE_CHAIN, builtin_pipeline_workflow
 from foldfront.engine.service import ExecutionService
 from foldfront.engine.worker import Worker
 
-#  현행 RAPID 가 환경변수로 읽던 모델을 Registry 항목으로 옮긴다.
+#  The models the original reads from the environment, as registry entries.
 SEED_MODELS = [
     ("mmseqs", ModelKind.MSA, 0),
     ("msa", ModelKind.MSA, 0),
@@ -50,10 +50,11 @@ SEED_MODELS = [
 
 
 def binding_workflow() -> Workflow:
-    """단백질 결합 예측 파이프라인.
+    """A binding-prediction pipeline.
 
-    안정화 산출물을 입력으로 도킹·복합체 예측을 조합한다. 조건 분기로 용해도 통과율이
-    낮으면 도킹을 건너뛴다 — 계산 자원을 아끼는 실제 운영 방식이다.
+    Stabilised designs feed docking and complex prediction. A branch skips the
+    docking when the solubility pass rate is low, which is how the expensive
+    stages are kept off candidates that will not survive anyway.
     """
     return Workflow(
         workflow_id="binding-prediction",
@@ -112,14 +113,16 @@ async def cmd_seed() -> None:
     print(f"모델 {len(SEED_MODELS)}종 · 워크플로 2종을 등록했다")
 
 
-#  원본 RAPID 사례연구의 실제 설계 결과다(public_data/case_studies/multiround).
-#  모의 실행에 이 파일을 붙여 구조 열람 화면이 빈 채로 남지 않게 한다.
-#  ★ 지어낸 구조가 아니라 원본 산출물이며, 산출물 meta 에 출처를 남긴다.
+#  Real design results from the original case studies, under
+#  public_data/case_studies/multiround. Attaching them to a mock run gives the
+#  structure viewer something genuine to show. They are not invented, and each
+#  artifact records where it came from in its meta.
 CASE_STUDIES = ("1lvm", "3rgk")
 
 
 async def _attach_case_artifacts(repos: Repos, run_id: str, case: str) -> int:
-    """사례연구 PDB 를 run 의 산출물로 등록한다. 실제 실행이 쓰는 경로 구조를 그대로 따른다."""
+    """Register the case-study PDBs as artifacts of a run, laid out exactly
+    as a real run would write them."""
     src_dir = Path(__file__).resolve().parents[3] / "public_data" / "case_studies" / "multiround" / case
     if not src_dir.is_dir():
         return 0
@@ -148,9 +151,10 @@ async def _attach_case_artifacts(repos: Repos, run_id: str, case: str) -> int:
 
 
 async def cmd_demo(count: int = 3) -> None:
-    """모의 실행으로 화면에 채울 자료를 만든다.
+    """Produce mock runs so the screens have something to show.
 
-    ⚠️ 모의 결과다. 실증은 실제 엔드포인트로 한다.
+    The metrics are invented. Only a call to a real endpoint demonstrates
+    anything, and the command says so when it finishes.
     """
     repos = Repos()
     svc = ExecutionService(repos)

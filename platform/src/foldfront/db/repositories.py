@@ -1,9 +1,9 @@
-"""저장소 계층.
+"""The repository layer.
 
-문서 스키마를 MongoDB 에 읽고 쓰는 경로를 한 곳에 모은다. 응용 계층은 컬렉션 이름과
-질의문을 직접 쓰지 않는다 — 스키마가 바뀔 때 고칠 자리를 좁힌다.
+Every read and write against MongoDB lives here. Nothing above this names a
+collection or writes a query, which is what keeps a schema change to one file.
 
-모든 갱신은 updated_at 을 함께 올린다. 시각은 UTC 로만 저장한다.
+Every update touches updated_at. Times are stored in UTC and nothing else.
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ def new_id(prefix: str) -> str:
 
 
 def _clean(doc: dict[str, Any] | None) -> dict[str, Any] | None:
-    """_id 를 걷어낸다. 응용 계층은 도메인 식별자만 다룬다."""
+    """Drop _id. Above this layer, documents are known by their own ids."""
     if doc is None:
         return None
     doc.pop("_id", None)
@@ -51,11 +51,11 @@ class BaseRepo:
         self.db = db if db is not None else get_db()
 
 
-# ---------------------------------------------------------------- 실행
+# ---------------------------------------------------------------- runs
 
 
 class RunRepo(BaseRepo):
-    """실행 이력. fork 로 갈라진 실행도 같은 저장소에 담는다."""
+    """Run history. A forked run lives here beside the one it came from."""
 
     @property
     def col(self):
@@ -110,7 +110,7 @@ class RunRepo(BaseRepo):
         return Run(**_clean(doc)) if doc else None
 
     async def upsert_stage(self, run_id: str, stage: StageState) -> Run | None:
-        """단계 상태를 갱신한다. 없으면 추가한다(체크포인트)."""
+        """Update a stage, appending it if this is the first time."""
         existing = await self.col.find_one(
             {"run_id": run_id, "stages.name": stage.name}, {"_id": 1}
         )
@@ -129,9 +129,11 @@ class RunRepo(BaseRepo):
         return Run(**_clean(doc)) if doc else None
 
     async def fork(self, run_id: str, *, from_stage: str | None = None) -> Run | None:
-        """기본 동작은 새 run 을 만드는 것이다. 덮어쓰지 않는다.
+        """Forking makes a new run. The original is never written to.
 
-        from_stage 를 주면 그 단계 이전까지의 결과를 승계하고, 그 단계부터 다시 실행한다.
+        With from_stage, everything before that stage is inherited and the run
+        resumes from it - the point being to retry one stage without paying for
+        the ones that already succeeded.
         """
         src = await self.get(run_id)
         if src is None:
@@ -165,7 +167,7 @@ class RunRepo(BaseRepo):
 
 
 class RunEventRepo(BaseRepo):
-    """현행 events.jsonl. 추가만 한다."""
+    """The original events.jsonl. Append-only."""
 
     @property
     def col(self):
@@ -190,7 +192,7 @@ class RunEventRepo(BaseRepo):
 
 
 class ArtifactRepo(BaseRepo):
-    """메타데이터만 저장한다. 실체는 오브젝트 저장소에 둔다."""
+    """Metadata only. The files themselves live in object storage."""
 
     @property
     def col(self):
@@ -220,7 +222,7 @@ class ArtifactRepo(BaseRepo):
         return [Artifact(**_clean(d)) for d in await cur.to_list(length=2000)]
 
     async def expired(self, *, now: datetime | None = None) -> list[Artifact]:
-        """수명주기가 지난 중간 산출물을 찾는다(정리)."""
+        """Find intermediate artifacts whose retention has passed."""
         cur = self.col.find({"retain_until": {"$ne": None, "$lt": now or utcnow()}})
         return [Artifact(**_clean(d)) for d in await cur.to_list(length=1000)]
 
@@ -229,14 +231,14 @@ class ArtifactRepo(BaseRepo):
 
 
 class ModelRepo(BaseRepo):
-    """Model Registry. 모델 식별자·버전·가용성을 담고 라우팅이 이것을 읽는다."""
+    """The model registry: ids, versions and availability, read by routing."""
 
     @property
     def col(self):
         return self.db[C.MODELS]
 
     async def register(self, mv: ModelVersion) -> ModelVersion:
-        """모델 버전을 등록한다. 같은 model_id·version 이면 덮어쓴다."""
+        """Register a model version, replacing one with the same id and version."""
         if mv.is_default:
             await self.col.update_many(
                 {"model_id": mv.model_id}, {"$set": {"is_default": False}}
@@ -253,10 +255,12 @@ class ModelRepo(BaseRepo):
         return ModelVersion(**doc) if doc else None
 
     async def resolve(self, model_id: str, version: str | None = None) -> ModelVersion | None:
-        """동적 라우팅의 핵심.
+        """What dynamic routing turns on.
 
-        버전을 지정하면 그 버전을, 비우면 활성 기본 버전을 고른다. 기본 표시가 없으면
-        가장 최근에 등록된 활성 버전으로 떨어진다. 승인되지 않은 버전은 고르지 않는다.
+        A named version is taken as given. Without one, the active default is
+        chosen, falling back to the most recently registered active version
+        when nothing is marked default. An unapproved version is never chosen,
+        whatever else matches.
         """
         q: dict[str, Any] = {"model_id": model_id, "approval_status": "approved"}
         if version:
@@ -295,7 +299,7 @@ class ModelRepo(BaseRepo):
     async def approve(
         self, model_id: str, version: str, *, approved_by: str, decision: str = "approved"
     ) -> ModelVersion | None:
-        """사용자 정의 모델 등록 승인·검증·롤백."""
+        """Approve, reject or roll back a model someone registered."""
         doc = await self.col.find_one_and_update(
             {"model_id": model_id, "version": version},
             {"$set": {
@@ -309,18 +313,18 @@ class ModelRepo(BaseRepo):
         return ModelVersion(**_clean(doc)) if doc else None
 
 
-# ---------------------------------------------------------------- 워크플로
+# ---------------------------------------------------------------- workflows
 
 
 class WorkflowRepo(BaseRepo):
-    """버전을 올리며 이력을 남긴다."""
+    """Versions accumulate; nothing is overwritten."""
 
     @property
     def col(self):
         return self.db[C.WORKFLOWS]
 
     async def save(self, wf: Workflow) -> Workflow:
-        """새 버전으로 저장한다. 기존 버전은 남긴다."""
+        """Save as a new version, leaving earlier ones in place."""
         last = await self.col.find_one(
             {"workflow_id": wf.workflow_id}, sort=[("version", DESCENDING)]
         )
@@ -341,7 +345,7 @@ class WorkflowRepo(BaseRepo):
     async def list(
         self, *, templates_only: bool = False, project_id: str | None = None, limit: int = 100
     ) -> list[Workflow]:
-        """workflow_id 별 최신 버전만 낸다."""
+        """Latest version of each workflow_id."""
         match: dict[str, Any] = {}
         if templates_only:
             match["is_template"] = True
@@ -365,11 +369,11 @@ class WorkflowRepo(BaseRepo):
         return [d["version"] for d in await cur.to_list(length=500)]
 
 
-# ---------------------------------------------------------------- 작업 큐
+# ---------------------------------------------------------------- job queue
 
 
 class JobRepo(BaseRepo):
-    """lease 방식. 워커가 죽어도 lease 가 만료되면 회수된다."""
+    """Lease-based. A worker that dies releases its job when the lease ends."""
 
     @property
     def col(self):
@@ -383,9 +387,11 @@ class JobRepo(BaseRepo):
         self, *, worker_id: str, lease_seconds: int = 900, model_id: str | None = None,
         max_gpu: int | None = None,
     ) -> Job | None:
-        """우선순위가 높고 오래 기다린 작업부터 하나 꺼낸다.
+        """Take one job: highest priority, longest waiting.
 
-        find_one_and_update 는 원자적이므로 워커 여러 개가 같은 작업을 집지 않는다.
+        find_one_and_update is atomic, which is the whole reason several
+        workers can run without coordinating. Reading and then writing would
+        let two of them claim the same job.
         """
         q: dict[str, Any] = {"status": JobStatus.QUEUED}
         if model_id:
@@ -420,7 +426,7 @@ class JobRepo(BaseRepo):
         return Job(**_clean(doc)) if doc else None
 
     async def reclaim_expired(self, *, now: datetime | None = None) -> int:
-        """만료된 lease 를 큐로 되돌린다. 최대 시도 횟수를 넘기면 실패로 확정한다."""
+        """Return expired leases to the queue, failing those past their retry limit."""
         now = now or utcnow()
         cur = self.col.find(
             {"status": {"$in": [JobStatus.LEASED, JobStatus.RUNNING]},
@@ -443,7 +449,7 @@ class JobRepo(BaseRepo):
         return reclaimed
 
     async def stats(self) -> dict[str, int]:
-        """큐 적체를 화면에서 본다."""
+        """Queue depth, for the operations screen."""
         pipeline = [{"$group": {"_id": "$status", "n": {"$sum": 1}}}]
         rows = await self.col.aggregate(pipeline).to_list(length=20)
         return {r["_id"]: r["n"] for r in rows}
@@ -453,11 +459,11 @@ class JobRepo(BaseRepo):
         return [Job(**_clean(d)) for d in await cur.to_list(length=500)]
 
 
-# ---------------------------------------------------------------- 프로젝트 체계
+# ---------------------------------------------------------------- projects
 
 
 class ProjectRepo(BaseRepo):
-    """프로젝트·라운드. 실행을 연구 단위로 묶는다."""
+    """Projects and rounds: runs grouped the way research is."""
 
     @property
     def col(self):
@@ -512,7 +518,7 @@ class RoundRepo(BaseRepo):
         return Round(**_clean(doc)) if doc else None
 
     async def unlink_run(self, run_id: str) -> int:
-        """현행 tools.py 가 run 삭제 시 라운드에서 참조를 걷어내던 동작을 승계한다."""
+        """Detach a deleted run from its round, as the original tools.py does."""
         res = await self.col.update_many(
             {"linked_run_ids": run_id},
             {"$pull": {"linked_run_ids": run_id}, "$set": {"updated_at": utcnow()}},
@@ -521,7 +527,7 @@ class RoundRepo(BaseRepo):
 
 
 class RecordRepo(BaseRepo):
-    """피드백·실험 기록. 두 컬렉션이 구조가 같아 하나로 다룬다."""
+    """Feedback and experiments. Same shape, so one class covers both."""
 
     def __init__(self, collection: str, db: AsyncIOMotorDatabase | None = None) -> None:
         super().__init__(db)
@@ -542,7 +548,7 @@ class RecordRepo(BaseRepo):
     async def export_dataset(
         self, *, metric: str | None = None, limit: int = 10000
     ) -> list[dict[str, Any]]:
-        """후속 surrogate·ranking 모델 학습용 파생 데이터셋 추출."""
+        """Pull a dataset for training surrogate and ranking models."""
         q: dict[str, Any] = {}
         if metric:
             q["metric"] = metric
@@ -550,11 +556,11 @@ class RecordRepo(BaseRepo):
         return [_clean(d) for d in await cur.to_list(length=limit)]
 
 
-# ---------------------------------------------------------------- 보고서 · 감사
+# ---------------------------------------------------------------- reports, audit
 
 
 class ReportRepo(BaseRepo):
-    """보고서. 같은 실행에 대해 판번호를 쌓는다."""
+    """Reports. Revisions accumulate against the same run."""
 
     @property
     def col(self):
@@ -579,7 +585,7 @@ class ReportRepo(BaseRepo):
 
 
 class AuditRepo(BaseRepo):
-    """추가만 한다. 수정·삭제 경로를 두지 않는다."""
+    """Append-only. No path here updates or deletes."""
 
     @property
     def col(self):
@@ -619,11 +625,11 @@ class AuditRepo(BaseRepo):
         return [AuditLog(**_clean(d)) for d in await cur.to_list(length=limit)]
 
 
-# ---------------------------------------------------------------- 묶음
+# ---------------------------------------------------------------- bundle
 
 
 class Repos:
-    """저장소 묶음. 응용 계층은 이것 하나만 들고 다닌다."""
+    """All repositories in one object, so callers carry a single handle."""
 
     def __init__(self, db: AsyncIOMotorDatabase | None = None) -> None:
         db = db if db is not None else get_db()

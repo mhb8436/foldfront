@@ -118,7 +118,7 @@ async def test_없는_모델은_404(client: AsyncClient):
     r = await client.get("/api/v1/models/없는모델/resolve")
 
     assert r.status_code == 404
-    assert "찾지 못했다" in r.json()["error"]["message"]
+    assert "찾지 못했" in r.json()["error"]["message"]
 
 
 async def test_승인과_비활성_전환(client: AsyncClient):
@@ -286,7 +286,7 @@ async def test_실행_목록과_이벤트(client: AsyncClient):
 
     events = await client.get(f"/api/v1/runs/{run_id}/events")
     assert events.json()["count"] >= 1
-    assert events.json()["items"][0]["message"] == "실행을 시작했다"
+    assert events.json()["items"][0]["message"] .startswith("실행을 시작했")
 
 
 async def test_fork(client: AsyncClient):

@@ -1,17 +1,20 @@
-"""인증·인가.
+"""Authentication and authorisation.
 
-원본 RAPID 의 OIDC 구현(`pipeline_mcp.oidc`, 339줄)을 **그대로 물어 쓴다.**
-토큰 검증·JWKS 회전·발급자 정규화는 이미 현장에서 돌던 코드이므로 다시 만들지 않는다.
-이 모듈이 하는 일은 둘뿐이다.
+Token verification, JWKS rotation and issuer normalisation are called straight
+out of the original oidc.py. That code has run in the field; reimplementing it
+would only be a chance to get it wrong. Two things are left for this module:
 
-  1. 원본이 내는 역할 표기(admin · model_manager · user)를 신규 역할 4종으로 옮긴다.
-  2. FastAPI 의존성으로 싸서 경로마다 최소 권한을 걸 수 있게 한다.
+  1. Map the roles the original emits - admin, model_manager, user - onto the
+     four this platform uses.
+  2. Wrap the result as a FastAPI dependency so a path can state a minimum role.
 
-★ 운영자 계정을 코드에 두지 않는다. 신원은 전적으로 OIDC 공급자가 정한다.
+No account is defined in code. Who someone is comes entirely from the OIDC
+provider.
 
-**개발 모드** — OIDC 를 설정하지 않으면 인증이 꺼진다. 로컬에서 화면을 띄우고
-시험을 돌리기 위해서다. 다만 조용히 꺼지지 않는다. 기동 로그에 경고를 남기고
-`/healthz` 가 `auth: "disabled"` 를 내보내므로 운영에 그 상태로 올라가면 드러난다.
+**Development mode.** With no OIDC configured, authentication is off, which is
+what lets the console and the tests run locally. It does not switch off
+quietly: startup logs a warning and /healthz reports auth as "disabled", so a
+deployment that reaches production in that state says so.
 """
 
 from __future__ import annotations
@@ -28,7 +31,8 @@ from foldfront.db.models import Role
 
 log = logging.getLogger(__name__)
 
-#  원본 표기 → 신규 역할. 원본에는 조회 전용과 연계 계정 구분이 없어 이쪽에서 넓힌다
+#  The original's names on the left. It has no read-only role and no machine
+#  account, so those are additions rather than translations.
 ROLE_MAP: dict[str, Role] = {
     "admin": Role.ADMIN,
     "model_manager": Role.ADMIN,
@@ -38,7 +42,7 @@ ROLE_MAP: dict[str, Role] = {
 
 @dataclass(frozen=True)
 class Identity:
-    """검증이 끝난 신원. 화면·감사 로그가 이것만 본다."""
+    """A verified identity. Screens and the audit trail see only this."""
 
     user_id: str
     subject: str
@@ -50,7 +54,8 @@ class Identity:
         return any(r in self.roles for r in wanted)
 
 
-#  인증이 꺼진 동안 쓰는 신원. 권한 판정 코드가 분기 없이 같게 돌도록 실제 신원과 같은 모양이다
+#  Stands in while authentication is off. Same shape as a real identity, so
+#  the permission checks run down one path rather than two.
 DEV_IDENTITY = Identity(
     user_id="dev",
     subject="dev",
@@ -61,16 +66,16 @@ DEV_IDENTITY = Identity(
 
 
 def oidc_enabled() -> bool:
-    """OIDC 설정이 갖춰졌는지. 원본의 환경변수 규약을 그대로 따른다."""
+    """Whether OIDC is configured, by the original's environment convention."""
     try:
         from pipeline_mcp.oidc import load_oidc_settings
-    except Exception:  # pragma: no cover - 원본 없이 돌릴 때
+    except Exception:  # pragma: no cover - running without the original
         return False
     return load_oidc_settings() is not None
 
 
 def identity_from_token(token: str) -> Identity:
-    """Bearer 토큰을 신원으로 바꾼다. 검증은 원본에 맡긴다."""
+    """Turn a bearer token into an identity. The original verifies it."""
     from pipeline_mcp.oidc import claims_to_user, load_oidc_settings, verify_oidc_token
 
     settings = load_oidc_settings()
@@ -83,8 +88,9 @@ def identity_from_token(token: str) -> Identity:
     except ApiError:
         raise
     except Exception as exc:
-        #  사유를 그대로 돌려주지 않는다. 검증 실패 원인은 탐색의 단서가 된다
-        log.warning("토큰 검증에 실패했다: %s", exc)
+        #  The reason stays in the log. Telling a caller which part of their
+        #  token failed tells a prober which part to change.
+        log.warning("token verification failed: %s", exc)
         raise ApiError(E.AUTH_TOKEN_INVALID) from exc
 
     role = ROLE_MAP.get(str(user.get("role")), Role.VIEWER)
@@ -100,7 +106,7 @@ def identity_from_token(token: str) -> Identity:
 async def current_identity(
     authorization: Annotated[str | None, Header()] = None,
 ) -> Identity:
-    """요청의 신원. OIDC 가 꺼져 있으면 개발용 신원을 돌려준다."""
+    """The identity behind a request, or the development stand-in."""
     if not oidc_enabled():
         return DEV_IDENTITY
 
@@ -114,7 +120,7 @@ CurrentIdentity = Annotated[Identity, Depends(current_identity)]
 
 
 def require(*roles: Role):
-    """최소 권한을 거는 의존성을 만든다.
+    """Build a dependency that enforces a minimum role.
 
         @router.post(..., dependencies=[Depends(require(Role.ADMIN))])
     """
@@ -128,18 +134,18 @@ def require(*roles: Role):
 
 
 def describe(roles: Iterable[Role]) -> dict[str, Any]:
-    """감사 로그에 남길 형태."""
+    """The shape the audit trail records."""
     return {"roles": [str(r) for r in roles]}
 
 
 def auth_mode() -> str:
-    """상태 조회에 싣는 값. 운영에 인증이 꺼진 채로 올라가면 여기서 드러난다."""
+    """What /healthz reports, so an unauthenticated deployment is visible."""
     return "oidc" if oidc_enabled() else "disabled"
 
 
 def warn_if_open() -> None:
     if not oidc_enabled():
         log.warning(
-            "인증이 꺼져 있다 — OIDC 환경변수가 없다. 개발 용도로만 쓴다."
+            "authentication is off: no OIDC environment. development only."
         )
     _ = get_settings()
