@@ -1,19 +1,23 @@
-"""자유형 DAG 워크플로 엔진.
+"""Free-form DAG workflow engine.
 
-현행 RAPID 는 단계 순서가 코드에 고정되어 있다.
+The original fixes the stage order in code.
 
     msa -> rfd3 -> bioemu -> design -> soluprot -> af2 -> novelty
 
-이 플랫폼은 여기에 더해 연구자가 노드를 자유롭게 조합하고 **병렬 분기 · 조건 분기 ·
-사용자 정의 순서**를 설계할 수 있는 DAG 를 요구한다. 이 모듈은 그 그래프를 검증하고
-실행 순서를 정한다.
+Researchers here compose nodes themselves, with parallel splits, conditional
+branches and an order of their own. This module validates such a graph and
+decides what runs when.
 
-설계 원칙 셋.
+Three decisions shape it.
 
-1. **위상 정렬로 실행 순서를 정한다.** 같은 계층(level)에 놓인 노드는 병렬로 돌린다.
-2. **조건 분기는 실행 시점에 평가한다.** 거짓 가지에 달린 노드는 건너뛴다(skipped).
-   건너뛴 노드만을 조상으로 갖는 노드도 함께 건너뛴다 — 그러지 않으면 입력 없이 실행된다.
-3. **그래프 검증은 저장 시점에 한다.** 순환·고아 노드·없는 모델 참조를 실행 전에 잡는다.
+1. **A topological sort fixes the order.** Nodes that land on the same level
+   have no dependency between them, so they run in parallel.
+2. **Conditions are evaluated as the run proceeds.** Nodes on the branch not
+   taken are skipped, and so is anything downstream whose only ancestors were
+   skipped - otherwise it would run with no input.
+3. **The graph is validated when it is saved,** not when it runs. A cycle, an
+   orphan or a reference to a model that does not exist is worth catching
+   before it costs GPU time.
 """
 
 from __future__ import annotations
@@ -27,7 +31,7 @@ from foldfront.db.models import NodeKind, Workflow, WorkflowEdge, WorkflowNode
 
 
 class GraphError(ValueError):
-    """그래프가 실행 가능한 형태가 아니다."""
+    """The graph is not in a runnable shape."""
 
 
 class NodeOutcome(StrEnum):
@@ -38,19 +42,19 @@ class NodeOutcome(StrEnum):
     SKIPPED = "skipped"
 
 
-# ---------------------------------------------------------------- 그래프
+# ---------------------------------------------------------------- graph
 
 
 @dataclass(frozen=True)
 class Graph:
-    """검증을 마친 실행 가능한 그래프."""
+    """A validated, runnable graph."""
 
     nodes: dict[str, WorkflowNode]
     edges: tuple[WorkflowEdge, ...]
     outgoing: dict[str, tuple[WorkflowEdge, ...]]
     incoming: dict[str, tuple[WorkflowEdge, ...]]
-    order: tuple[str, ...]          # 위상 정렬 결과
-    levels: tuple[tuple[str, ...], ...]  # 같은 층은 병렬 실행 대상
+    order: tuple[str, ...]          # Topological order
+    levels: tuple[tuple[str, ...], ...]  # One level runs in parallel
 
     @property
     def roots(self) -> tuple[str, ...]:
@@ -68,18 +72,19 @@ class Graph:
 
 
 def build_graph(workflow: Workflow) -> Graph:
-    """워크플로를 검증하고 실행 가능한 그래프로 만든다.
+    """Validate a workflow and turn it into a runnable graph.
 
-    실행 전에 잡는 결함 — 노드 없음 · 중복 id · 없는 노드를 가리키는 간선 ·
-    자기 자신으로 가는 간선 · 순환 · 분기 표시가 없는 조건 분기.
+    Caught here rather than at run time: an empty graph, duplicate ids, an edge
+    pointing at a node that does not exist, a self-edge, a cycle, and a
+    conditional branch whose edges are not marked true or false.
     """
     if not workflow.nodes:
-        raise GraphError("노드가 없다")
+        raise GraphError("노드가 없습니다")
 
     nodes: dict[str, WorkflowNode] = {}
     for n in workflow.nodes:
         if n.node_id in nodes:
-            raise GraphError(f"노드 식별자가 중복된다: {n.node_id}")
+            raise GraphError(f"노드 식별자가 중복됩니다: {n.node_id}")
         nodes[n.node_id] = n
 
     outgoing: dict[str, list[WorkflowEdge]] = defaultdict(list)
@@ -87,25 +92,25 @@ def build_graph(workflow: Workflow) -> Graph:
 
     for e in workflow.edges:
         if e.source not in nodes:
-            raise GraphError(f"간선의 출발 노드가 없다: {e.source}")
+            raise GraphError(f"간선의 출발 노드가 없습니다: {e.source}")
         if e.target not in nodes:
-            raise GraphError(f"간선의 도착 노드가 없다: {e.target}")
+            raise GraphError(f"간선의 도착 노드가 없습니다: {e.target}")
         if e.source == e.target:
-            raise GraphError(f"자기 자신으로 가는 간선이다: {e.source}")
+            raise GraphError(f"자기 자신으로 가는 간선입니다: {e.source}")
         outgoing[e.source].append(e)
         incoming[e.target].append(e)
 
-    #  조건 분기 노드는 나가는 간선에 참·거짓 표시가 있어야 한다
+    #  A branch has to say which of its edges is the true one
     for node_id, node in nodes.items():
         if node.kind is not NodeKind.BRANCH:
             continue
         outs = outgoing[node_id]
         if not outs:
-            raise GraphError(f"조건 분기 노드에 나가는 간선이 없다: {node_id}")
+            raise GraphError(f"조건 분기 노드에 나가는 간선이 없습니다: {node_id}")
         if any(e.branch is None for e in outs):
-            raise GraphError(f"조건 분기 노드의 간선에 참·거짓 표시가 없다: {node_id}")
+            raise GraphError(f"조건 분기 노드의 간선에 참·거짓 표시가 없습니다: {node_id}")
         if not node.condition:
-            raise GraphError(f"조건 분기 노드에 조건식이 없다: {node_id}")
+            raise GraphError(f"조건 분기 노드에 조건식이 없습니다: {node_id}")
 
     order, levels = _topological(nodes, incoming, outgoing)
 
@@ -131,12 +136,12 @@ def _topological(
     incoming: dict[str, list[WorkflowEdge]],
     outgoing: dict[str, list[WorkflowEdge]],
 ) -> tuple[tuple[str, ...], tuple[tuple[str, ...], ...]]:
-    """Kahn 알고리즘. 같은 층에 놓인 노드는 서로 의존하지 않으므로 병렬로 돌린다."""
+    """Kahn's algorithm. Nodes on one level do not depend on each other."""
     indeg = {n: len(incoming.get(n, [])) for n in nodes}
     frontier = deque(sorted(n for n, d in indeg.items() if d == 0))
 
     if not frontier:
-        raise GraphError("시작 노드가 없다 — 순환이다")
+        raise GraphError("시작 노드가 없습니다. 순환입니다")
 
     order: list[str] = []
     levels: list[tuple[str, ...]] = []
@@ -154,24 +159,26 @@ def _topological(
 
     if len(order) != len(nodes):
         remaining = sorted(set(nodes) - set(order))
-        raise GraphError(f"순환이 있다: {', '.join(remaining)}")
+        raise GraphError(f"순환이 있습니다: {', '.join(remaining)}")
 
     return tuple(order), tuple(levels)
 
 
-# ---------------------------------------------------------------- 조건식
+# ---------------------------------------------------------------- conditions
 
 
 def evaluate_condition(expression: str, context: dict[str, Any]) -> bool:
-    """조건식을 평가한다.
+    """Evaluate a branch condition.
 
-    연구자가 화면에서 입력하는 값이므로 파이썬 eval 을 쓰지 않는다(취지).
-    다음 형태만 받는다.
+    The text arrives from a form a researcher fills in, so Python's eval is out
+    of the question. Only two shapes are accepted:
 
-        <경로> <연산자> <수>      예) soluprot.pass_rate > 0.3
-        <경로>                    예) af2.ok          (참·거짓으로 평가)
+        <path> <operator> <number>    e.g. soluprot.pass_rate > 0.3
+        <path>                        e.g. af2.ok        (read as a boolean)
 
-    경로는 점으로 중첩 사전을 훑는다. 값이 없으면 거짓이다.
+    A path walks nested dictionaries by dots. A value that is not there is
+    false rather than an error - a condition on a stage that did not run should
+    take the false branch, not stop the run.
     """
     expr = (expression or "").strip()
     if not expr:
@@ -213,7 +220,7 @@ def _as_number(text: str) -> float | None:
         return None
 
 
-# ---------------------------------------------------------------- 실행 계획
+# ---------------------------------------------------------------- execution plan
 
 
 @dataclass
@@ -226,10 +233,11 @@ class NodeState:
 
 @dataclass
 class ExecutionPlan:
-    """실행 상태를 들고 다음에 돌릴 노드를 내준다.
+    """Holds run state and hands out the nodes that are ready next.
 
-    엔진은 실제 실행을 하지 않는다 — 무엇을 돌릴지만 정한다. 실행은 작업 큐와
-    워커가 담당한다. 그래야 같은 엔진으로 모의 실행과 실제 실행을 모두 돌릴 수 있다.
+    The engine decides what should run; it does not run anything. The queue and
+    its workers do that. Keeping the two apart is what lets the same engine
+    drive a mock run and a real one.
     """
 
     graph: Graph
@@ -244,10 +252,10 @@ class ExecutionPlan:
             context=dict(context or {}),
         )
 
-    # ------------------------------------------------------------ 조회
+    # ------------------------------------------------------------ queries
 
     def ready(self) -> tuple[str, ...]:
-        """지금 실행할 수 있는 노드. 같은 층이면 병렬로 돌린다."""
+        """Nodes that can start now. Those on one level go together."""
         out: list[str] = []
         for node_id in self.graph.order:
             if self.states[node_id].outcome is not NodeOutcome.PENDING:
@@ -258,14 +266,14 @@ class ExecutionPlan:
         return tuple(out)
 
     def _blocked(self, node_id: str) -> bool:
-        """선행 노드를 보고 지금 실행할 수 없는지 판정한다.
+        """Decide whether a node must wait for its predecessors.
 
-        합류 의미론이 두 갈래다.
+        Joining means two different things here.
 
-        - **JOIN 노드는 OR 합류** — 부모 중 하나라도 살아 있으면 실행한다. 조건 분기 뒤의
-          합류가 이것이라야 한다. AND 로 두면 한쪽 가지가 건너뛰어질 때 합류 노드가
-          영원히 대기한다.
-        - **그 밖의 노드는 AND 합류** — 부모가 모두 성공해야 실행한다.
+        - **A JOIN node joins on OR.** One surviving parent is enough. A join
+          after a conditional branch has to work this way; on AND it would wait
+          forever as soon as one side was skipped.
+        - **Every other node joins on AND.** All parents must have succeeded.
         """
         edges = self.graph.incoming[node_id]
         if not edges:
@@ -273,19 +281,19 @@ class ExecutionPlan:
 
         is_join = self.graph.nodes[node_id].kind is NodeKind.JOIN
 
-        #  어느 쪽이든 아직 끝나지 않은 부모가 있으면 기다린다
+        #  Either way, a parent still running means wait
         for edge in edges:
             if self.states[edge.source].outcome in (NodeOutcome.PENDING, NodeOutcome.RUNNING):
                 return True
 
         if is_join:
-            #  살아 있는 입력이 하나라도 있으면 실행한다
+            #  One live input is enough to proceed
             return not any(self._edge_alive(edge) for edge in edges)
 
         return not all(self._edge_alive(edge) for edge in edges)
 
     def _edge_alive(self, edge: WorkflowEdge) -> bool:
-        """이 간선으로 값이 흘러왔는지. 부모가 성공했고 분기 조건에 맞아야 한다."""
+        """Whether a value came down this edge: the parent succeeded and, on a branch, took this side."""
         parent = self.states[edge.source]
         if parent.outcome is not NodeOutcome.SUCCEEDED:
             return False
@@ -312,7 +320,7 @@ class ExecutionPlan:
             counts[s.outcome] += 1
         return dict(counts)
 
-    # ------------------------------------------------------------ 갱신
+    # ------------------------------------------------------------ updates
 
     def mark_running(self, node_id: str) -> None:
         self.states[node_id].outcome = NodeOutcome.RUNNING
@@ -322,7 +330,7 @@ class ExecutionPlan:
         state.outcome = NodeOutcome.SUCCEEDED
         state.result = dict(result or {})
 
-        #  결과를 문맥에 쌓는다. 뒤따르는 조건식이 이 값을 본다
+        #  Results accumulate into the context that later conditions read
         self.context[node_id] = state.result
         node = self.graph.nodes[node_id]
         if node.model_id:
@@ -347,7 +355,7 @@ class ExecutionPlan:
         state.reason = reason
         self._cascade_skips()
 
-    # ------------------------------------------------------------ 건너뛰기 전파
+    # ------------------------------------------------------------ skip propagation
 
     def _skip_untaken(self, branch_node: str, taken: str) -> None:
         for edge in self.graph.outgoing[branch_node]:
@@ -355,14 +363,15 @@ class ExecutionPlan:
                 child = self.states[edge.target]
                 if child.outcome is NodeOutcome.PENDING:
                     child.outcome = NodeOutcome.SKIPPED
-                    child.reason = f"조건 분기에서 택하지 않은 가지({edge.branch})"
+                    child.reason = f"조건 분기에서 택하지 않은 가지입니다({edge.branch})"
 
     def _cascade_skips(self) -> None:
-        """입력을 받지 못하게 된 노드를 건너뛴다.
+        """Skip nodes that can no longer receive input.
 
-        `_blocked` 와 같은 합류 의미론을 쓴다 — JOIN 은 부모가 모두 죽었을 때,
-        그 밖의 노드는 부모 중 하나라도 죽었을 때 건너뛴다. 둘이 어긋나면 노드가
-        실행되지도 건너뛰어지지도 않은 채 남는다.
+        This must use the same join semantics as `_blocked`: a JOIN is skipped
+        only once every parent is gone, anything else as soon as one parent is.
+        When the two disagree a node ends up neither run nor skipped, and the
+        run stalls with no error to show for it.
         """
         changed = True
         while changed:
@@ -375,7 +384,7 @@ class ExecutionPlan:
                 if not edges:
                     continue
 
-                #  아직 끝나지 않은 부모가 있으면 판정을 미룬다
+                #  A parent still running means the decision can wait
                 if any(
                     self.states[e.source].outcome in (NodeOutcome.PENDING, NodeOutcome.RUNNING)
                     for e in edges
@@ -388,14 +397,15 @@ class ExecutionPlan:
                 dead_out = not alive if is_join else len(alive) != len(edges)
                 if dead_out:
                     state.outcome = NodeOutcome.SKIPPED
-                    state.reason = "선행 노드가 실행되지 않았다"
+                    state.reason = "선행 노드가 실행되지 않았습니다"
                     changed = True
 
 
-# ---------------------------------------------------------------- 정형 체인
+# ---------------------------------------------------------------- fixed chain
 
 
-#  현행 RAPID 의 고정 단계. 자유형 DAG 로 표현해 두면 두 실행 방식이 한 엔진 위에서 돈다.
+#  The original's fixed stages. Expressed as a DAG, both ways of running a
+#  pipeline sit on one engine instead of two.
 BUILTIN_STAGE_CHAIN: tuple[str, ...] = (
     "msa", "rfd3", "bioemu", "design", "soluprot", "af2", "novelty",
 )
@@ -404,7 +414,7 @@ BUILTIN_STAGE_CHAIN: tuple[str, ...] = (
 def builtin_pipeline_workflow(
     workflow_id: str = "builtin-pipeline", stages: Sequence[str] | None = None
 ) -> Workflow:
-    """현행 고정 체인을 DAG 로 만든다(와 을 한 엔진으로 처리한다)."""
+    """Express the original fixed chain as a DAG."""
     names = tuple(stages or BUILTIN_STAGE_CHAIN)
     nodes = [
         WorkflowNode(
@@ -430,9 +440,10 @@ def builtin_pipeline_workflow(
 def validate_model_refs(
     workflow: Workflow, known_model_ids: Iterable[str]
 ) -> list[str]:
-    """모델 노드가 Registry 에 없는 모델을 가리키는지 살핀다.
+    """Report model nodes that name something the registry does not have.
 
-    저장은 막지 않고 경고만 낸다 — 모델을 먼저 등록하지 않고 워크플로를 설계하는 순서도 허용한다.
+    This warns rather than refuses. Designing a workflow before registering the
+    models it will use is a reasonable order to work in.
     """
     known = set(known_model_ids)
     missing: list[str] = []
@@ -448,9 +459,10 @@ def run_plan(
     *,
     context: dict[str, Any] | None = None,
 ) -> ExecutionPlan:
-    """계획을 끝까지 돌린다. 시험과 모의 실행에 쓴다.
+    """Drive a plan to completion. For tests and mock runs.
 
-    실제 운영에서는 이 함수 대신 작업 큐에 노드를 넣고 워커가 처리한다.
+    In production nothing calls this: nodes go on the queue and workers take
+    them, which is what makes the run survive a worker dying.
     """
     plan = ExecutionPlan.start(graph, context)
     while True:

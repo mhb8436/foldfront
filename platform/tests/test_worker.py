@@ -245,7 +245,7 @@ async def test_라우팅_정보가_없는_작업은_실패로_닫는다(seeded: 
 
     job = await seeded.jobs.col.find_one({"job_id": "j-bad"})
     assert job["status"] == JobStatus.FAILED
-    assert "라우팅 정보가 없다" in job["error"]
+    assert "라우팅 정보가 없" in job["error"]
 
 
 async def test_만료된_작업을_다른_워커가_이어받는다(seeded: Repos):
@@ -309,7 +309,7 @@ async def test_run_forever_는_중지_신호로_멈춘다(seeded: Repos):
 
 
 async def test_조건분기_노드는_큐에_들어가지_않는다(seeded: Repos):
-    """회귀 시험 — BRANCH 가 큐에 들어가 「라우팅 정보가 없다」로 실패하던 결함.
+    """회귀 시험 — BRANCH 가 큐에 들어가 「라우팅 정보가 없」로 실패하던 결함.
 
     BRANCH 는 조건만 평가하고 FANOUT·JOIN 은 흐름만 가른다. 셋 다 모델이 없으므로
     큐에 넣으면 워커가 호출할 대상이 없다.

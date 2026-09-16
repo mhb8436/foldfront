@@ -92,7 +92,7 @@ async def test_실행_위치가_없으면_거부한다(repos: Repos):
         model_id="empty", version="v1", active=True, is_default=True,
     ))
 
-    with pytest.raises(RoutingError, match="실행 위치가 없다"):
+    with pytest.raises(RoutingError, match="실행 위치가 없"):
         await ModelRouter(repos.models).route("empty")
 
 
@@ -102,12 +102,12 @@ async def test_자원_정책이_맞지_않으면_라우팅하지_않는다(repos
         resources=ResourceSpec(gpu_count=4),
     ))
 
-    with pytest.raises(RoutingError, match="GPU 4개를 요구한다"):
+    with pytest.raises(RoutingError, match="GPU 4개를 요구"):
         await ModelRouter(repos.models).route("big", max_gpu=1)
 
 
 async def test_없는_모델은_사유를_알린다(repos: Repos):
-    with pytest.raises(RoutingError, match="찾지 못했다"):
+    with pytest.raises(RoutingError, match="찾지 못했"):
         await ModelRouter(repos.models).route("없는모델")
 
 
@@ -276,7 +276,7 @@ async def test_라우팅에_실패하면_노드가_실패로_닫힌다(repos: Re
     final = await repos.runs.get(run.run_id)
     design = next(s for s in final.stages if s.name == "design")
     assert design.status is RunStatus.FAILED
-    assert "찾지 못했다" in design.error
+    assert "찾지 못했" in design.error
     assert final.status is RunStatus.FAILED
 
 

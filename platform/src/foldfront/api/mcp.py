@@ -1,18 +1,19 @@
-"""MCP 도구 표면.
+"""One MCP tool surface.
 
-원본 RAPID 는 MCP 도구 62종을 stdio JSON-RPC 로 낸다. 신규 계층은 그와 별개로
-HTTP 경로 25개를 냈다. 외부 IDE·에이전트 입장에서 **표면이 둘로 갈라져 있었다.**
+The original serves 62 tools over stdio JSON-RPC. This platform added 25 HTTP
+paths of its own. To anything outside, that was two surfaces that did not know
+about each other.
 
-이 모듈이 하나로 묶는다.
+    POST /mcp   JSON-RPC 2.0: initialize, tools/list, tools/call
 
-    POST /mcp   JSON-RPC 2.0 — initialize · tools/list · tools/call
+tools/list answers with the original 62 alongside the ones added here.
+tools/call splits on the name: platform.* is handled locally, everything else
+goes to the original dispatcher.
 
-`tools/list` 는 **원본 62종 + 신규 계층 도구**를 함께 낸다.
-`tools/call` 은 이름으로 가른다 — `platform.*` 은 여기서 처리하고 나머지는 원본에 넘긴다.
-
-★ 원본 디스패처는 `PipelineRunner` 를 요구한다. 실행 환경(GPU 엔드포인트·저장 루트)이
-  갖춰져야 세워지므로 **게으르게 만들고 실패를 삼키지 않는다** — 세우지 못하면
-  그 사실을 응답으로 돌려준다. 목록 조회는 러너 없이도 되므로 항상 전체를 낸다.
+That dispatcher needs a PipelineRunner, which needs an execution environment
+that is not settled yet. It is built lazily and its failure is returned as a
+reason rather than swallowed, so listing keeps working meanwhile - a surface
+that answers "not configured" is more use than one that answers nothing.
 """
 
 from __future__ import annotations
@@ -37,13 +38,13 @@ PROTOCOL_VERSION = "2024-11-05"
 
 
 def _text(payload: Any) -> dict[str, Any]:
-    """MCP 는 결과를 content 배열로 받는다. 원본 `_result_text` 와 같은 모양을 쓴다."""
+    """MCP expects a content array, shaped as the original _result_text does."""
     import json
 
     return {"content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False, default=str)}]}
 
 
-# ---------------------------------------------------------------- 신규 계층 도구
+# ---------------------------------------------------------------- tools added here
 
 def _obj(**props: Any) -> dict[str, Any]:
     return {"type": "object", "properties": props}
@@ -110,7 +111,7 @@ async def _call_platform(name: str, args: dict[str, Any], identity: Any) -> Any:
     if name == "platform.workflow_preflight":
         wf: Workflow | None = await repos.workflows.get(args["workflow_id"])
         if wf is None:
-            return {"ok": False, "error": "워크플로가 없다"}
+            return {"ok": False, "error": "워크플로가 없습니다"}
         graph = build_graph(wf)
         return {"ok": True, "node_count": len(wf.nodes), "levels": graph.levels}
 
@@ -126,7 +127,7 @@ async def _call_platform(name: str, args: dict[str, Any], identity: Any) -> Any:
     if name == "platform.run_status":
         run = await repos.runs.get(args["run_id"])
         if run is None:
-            return {"ok": False, "error": "실행이 없다"}
+            return {"ok": False, "error": "실행이 없습니다"}
         return {"run_id": run.run_id, "status": str(run.status),
                 "stages": [{"name": s.name, "status": str(s.status)} for s in run.stages]}
 
@@ -146,17 +147,18 @@ async def _call_platform(name: str, args: dict[str, Any], identity: Any) -> Any:
                 "transport": route.transport, "target": route.target}
 
     if name == "platform.job_stats":
-        #  HTTP 경로(/jobs/stats)와 같은 모양으로 낸다. 한 표면인데 응답이 다르면 안 된다
+        #  Same shape as GET /jobs/stats. One surface must not answer the
+        #  same question two ways.
         stats = await repos.jobs.stats()
         return {"by_status": stats, "total": sum(stats.values())}
 
     raise KeyError(name)
 
 
-# ---------------------------------------------------------------- 원본 도구
+# ---------------------------------------------------------------- the original tools
 
 def _upstream_definitions() -> list[dict[str, Any]]:
-    """원본 도구 정의. 러너 없이도 읽힌다."""
+    """The original tool definitions. Readable without a runner."""
     try:
         from pipeline_mcp.tools import tool_definitions
 
@@ -167,18 +169,18 @@ def _upstream_definitions() -> list[dict[str, Any]]:
 
 
 def _call_upstream(name: str, args: dict[str, Any]) -> Any:
-    """원본 도구 실행. 러너를 세우지 못하면 그 사실을 그대로 돌려준다."""
+    """Run an original tool, reporting a runner that cannot be built."""
     try:
         from pipeline_mcp.pipeline import PipelineRunner
         from pipeline_mcp.tools import ToolDispatcher
     except Exception as exc:
-        return {"ok": False, "error": f"원본 도구를 불러오지 못했다: {exc}"}
+        return {"ok": False, "error": f"원본 도구를 불러오지 못했습니다: {exc}"}
 
     try:
         dispatcher = ToolDispatcher(runner=PipelineRunner())
     except Exception as exc:
-        #  실행 환경(GPU 엔드포인트·저장 루트)이 확정되어야 세워진다
-        return {"ok": False, "error": f"실행 러너를 세우지 못했다: {exc}"}
+        #  Needs an execution environment - endpoints, a storage root
+        return {"ok": False, "error": f"실행 러너를 세우지 못했습니다: {exc}"}
 
     return dispatcher.call_tool(name, args)
 
@@ -209,15 +211,15 @@ async def mcp_rpc(identity: CurrentIdentity, message: dict[str, Any] = Body(...)
         name = params.get("name")
         args = params.get("arguments") or {}
         if not isinstance(name, str):
-            return err(-32602, "name 이 필요하다")
+            return err(-32602, "name 이 필요합니다")
         try:
             if name.startswith("platform."):
                 return ok(_text(await _call_platform(name, args, identity)))
             return ok(_text(_call_upstream(name, args)))
         except KeyError:
-            return err(-32601, f"없는 도구다: {name}")
+            return err(-32601, f"없는 도구입니다: {name}")
         except Exception as exc:
             log.warning("도구 실행에 실패했다 %s: %s", name, exc)
             return err(-32603, str(exc))
 
-    return err(-32601, f"지원하지 않는 메서드다: {method}")
+    return err(-32601, f"지원하지 않는 메서드입니다: {method}")

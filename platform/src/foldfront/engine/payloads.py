@@ -1,14 +1,16 @@
-"""모델별 실행 입력 구성.
+"""Builds the input each model expects.
 
-어댑터는 **어디로 보낼지**를 알고(RunPod·HTTP·컨테이너), 여기는 **무엇을 보낼지**를 안다.
-둘을 갈라 두면 새 모델을 붙일 때 전송 코드를 건드리지 않는다.
+An adapter knows *where* to send work; this knows *what* to send. Keeping them
+apart means adding a model does not touch the transport code.
 
-입력 형태는 지어내지 않는다. 원본 `pipeline_mcp.clients.*` 가 실제로 보내던 모양을 그대로 쓴다 —
-엔드포인트가 그 필드 이름으로 받도록 배포되어 있기 때문이다. 서열·구조 파싱도
-원본 `pipeline_mcp.bio` 를 **직접 호출**한다. 같은 파일을 두 번 해석하지 않는다.
+The shapes are not invented. They are what the original clients actually send,
+because the endpoints are deployed to read those field names - a rename here
+would fail on first contact and look like a network problem. Sequence and
+structure parsing calls the original bio helpers rather than parsing the same
+file a second time.
 
-★ 실제 엔드포인트 연결은 자격 증명과 엔드포인트 ID 가 확정된 뒤다.
-  이 모듈까지가 그 전에 확정할 수 있는 범위다.
+Connecting real endpoints waits on credentials and endpoint ids. This module is
+as far as that can be prepared beforehand.
 """
 
 from __future__ import annotations
@@ -22,15 +24,15 @@ from pipeline_mcp.bio.fasta import parse_fasta, to_fasta
 
 
 class PayloadError(ValueError):
-    """입력이 모자라거나 형식이 맞지 않는다. 실행 전에 잡는다."""
+    """The input is missing or malformed. Caught before a job is dispatched."""
 
 
 @dataclass(frozen=True)
 class StageInput:
-    """한 단계가 받는 것.
+    """What one stage receives.
 
-    `request` 는 실행 요청 원본이고 `upstream` 은 앞 단계들이 낸 결과다.
-    노드가 어느 단계인지에 따라 필요한 것만 꺼내 쓴다.
+    `request` is the run request as submitted; `upstream` is what earlier
+    stages produced. Each builder takes only what its stage needs.
     """
 
     request: dict[str, Any]
@@ -44,7 +46,8 @@ class StageInput:
         return None
 
     def text(self, *keys: str) -> str | None:
-        """경로면 읽고, 내용이면 그대로 쓴다. 앞 단계는 대개 내용을 넘긴다."""
+        """Read a path, or take the content as it stands. Earlier stages
+        usually pass content rather than write a file."""
         raw = self.path(*keys)
         if raw is None:
             return None
@@ -52,34 +55,34 @@ class StageInput:
             return raw
         p = Path(raw)
         if not p.is_file():
-            raise PayloadError(f"입력 파일이 없다: {raw}")
+            raise PayloadError(f"입력 파일이 없습니다: {raw}")
         return p.read_text(encoding="utf-8", errors="replace")
 
 
 def _b64(text: str) -> str:
-    """원본 `_b64encode_text` 와 같다. 엔드포인트가 base64 로 받는다."""
+    """As the original _b64encode_text. The endpoints read base64."""
     return base64.b64encode(text.encode("utf-8")).decode("ascii")
 
 
 def _require(value: Any, what: str) -> Any:
     if value in (None, "", [], {}):
-        raise PayloadError(f"{what} 이(가) 필요하다")
+        raise PayloadError(f"{what} 이(가) 필요합니다")
     return value
 
 
-# ---------------------------------------------------------------- 모델별 구성
+# ---------------------------------------------------------------- per model
 
 def _mmseqs(si: StageInput) -> dict[str, Any]:
-    """MSA. 대상 서열 하나로 정렬을 뜬다."""
+    """MSA. One target sequence goes in; an alignment comes back."""
     fasta = _require(si.text("target_fasta", "fasta"), "대상 서열")
     records = parse_fasta(fasta)
     if not records:
-        raise PayloadError("FASTA 에서 서열을 찾지 못했다")
+        raise PayloadError("FASTA 에서 서열을 찾지 못했습니다")
     return {"fasta": to_fasta(records[:1]), "sequence_count": 1}
 
 
 def _rfd3(si: StageInput) -> dict[str, Any]:
-    """백본 생성."""
+    """Backbone generation."""
     pdb = _require(si.text("target_pdb", "pdb"), "대상 구조")
     return {
         "pdb_base64": _b64(pdb),
@@ -89,7 +92,7 @@ def _rfd3(si: StageInput) -> dict[str, Any]:
 
 
 def _proteinmpnn(si: StageInput) -> dict[str, Any]:
-    """서열 설계. 원본 `clients/proteinmpnn.py` 의 필드 이름을 그대로 쓴다."""
+    """Sequence design, using the field names clients/proteinmpnn.py sends."""
     pdb = _require(si.text("backbone_pdb", "target_pdb", "pdb"), "백본 구조")
     payload: dict[str, Any] = {
         "pdb_base64": _b64(pdb),
@@ -110,7 +113,7 @@ def _proteinmpnn(si: StageInput) -> dict[str, Any]:
 
 
 def _soluprot(si: StageInput) -> dict[str, Any]:
-    """가용성 예측. 설계된 서열 전부를 한 번에 보낸다."""
+    """Solubility. Every designed sequence goes in one call."""
     fasta = _require(si.text("designed_fasta", "target_fasta", "fasta"), "설계 서열")
     records = parse_fasta(fasta)
     if not records:
@@ -119,7 +122,7 @@ def _soluprot(si: StageInput) -> dict[str, Any]:
 
 
 def _af2(si: StageInput) -> dict[str, Any]:
-    """구조 예측. MSA 가 있으면 함께 보낸다."""
+    """Structure prediction. The MSA travels with it when there is one."""
     fasta = _require(si.text("designed_fasta", "target_fasta", "fasta"), "예측 대상 서열")
     records = parse_fasta(fasta)
     payload: dict[str, Any] = {
@@ -145,9 +148,11 @@ BUILDERS: dict[str, Callable[[StageInput], dict[str, Any]]] = {
 
 
 def build_payload(model_id: str, request: dict[str, Any], upstream: dict[str, Any] | None = None) -> dict[str, Any]:
-    """모델 식별자에 맞는 입력을 만든다.
+    """Build the input for a model.
 
-    구성기가 없는 모델은 요청을 그대로 넘긴다 — 사용자 정의 모델은 자기 스키마를 갖는다.
+    A model with no builder gets the request unchanged: one someone registered
+    themselves has a schema of its own and guessing at it would be worse than
+    passing it through.
     """
     builder = BUILDERS.get(model_id)
     si = StageInput(request=request or {}, upstream=upstream or {})

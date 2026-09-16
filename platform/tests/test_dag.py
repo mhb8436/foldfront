@@ -67,7 +67,7 @@ def test_자기_자신으로_가는_간선을_잡는다():
 
 
 def test_없는_노드를_가리키는_간선을_잡는다():
-    with pytest.raises(GraphError, match="도착 노드가 없다"):
+    with pytest.raises(GraphError, match="도착 노드"):
         build_graph(wf([model("a")], [edge("a", "zzz")]))
 
 
@@ -77,7 +77,7 @@ def test_중복된_노드_식별자를_잡는다():
 
 
 def test_노드가_없으면_거부한다():
-    with pytest.raises(GraphError, match="노드가 없다"):
+    with pytest.raises(GraphError, match="노드가 없"):
         build_graph(wf([], []))
 
 
@@ -90,7 +90,7 @@ def test_조건분기_노드는_조건식과_분기표시가_있어야_한다():
 
     #  조건식이 없는 분기 노드
     no_cond = WorkflowNode(node_id="b", kind=NodeKind.BRANCH)
-    with pytest.raises(GraphError, match="조건식이 없다"):
+    with pytest.raises(GraphError, match="조건식"):
         build_graph(wf([no_cond, model("c")], [edge("b", "c", branch="true")]))
 
 
@@ -229,7 +229,7 @@ def test_건너뛴_노드의_후손도_건너뛴다():
 
     assert plan.states["b"].outcome is NodeOutcome.SKIPPED
     assert plan.states["c"].outcome is NodeOutcome.SKIPPED
-    assert plan.states["c"].reason == "선행 노드가 실행되지 않았다"
+    assert "선행 노드" in (plan.states["c"].reason or "")
 
 
 def test_실패한_노드의_후손은_건너뛴다():

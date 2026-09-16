@@ -1,13 +1,14 @@
-"""실행 서비스 — DAG 엔진과 작업 큐를 잇는다.
+"""Execution service: the join between the DAG engine and the job queue.
 
-엔진(engine/dag.py)은 무엇을 돌릴지만 정하고, 저장소(db/repositories.py)는 상태를 담는다.
-이 모듈이 둘을 이어 실제 실행 흐름을 만든다.
+The engine decides what should run; the repositories hold the state. This
+module is what turns those two into a run.
 
-    워크플로 → 그래프 검증 → run 생성 → 준비된 노드를 큐에 넣는다
+    workflow -> validate graph -> create run -> enqueue what is ready
                                     ↑                      ↓
-                                    └── 워커가 끝내면 다음 노드를 넣는다
+                                    └── a finished node enqueues the next
 
-한 번에 한 층씩 진행하므로 병렬 노드는 동시에 큐에 들어간다.
+Work advances one level at a time, so nodes that may run in parallel reach the
+queue together.
 """
 
 from __future__ import annotations
@@ -35,16 +36,16 @@ from foldfront.engine.router import ModelRouter, RoutingError
 
 
 class ExecutionService:
-    """워크플로 실행을 관장한다."""
+    """Owns the lifecycle of a run."""
 
     def __init__(self, repos: Repos) -> None:
         self.repos = repos
         self.router = ModelRouter(repos.models)
 
-    # ------------------------------------------------------------ 시작
+    # ------------------------------------------------------------ start
 
     async def preflight(self, workflow: Workflow, *, max_gpu: int | None = None) -> dict[str, Any]:
-        """실행 전 점검. 그래프 결함과 모델 해석 실패를 미리 모아 알린다."""
+        """Preflight: collect graph defects and unresolvable models up front."""
         try:
             graph = build_graph(workflow)
         except GraphError as exc:
@@ -71,8 +72,8 @@ class ExecutionService:
         owner_id: str | None = None,
         run_id: str | None = None,
     ) -> Run:
-        """워크플로로 run 을 시작한다. 준비된 노드를 큐에 넣는다."""
-        graph = build_graph(workflow)  # 결함이 있으면 여기서 멈춘다
+        """Start a run from a workflow and enqueue whatever is ready."""
+        graph = build_graph(workflow)  # a defective graph stops here
 
         run = Run(
             run_id=run_id or new_id("run"),
@@ -88,7 +89,7 @@ class ExecutionService:
         )
         await self.repos.runs.create(run)
         await self.repos.runs.set_status(run.run_id, RunStatus.RUNNING)
-        await self.repos.events.append(run.run_id, "실행을 시작했다")
+        await self.repos.events.append(run.run_id, "실행을 시작했습니다")
         await self.repos.audit.record(
             "run.create", actor_id=owner_id, target_type="run", target_id=run.run_id,
             detail={"workflow_id": workflow.workflow_id, "version": workflow.version},
@@ -100,20 +101,21 @@ class ExecutionService:
         plan = ExecutionPlan.start(graph)
         await self._enqueue_ready(run.run_id, graph, plan)
 
-        #  첫 노드부터 라우팅에 실패하면 시작하자마자 끝난다 — RUNNING 으로 방치하지 않는다
+        #  When the first node cannot be routed the run is already over. Close
+        #  it rather than leave it sitting in RUNNING with nothing to do.
         if plan.done():
             final = RunStatus.SUCCEEDED if plan.succeeded() else RunStatus.FAILED
             await self.repos.runs.set_status(run.run_id, final)
-            await self.repos.events.append(run.run_id, f"실행이 끝났다 ({final})")
+            await self.repos.events.append(run.run_id, f"실행이 끝났습니다 ({final})")
 
         return await self.repos.runs.get(run.run_id) or run
 
-    # ------------------------------------------------------------ 진행
+    # ------------------------------------------------------------ progress
 
     async def load_plan(self, run_id: str) -> tuple[Graph, ExecutionPlan] | None:
-        """저장된 상태에서 실행 계획을 복원한다.
+        """Rebuild the execution plan from stored state.
 
-        워커는 상태를 들고 있지 않는다 — DB 가 유일한 원천이다.
+        Workers hold nothing between jobs; the database is the only source.
         """
         run = await self.repos.runs.get(run_id)
         if run is None or not run.workflow_id:
@@ -156,14 +158,14 @@ class ExecutionService:
         result: dict[str, Any] | None = None,
         error: str | None = None,
     ) -> dict[str, Any]:
-        """노드 하나가 끝났다. 상태를 갱신하고 다음 노드를 큐에 넣는다."""
+        """A node finished. Record it and enqueue whatever that unblocked."""
         loaded = await self.load_plan(run_id)
         if loaded is None:
-            return {"ok": False, "error": "실행 계획을 복원하지 못했다"}
+            return {"ok": False, "error": "실행 계획을 복원하지 못했습니다"}
         graph, plan = loaded
 
         if node_id not in plan.states:
-            return {"ok": False, "error": f"그래프에 없는 노드다: {node_id}"}
+            return {"ok": False, "error": f"그래프에 없는 노드입니다: {node_id}"}
 
         if succeeded:
             plan.mark_succeeded(node_id, result or {})
@@ -177,10 +179,10 @@ class ExecutionService:
                 name=node_id, status=RunStatus.FAILED, error=error,
             ))
             await self.repos.events.append(
-                run_id, f"{node_id} 실패: {error}", stage=node_id, level="error",
+                run_id, f"{node_id} 실패했습니다: {error}", stage=node_id, level="error",
             )
 
-        #  건너뛰기가 전파된 노드를 DB 에도 반영한다 — 화면이 이유를 보여준다
+        #  Persist skipped nodes so a screen can say why they were skipped
         for other_id, state in plan.states.items():
             if state.outcome is NodeOutcome.SKIPPED:
                 await self.repos.runs.upsert_stage(run_id, StageState(
@@ -204,15 +206,16 @@ class ExecutionService:
     async def _enqueue_ready(
         self, run_id: str, graph: Graph, plan: ExecutionPlan
     ) -> list[str]:
-        """지금 실행할 수 있는 노드를 큐에 넣는다. 이미 큐에 있는 것은 넣지 않는다."""
+        """Enqueue the nodes that are ready, skipping any already queued."""
         existing = {
             j.node_id for j in await self.repos.jobs.list_for_run(run_id) if j.node_id
         }
         queued: list[str] = []
         handled: set[str] = set()
 
-        #  제어 노드를 통과시키면 새 노드가 준비되므로 다시 돈다. 더 통과시킬 것이
-        #  없으면 끝난다 — 재귀로 두면 같은 노드를 두고 무한히 내려간다.
+        #  Passing a control node makes others ready, so the loop runs again.
+        #  It ends when nothing more can pass. Recursion here would descend
+        #  forever on the same node.
         while True:
             passed_control = False
 
@@ -221,9 +224,10 @@ class ExecutionService:
                     continue
                 node = graph.nodes[node_id]
 
-                #  외부 호출이 필요 없는 노드는 큐를 거치지 않고 즉시 통과시킨다.
-                #  BRANCH 는 조건만 평가하고 FANOUT·JOIN 은 흐름만 가른다 — 셋 다 모델이
-                #  없으므로 큐에 넣으면 라우팅 정보가 없는 작업이 되어 워커가 실패한다.
+                #  Nodes with no external call pass immediately. A BRANCH only
+                #  evaluates a condition; FANOUT and JOIN only shape the flow.
+                #  None names a model, so queueing one would produce a job with
+                #  no route and a worker failure to go with it.
                 if node.kind in (NodeKind.FANOUT, NodeKind.JOIN, NodeKind.BRANCH) or (
                     node.kind is NodeKind.MODEL and not node.model_id
                 ):
@@ -246,22 +250,22 @@ class ExecutionService:
                     payload={"params": dict(node.params), "kind": str(node.kind)},
                 )
 
-                #  자원 요구량은 Registry 에서 가져온다(스케줄링 근거)
+                #  Resource requirements come from the registry and drive scheduling
                 if node.kind is NodeKind.MODEL and node.model_id:
                     try:
                         route = await self.router.route(node.model_id, node.model_version)
                         job.resources = route.resources
                         job.payload["route"] = route.as_dict()
                     except RoutingError as exc:
-                        #  라우팅 실패는 그 노드의 실패다. 계획에 바로 반영하고 넘어간다.
+                        #  A routing failure is that node failing. Record it and move on.
                         await self.repos.events.append(
-                            run_id, f"{node_id} 라우팅 실패: {exc}", stage=node_id, level="error",
+                            run_id, f"{node_id} 라우팅에 실패했습니다: {exc}", stage=node_id, level="error",
                         )
                         plan.mark_failed(node_id, str(exc))
                         await self.repos.runs.upsert_stage(run_id, StageState(
                             name=node_id, status=RunStatus.FAILED, error=str(exc),
                         ))
-                        passed_control = True  # 건너뛰기가 전파됐을 수 있다
+                        passed_control = True  # skips may have propagated
                         continue
 
                 await self.repos.jobs.enqueue(job)
@@ -273,7 +277,7 @@ class ExecutionService:
             if not passed_control:
                 break
 
-        #  건너뛰기가 전파된 노드를 DB 에 반영한다
+        #  Persist whatever the skip propagation touched
         for node_id, state in plan.states.items():
             if state.outcome is NodeOutcome.SKIPPED:
                 await self.repos.runs.upsert_stage(run_id, StageState(
@@ -282,12 +286,12 @@ class ExecutionService:
 
         return queued
 
-    # ------------------------------------------------------------ 취소
+    # ------------------------------------------------------------ cancel
 
     async def cancel(self, run_id: str, *, reason: str = "사용자 취소") -> Run | None:
-        """실행을 취소한다. 큐에 남은 작업도 함께 거둔다."""
+        """Cancel a run and drop whatever it left on the queue."""
         for job in await self.repos.jobs.list_for_run(run_id):
             if job.status in ("queued", "leased", "running"):
                 await self.repos.jobs.finish(job.job_id, status="cancelled", error=reason)
-        await self.repos.events.append(run_id, f"실행을 취소했다: {reason}", level="warning")
+        await self.repos.events.append(run_id, f"실행을 취소했습니다: {reason}", level="warning")
         return await self.repos.runs.set_status(run_id, RunStatus.CANCELLED, error=reason)
