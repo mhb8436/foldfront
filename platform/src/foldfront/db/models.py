@@ -86,6 +86,10 @@ class Run(Doc):
     status: RunStatus = RunStatus.PENDING
     mode: Literal["pipeline", "workflow", "binding"] = "pipeline"
 
+    #  Hands out event numbers atomically ($inc). Internal: excluded from every
+    #  dump, so it neither reaches the API nor gets copied by a fork.
+    event_seq: int = Field(default=0, exclude=True)
+
     #  Ties the run to a project and round; the original carries these too
     project_id: str | None = None
     round_id: str | None = None

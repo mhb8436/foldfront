@@ -89,7 +89,7 @@ export function Projects() {
     <>
       <PageHeader
         title="프로젝트"
-        description="설계 과제와 그 안의 재설계 회차를 관리합니다. 고른 프로젝트가 다른 화면의 조회 범위가 됩니다."
+        description="설계 과제와 그 안의 재설계 회차를 관리합니다. 선택한 프로젝트가 다른 화면의 범위가 됩니다."
         actions={
           <Button variant="outline" size="sm" onClick={reload}>
             <RefreshCw />
@@ -134,10 +134,10 @@ export function Projects() {
                   </TableCell>
                   <TableCell>
                     {current?.project_id === p.project_id ? (
-                      <span className="text-muted-foreground text-[12px]">조회 중</span>
+                      <span className="text-[12px] font-medium">선택됨</span>
                     ) : (
                       <Button variant="outline" size="sm" onClick={() => select(p.project_id)}>
-                        조회
+                        선택
                       </Button>
                     )}
                   </TableCell>

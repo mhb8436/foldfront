@@ -110,3 +110,36 @@ def test_identifiers_are_unique_where_the_code_assumes_so():
             if m.document.get("unique") and field in m.document["key"]
         ]
         assert unique, f"{collection}.{field} is not covered by a unique index"
+
+
+@pytest.mark.asyncio
+async def test_쌍둥이_작업이_있는_저장소에서도_색인을_만든다():
+    """Found in review: the unique index could not be built over a store that
+    already held the twins it exists to prevent, and the API would not boot."""
+    import socket
+
+    from motor.motor_asyncio import AsyncIOMotorClient
+
+    from foldfront.db.client import ensure_indexes
+    from foldfront.db.models import Job
+
+    with socket.socket() as s:
+        s.settimeout(0.4)
+        if s.connect_ex(("127.0.0.1", 27017)) != 0:
+            pytest.skip("MongoDB 미기동")
+
+    client = AsyncIOMotorClient("mongodb://127.0.0.1:27017", tz_aware=True)
+    db = client["foldfront_pytest_twins"]
+    await client.drop_database("foldfront_pytest_twins")
+    await db[C.JOBS].insert_many([
+        Job(job_id="j1", run_id="run-x", node_id="msa", status="queued").model_dump(),
+        Job(job_id="j2", run_id="run-x", node_id="msa", status="running").model_dump(),
+    ])
+
+    await ensure_indexes(db)
+
+    names = {i["name"] for i in await db[C.JOBS].list_indexes().to_list(length=50)}
+    assert "uq_run_node_active" in names
+    statuses = {d["job_id"]: d["status"] for d in await db[C.JOBS].find().to_list(length=10)}
+    assert statuses == {"j1": "queued", "j2": "cancelled"}
+    client.close()
