@@ -181,6 +181,9 @@ async def cmd_demo(count: int = 3) -> None:
 
 
 async def cmd_worker(mock: bool = False) -> None:
+    #  The dedupe that keeps a node from being queued twice is an index. The
+    #  worker is where reconcile runs unattended, so it makes sure of it.
+    await ensure_indexes()
     repos = Repos()
     worker = Worker(repos=repos, adapters=AdapterRegistry(mock=mock))
     print(f"워커 시작 {worker.worker_id} (모의={mock}) — Ctrl+C 로 멈춘다")
@@ -222,7 +225,10 @@ def main() -> None:
     elif cmd == "demo":
         asyncio.run(cmd_demo(int(rest[0]) if rest else 3))
     elif cmd == "worker":
-        asyncio.run(cmd_worker(mock="--mock" in rest))
+        try:
+            asyncio.run(cmd_worker(mock="--mock" in rest))
+        except KeyboardInterrupt:
+            print("워커를 멈췄다")
     elif cmd == "migrate":
         if not rest:
             print("경로가 필요하다")

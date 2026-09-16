@@ -298,6 +298,11 @@ class LegacyMigrator:
         if docs:
             await self.repos.events.col.delete_many({"run_id": run_id})
             await self.repos.events.col.insert_many(docs)
+            #  The run's event counter has to start where these end, or the
+            #  first new event collides with the last migrated one.
+            await self.repos.runs.col.update_one(
+                {"run_id": run_id}, {"$max": {"event_seq": len(docs)}}
+            )
             report.events += len(docs)
 
     async def _migrate_records(

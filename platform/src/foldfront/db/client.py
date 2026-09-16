@@ -6,10 +6,17 @@ empty collection and read nothing from it, with no error to show for it.
 
 from __future__ import annotations
 
+import logging
+
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from pymongo.errors import OperationFailure
 from pymongo import ASCENDING, DESCENDING, IndexModel
 
+from foldfront.db.models import utcnow
 from foldfront.core.config import get_settings
+
+
+log = logging.getLogger(__name__)
 
 
 class C:
@@ -147,10 +154,42 @@ async def ensure_indexes(db: AsyncIOMotorDatabase | None = None) -> dict[str, in
     db = db if db is not None else get_db()
     created: dict[str, int] = {}
     for name, models in INDEXES.items():
-        if models:
+        if not models:
+            continue
+        try:
             await db[name].create_indexes(models)
-            created[name] = len(models)
+        except OperationFailure as exc:
+            if name != C.JOBS or exc.code != 11000:
+                raise
+            #  The unique index on live (run, node) cannot be built over a
+            #  store that already holds the twins it exists to prevent. Keep
+            #  the earliest of each pair, cancel the rest, build again.
+            await _cancel_twin_jobs(db)
+            await db[name].create_indexes(models)
+        created[name] = len(models)
     return created
+
+
+async def _cancel_twin_jobs(db: AsyncIOMotorDatabase) -> int:
+    live = {"$in": ["queued", "leased", "running"]}
+    groups = await db[C.JOBS].aggregate([
+        {"$match": {"status": live, "node_id": {"$type": "string"}}},
+        {"$sort": {"queued_at": 1}},
+        {"$group": {"_id": {"run_id": "$run_id", "node_id": "$node_id"},
+                    "ids": {"$push": "$job_id"}}},
+        {"$match": {"ids.1": {"$exists": True}}},
+    ]).to_list(length=10_000)
+    cancelled = 0
+    for g in groups:
+        extra = g["ids"][1:]
+        res = await db[C.JOBS].update_many(
+            {"job_id": {"$in": extra}},
+            {"$set": {"status": "cancelled", "error": "같은 노드의 작업이 이미 있어 취소", "updated_at": utcnow()}},
+        )
+        cancelled += res.modified_count
+        log.warning("cancelled %d twin job(s) for %s/%s: %s",
+                    len(extra), g["_id"]["run_id"], g["_id"]["node_id"], extra)
+    return cancelled
 
 
 async def close_client() -> None:

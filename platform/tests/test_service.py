@@ -660,3 +660,48 @@ async def test_전체_점검은_한_쪽만_보지_않고_끝까지_넘긴다(see
     report = await svc.reconcile_all(limit=2)
 
     assert report["checked"] == 5
+
+
+async def test_배포_전에_만든_실행도_사건을_이어_쓴다(seeded: Repos):
+    """Found in review: runs written before the counter existed have events
+    1..N and no counter; the first new event collided with the last old one."""
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(builtin_pipeline_workflow())
+    run = await svc.start(wf)
+    for i in range(3):
+        await seeded.events.append(run.run_id, f"옛 사건 {i}")
+    await seeded.runs.col.update_one({"run_id": run.run_id}, {"$unset": {"event_seq": ""}})
+
+    ev = await seeded.events.append(run.run_id, "새 사건")
+
+    seqs = [e.seq for e in await seeded.events.list(run.run_id, limit=100)]
+    assert ev.seq == max(seqs) and len(seqs) == len(set(seqs))
+
+
+async def test_실행_응답에_내부_카운터가_섞이지_않는다(seeded: Repos):
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(builtin_pipeline_workflow())
+    run = await svc.start(wf)
+    await seeded.events.append(run.run_id, "x")
+
+    assert "event_seq" not in (await seeded.runs.get(run.run_id)).model_dump()
+
+
+async def test_전체_점검은_한_실행의_오류로_멈추지_않는다(seeded: Repos, monkeypatch):
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(builtin_pipeline_workflow())
+    bad = await svc.start(wf)
+    good = await svc.start(wf)
+    original = svc.reconcile
+
+    async def flaky(run_id):
+        if run_id == bad.run_id:
+            raise RuntimeError("터짐")
+        return await original(run_id)
+
+    monkeypatch.setattr(svc, "reconcile", flaky)
+    report = await svc.reconcile_all()
+
+    assert report["checked"] == 2
+    assert any(r.get("status") == "error" and r["run_id"] == bad.run_id for r in report["repaired"])
+    assert good.run_id not in [r["run_id"] for r in report["repaired"] if r.get("status") == "error"]

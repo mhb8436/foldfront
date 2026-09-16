@@ -440,20 +440,26 @@ class ExecutionService:
         run on top of that, which is fine while live runs number in the
         hundreds; `max_runs` is the backstop if they do not.
         """
-        checked = 0
-        repaired: list[dict[str, Any]] = []
+        #  Collect first, repair after. Repairing while paging shrinks the set
+        #  under the cursor and the runs that shift into the gap are skipped.
+        ids: list[str] = []
         skip = 0
-        while checked < max_runs:
+        while len(ids) < max_runs:
             page = await self.repos.runs.list(status=RunStatus.RUNNING, limit=limit, skip=skip)
-            for run in page:
-                checked += 1
-                report = await self.reconcile(run.run_id)
-                if report.get("repaired"):
-                    repaired.append(report)
+            ids.extend(r.run_id for r in page)
             if len(page) < limit:
                 break
             skip += limit
-        return {"checked": checked, "repaired": repaired}
+        repaired: list[dict[str, Any]] = []
+        for run_id in ids:
+            try:
+                report = await self.reconcile(run_id)
+            except Exception as exc:  # noqa: BLE001 - one bad run must not stop the sweep
+                repaired.append({"run_id": run_id, "status": "error", "repaired": [], "error": str(exc)})
+                continue
+            if report.get("repaired"):
+                repaired.append(report)
+        return {"checked": len(ids), "repaired": repaired}
 
     # ------------------------------------------------------------ cancel
 

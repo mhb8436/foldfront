@@ -113,9 +113,7 @@ class Worker:
             self.stats.failed += 1
             await self.repos.jobs.finish(job.job_id, status=JobStatus.FAILED, error=str(exc))
             if job.node_id:
-                await self.service.complete_node(
-                    job.run_id, job.node_id, succeeded=False, error=str(exc)
-                )
+                await self._tell_run(job, succeeded=False, error=str(exc))
             log.warning("job failed %s: %s", job.job_id, exc)
             return True
 
@@ -124,10 +122,22 @@ class Worker:
         #  dying before the run has been told about it.
         await self.repos.jobs.finish(job.job_id, status=JobStatus.SUCCEEDED, result=result)
         if job.node_id:
-            await self.service.complete_node(
-                job.run_id, job.node_id, succeeded=True, result=result
-            )
+            await self._tell_run(job, succeeded=True, result=result)
         return True
+
+    async def _tell_run(self, job, *, succeeded: bool, result=None, error=None) -> None:
+        """complete_node, but a failure here is logged, not raised.
+
+        The job is already recorded. If telling the run fails - a store hiccup,
+        an index collision - the reconcile loop reads the job and finishes the
+        telling; a worker that died here instead would strand the run.
+        """
+        try:
+            await self.service.complete_node(
+                job.run_id, job.node_id, succeeded=succeeded, result=result, error=error,
+            )
+        except Exception:  # noqa: BLE001 - a worker never dies
+            log.exception("could not record %s on run %s; reconcile will", job.node_id, job.run_id)
 
     async def drain(self, *, max_steps: int = 1000) -> WorkerStats:
         """Run until the queue is empty. For tests and batch processing."""

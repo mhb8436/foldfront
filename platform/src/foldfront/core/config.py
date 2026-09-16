@@ -10,7 +10,9 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import Field
+from pathlib import Path
+
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,6 +25,18 @@ class Settings(BaseSettings):
 
     #  Where artifact files land, under the name the original uses
     output_root: str = Field(default="./data/runs", alias="PIPELINE_OUTPUT_ROOT")
+
+    @field_validator("output_root")
+    @classmethod
+    def _absolute_root(cls, v: str) -> str:
+        #  A relative root is anchored at the platform directory, not the
+        #  cwd. The API and the worker are started from wherever, and the
+        #  root confinement in payloads.py has to name the same place for both
+        #  - or the worker refuses every file the API stored.
+        path = Path(v).expanduser()
+        if not path.is_absolute():
+            path = Path(__file__).resolve().parents[3] / path
+        return str(path.resolve())
 
     #  Remote GPUs. The key comes from the environment only
     runpod_api_key: str | None = Field(default=None, alias="RUNPOD_API_KEY")

@@ -84,3 +84,8 @@ def test_내용은_내용대로_받는다(root):
 
 def test_공백뿐이면_없는_것이다(root):
     assert inp(target_fasta="   \n").text("target_fasta") is None
+
+
+def test_공백이_든_경로는_구조로_보내지_않고_말해_준다(root):
+    with pytest.raises(PayloadError, match="경로에 공백"):
+        inp(target_pdb="/data/my dir/lys.pdb").text("target_pdb")

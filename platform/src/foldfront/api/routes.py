@@ -15,6 +15,8 @@ under either surface.
 
 from __future__ import annotations
 
+import json
+
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
@@ -94,12 +96,19 @@ async def start_run(body: StartRunBody, identity: CurrentIdentity) -> dict[str, 
 
     #  Pasted content passes no upload cap, and the engine copies the request
     #  into every job. Past this size it is a file, and the console offers one.
-    for field, value in body.request.items():
-        if isinstance(value, str) and len(value.encode("utf-8")) > MAX_INLINE_INPUT_BYTES:
-            raise ApiError(
-                E.INPUT_INLINE_TOO_LARGE, field=field,
-                limit_mb=MAX_INLINE_INPUT_BYTES // (1024 * 1024),
-            )
+    #  Measured as a whole, serialised: a large paste hides as easily in a
+    #  list or a nested dict as at the top level, and it is the document's
+    #  size that the run and every job pay for.
+    size = len(json.dumps(body.request, ensure_ascii=False).encode("utf-8"))
+    if size > MAX_INLINE_INPUT_BYTES:
+        biggest = max(
+            body.request, key=lambda k: len(json.dumps(body.request[k], ensure_ascii=False)),
+            default="request",
+        )
+        raise ApiError(
+            E.INPUT_INLINE_TOO_LARGE, field=biggest,
+            limit_mb=MAX_INLINE_INPUT_BYTES // (1024 * 1024),
+        )
 
     #  A round belongs to one project. Filed under another project's round,
     #  a run appears in neither project's rounds table.

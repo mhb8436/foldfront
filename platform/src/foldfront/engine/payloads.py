@@ -79,7 +79,14 @@ class StageInput:
         raw = raw.strip()
         if not raw:
             return None
-        if raw.startswith(">") or re.search(r"\s", raw):
+        if raw.startswith(">"):
+            return raw
+        if re.search(r"\s", raw):
+            #  Content - unless it is one line shaped like a path, in which case
+            #  it is a path with a space in it, and shipping that string to a
+            #  model as a structure would burn a GPU job on eleven bytes.
+            if "\n" not in raw and "/" in raw and len(raw) < 512:
+                raise PayloadError("경로에 공백이 있습니다. 파일을 올리거나 공백 없는 경로를 쓰십시오")
             return raw
         root = Path(get_settings().output_root).resolve()
         target = (root / raw).resolve()

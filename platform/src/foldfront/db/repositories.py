@@ -189,12 +189,27 @@ class RunEventRepo(BaseRepo):
             return_document=ReturnDocument.AFTER,
         )
         if counter is not None:
-            ev = RunEvent(
-                run_id=run_id, seq=int(counter["event_seq"]), level=level, stage=stage,
-                message=message, payload=payload or {},
-            )
-            await self.col.insert_one(ev.model_dump())
-            return ev
+            for _ in range(4):
+                ev = RunEvent(
+                    run_id=run_id, seq=int(counter["event_seq"]), level=level, stage=stage,
+                    message=message, payload=payload or {},
+                )
+                try:
+                    await self.col.insert_one(ev.model_dump())
+                    return ev
+                except DuplicateKeyError:
+                    #  A run written before the counter existed - by earlier code
+                    #  or by the migrator - has events 1..N and a counter that
+                    #  just started at 1. Lift the counter to N and go again.
+                    last = await self.col.find_one({"run_id": run_id}, sort=[("seq", DESCENDING)])
+                    await self.db[C.RUNS].update_one(
+                        {"run_id": run_id}, {"$max": {"event_seq": int(last["seq"]) if last else 0}}
+                    )
+                    counter = await self.db[C.RUNS].find_one_and_update(
+                        {"run_id": run_id}, {"$inc": {"event_seq": 1}},
+                        projection={"event_seq": 1}, return_document=ReturnDocument.AFTER,
+                    )
+            raise RuntimeError(f"run_events: seq contention on {run_id} did not settle")
 
         #  No run document to count on - events written on their own, as some
         #  tests do. Read-then-insert with a bounded retry is enough there,
