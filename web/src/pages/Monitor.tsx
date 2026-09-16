@@ -11,6 +11,7 @@ import { PageHeader } from '../components/Shell'
 import {
   Empty,
   ErrorBox,
+  Notice,
   Panel,
   StageProgress,
   Stat,
@@ -112,10 +113,29 @@ function RunDetail({ runId, onClose }: { runId: string; onClose: () => void }) {
   const artifacts = useAsync(() => api.listArtifacts(runId), [runId])
   const [structure, setStructure] = useState<string | null>(null)
   const { canRun } = useIdentity()
+  const [repair, setRepair] = useState<string | null>(null)
 
   async function cancel() {
     await api.cancelRun(runId, '화면에서 취소')
     run.reload()
+  }
+
+  /** A run and its jobs are written separately and can disagree. This is
+      where a run that stopped moving is brought back in step with them. */
+  async function reconcile() {
+    setRepair(null)
+    try {
+      const report = await api.reconcileRun(runId)
+      setRepair(
+        report.repaired.length
+          ? report.repaired.map((r) => `${r.node_id ?? '실행'} — ${r.did}`).join(' · ')
+          : '작업과 어긋난 곳이 없습니다.',
+      )
+      run.reload()
+      events.reload()
+    } catch (e) {
+      setRepair((e as Error).message)
+    }
   }
 
   async function fork(stage: string) {
@@ -129,9 +149,14 @@ function RunDetail({ runId, onClose }: { runId: string; onClose: () => void }) {
       actions={
         <>
           {run.data?.status === 'running' && canRun && (
-            <Button variant="outline" size="sm" onClick={cancel}>
-              취소
-            </Button>
+            <>
+              <Button variant="outline" size="sm" onClick={reconcile}>
+                정합성 점검
+              </Button>
+              <Button variant="outline" size="sm" onClick={cancel}>
+                취소
+              </Button>
+            </>
           )}
           <Button variant="ghost" size="icon" className="size-8" aria-label="닫기" onClick={onClose}>
             <X className="size-4" />
@@ -142,6 +167,7 @@ function RunDetail({ runId, onClose }: { runId: string; onClose: () => void }) {
     >
       <div className="px-4 pt-4">
         <ErrorBox message={run.error} />
+        {repair && <Notice message={repair} />}
         {run.data?.forked_from_run_id && (
           <p className="text-muted-foreground text-[13px]">
             <code className="font-mono">{run.data.forked_from_run_id}</code> 의{' '}

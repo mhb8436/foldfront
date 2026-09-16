@@ -405,3 +405,142 @@ async def test_시작하자마자_라우팅에_실패하면_run_이_닫힌다(re
     final = await repos.runs.get(run.run_id)
     assert final.status is RunStatus.FAILED
     assert final.finished_at is not None
+
+
+#  ---------------------------------------------------------------- 정합성 복구
+#
+#  A run and its jobs are written separately and can end up disagreeing. Every
+#  case here leaves a run that would otherwise never move again, and the shape
+#  of the failure is always the same from outside: 「실행 중」 for ever.
+
+
+async def test_정합성_점검은_멀쩡한_실행을_건드리지_않는다(seeded: Repos):
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(builtin_pipeline_workflow())
+    run = await svc.start(wf)
+
+    report = await svc.reconcile(run.run_id)
+
+    assert report["repaired"] == []
+    assert report["status"] == "running"
+    #  큐에 있던 작업이 중복되지 않는다
+    assert [j.node_id for j in await seeded.jobs.list_for_run(run.run_id)] == ["msa"]
+
+
+async def test_정합성_점검은_끝난_실행을_다시_쓰지_않는다(seeded: Repos):
+    """A finished run that disagrees with its jobs is history, not a fault."""
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(builtin_pipeline_workflow())
+    run = await svc.start(wf)
+    await seeded.runs.set_status(run.run_id, RunStatus.CANCELLED)
+
+    report = await svc.reconcile(run.run_id)
+
+    assert report["repaired"] == []
+    assert (await seeded.runs.get(run.run_id)).status is RunStatus.CANCELLED
+
+
+async def test_작업은_끝났는데_실행이_모르면_결과를_기록한다(seeded: Repos):
+    """The worker records the job, then the stage. A worker that dies between
+    those two writes leaves the work done and the run still waiting."""
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(builtin_pipeline_workflow())
+    run = await svc.start(wf)
+    job = (await seeded.jobs.list_for_run(run.run_id))[0]
+    await seeded.jobs.finish(job.job_id, status=JobStatus.SUCCEEDED, result={"depth": 120})
+
+    report = await svc.reconcile(run.run_id)
+
+    assert [r["did"] for r in report["repaired"]] == ["결과를 실행에 기록했습니다"]
+    stages = {s.name: s for s in (await seeded.runs.get(run.run_id)).stages}
+    assert stages["msa"].status is RunStatus.SUCCEEDED
+    assert stages["msa"].metrics["depth"] == 120
+    #  다음 노드가 이어서 큐에 들어간다 — 실행이 다시 움직인다
+    assert "rfd3" in [j.node_id for j in await seeded.jobs.list_for_run(run.run_id)]
+
+
+async def test_결과를_잃은_작업은_이어붙이지_않고_실패시킨다(seeded: Repos):
+    """Continuing on an empty result would feed the next stage nothing and
+    call it success. Failing says what happened and asks for a re-run."""
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(builtin_pipeline_workflow())
+    run = await svc.start(wf)
+    job = (await seeded.jobs.list_for_run(run.run_id))[0]
+    await seeded.jobs.finish(job.job_id, status=JobStatus.SUCCEEDED, result=None)
+
+    await svc.reconcile(run.run_id)
+
+    stages = {s.name: s for s in (await seeded.runs.get(run.run_id)).stages}
+    assert stages["msa"].status is RunStatus.FAILED
+    assert "결과가 남지 않았" in stages["msa"].error
+    assert (await seeded.runs.get(run.run_id)).status is RunStatus.FAILED
+
+
+async def test_실패한_작업을_실행에_반영한다(seeded: Repos):
+    """reclaim_expired fails a job whose lease ran out, but it works on jobs
+    alone and cannot fail the run the job belonged to."""
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(builtin_pipeline_workflow())
+    run = await svc.start(wf)
+    job = (await seeded.jobs.list_for_run(run.run_id))[0]
+    await seeded.jobs.finish(job.job_id, status=JobStatus.FAILED, error="lease 만료")
+
+    report = await svc.reconcile(run.run_id)
+
+    assert [r["did"] for r in report["repaired"]] == ["작업 실패를 실행에 반영했습니다"]
+    assert (await seeded.runs.get(run.run_id)).status is RunStatus.FAILED
+    stages = {s.name: s for s in (await seeded.runs.get(run.run_id)).stages}
+    assert stages["msa"].error == "lease 만료"
+
+
+async def test_작업을_잃은_실행은_다시_큐에_넣는다(seeded: Repos):
+    """Observed in the real database: a run at 「실행 중」 with a pending stage
+    and no job at all. It was waiting for something that never existed."""
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(builtin_pipeline_workflow())
+    run = await svc.start(wf)
+    for job in await seeded.jobs.list_for_run(run.run_id):
+        await seeded.jobs.col.delete_one({"job_id": job.job_id})
+
+    report = await svc.reconcile(run.run_id)
+
+    assert [r["did"] for r in report["repaired"]] == ["잃어버린 작업을 다시 큐에 넣었습니다"]
+    assert [j.node_id for j in await seeded.jobs.list_for_run(run.run_id)] == ["msa"]
+    assert (await seeded.runs.get(run.run_id)).status is RunStatus.RUNNING
+
+
+async def test_정합성_점검을_두_번_해도_같다(seeded: Repos):
+    """It runs on a timer in the worker, so it has to be safe to repeat."""
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(builtin_pipeline_workflow())
+    run = await svc.start(wf)
+    job = (await seeded.jobs.list_for_run(run.run_id))[0]
+    await seeded.jobs.finish(job.job_id, status=JobStatus.SUCCEEDED, result={"depth": 120})
+
+    await svc.reconcile(run.run_id)
+    second = await svc.reconcile(run.run_id)
+
+    assert second["repaired"] == []
+    nodes = [j.node_id for j in await seeded.jobs.list_for_run(run.run_id)]
+    assert nodes.count("rfd3") == 1
+
+
+async def test_전체_점검은_고친_것만_보고한다(seeded: Repos):
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(builtin_pipeline_workflow())
+    healthy = await svc.start(wf)
+    broken = await svc.start(wf)
+    job = (await seeded.jobs.list_for_run(broken.run_id))[0]
+    await seeded.jobs.finish(job.job_id, status=JobStatus.FAILED, error="워커 사망")
+
+    report = await svc.reconcile_all()
+
+    assert report["checked"] >= 2
+    assert [r["run_id"] for r in report["repaired"]] == [broken.run_id]
+    assert (await seeded.runs.get(healthy.run_id)).status is RunStatus.RUNNING
+
+
+async def test_없는_실행을_점검하면_그렇다고_한다(seeded: Repos):
+    report = await ExecutionService(seeded).reconcile("run-없음")
+
+    assert report["ok"] is False

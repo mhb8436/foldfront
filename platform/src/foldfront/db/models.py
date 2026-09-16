@@ -326,6 +326,12 @@ class Job(Doc):
     finished_at: datetime | None = None
     error: str | None = None
 
+    #  What the model replied. The run keeps this too, on the stage - but a
+    #  worker records the job and the stage in two writes, and a worker that
+    #  dies between them would otherwise leave the work done and the result
+    #  gone. Reconciliation reads it from here.
+    result: dict[str, Any] = Field(default_factory=dict)
+
 
 # ---------------------------------------------------------------- projects
 

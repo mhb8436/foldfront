@@ -22,6 +22,7 @@ function notice(over: Partial<Notice> = {}): Notice {
     detail: 'run-1 — 설계 서열이 없습니다',
     href: '/monitor',
     at: '2026-09-16T01:00:00Z',
+    target_id: 'run-1',
     ...over,
   }
 }
@@ -88,7 +89,10 @@ describe('알림', () => {
   })
 
   it('갈 곳이 있는 알림만 누를 수 있다', async () => {
-    show([notice(), notice({ id: 'auth.disabled', title: '인증이 꺼져 있습니다', href: null })])
+    show([
+      notice(),
+      notice({ id: 'auth.disabled', title: '인증이 꺼져 있습니다', href: null, target_id: null }),
+    ])
     fireEvent.click(await screen.findByRole('button', { name: /알림/ }))
 
     const menu = screen.getByRole('menu', { name: '알림' })
@@ -108,5 +112,46 @@ describe('알림', () => {
     fireEvent.keyDown(window, { key: 'Escape' })
 
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+})
+
+describe('멈춘 실행 되살리기', () => {
+  const stalled = () =>
+    notice({
+      id: 'run.stalled:run-9',
+      kind: 'run.stalled',
+      title: '실행이 멈춘 듯합니다',
+      detail: 'run-9 — 62분째 변화 없음',
+      target_id: 'run-9',
+    })
+
+  it('멈춘 실행에만 되살리기를 붙인다', async () => {
+    show([stalled(), notice()])
+    fireEvent.click(await screen.findByRole('button', { name: /알림/ }))
+
+    //  A failed run is over; there is nothing to bring back.
+    expect(screen.getAllByRole('button', { name: '되살리기' })).toHaveLength(1)
+  })
+
+  it('누르면 그 실행을 점검한다', async () => {
+    const reconcile = vi
+      .spyOn(api, 'reconcileRun')
+      .mockResolvedValue({ ok: true, status: 'running', repaired: [] } as never)
+    show([stalled()])
+    fireEvent.click(await screen.findByRole('button', { name: /알림/ }))
+    fireEvent.click(screen.getByRole('button', { name: '되살리기' }))
+
+    await waitFor(() => expect(reconcile).toHaveBeenCalledWith('run-9'))
+  })
+
+  it('점검이 실패해도 알림은 남는다', async () => {
+    //  The run is still stuck, which is what the row is for.
+    vi.spyOn(api, 'reconcileRun').mockRejectedValue(new Error('끊김'))
+    show([stalled()])
+    fireEvent.click(await screen.findByRole('button', { name: /알림/ }))
+    fireEvent.click(screen.getByRole('button', { name: '되살리기' }))
+
+    await waitFor(() => expect(api.reconcileRun).toHaveBeenCalled())
+    expect(screen.getByText('실행이 멈춘 듯합니다')).toBeInTheDocument()
   })
 })

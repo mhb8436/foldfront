@@ -147,6 +147,8 @@ export interface Notice {
   detail: string
   href: string | null
   at: string | null
+  /** What the notice is about, when there is something to act on. */
+  target_id: string | null
 }
 
 export interface Summary {
@@ -376,6 +378,18 @@ export const api = {
     request<Summary>(`/summary${query({ recent, project_id })}`),
 
   notices: () => request<Listed<Notice>>('/notices'),
+
+  /** Bring one run back in step with its jobs. Harmless on a healthy run. */
+  reconcileRun: (runId: string) =>
+    request<{ ok: boolean; status: string; repaired: Array<{ node_id: string | null; did: string }> }>(
+      `/runs/${encodeURIComponent(runId)}/reconcile`,
+      { method: 'POST' },
+    ),
+
+  reconcileRuns: () =>
+    request<{ checked: number; repaired: Array<{ run_id: string }> }>('/runs/reconcile', {
+      method: 'POST',
+    }),
 
   // ------------------------------------------------------- projects
   listProjects: (include_archived = false) =>

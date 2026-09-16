@@ -23,6 +23,7 @@ from foldfront.db.models import JobStatus
 from foldfront.db.repositories import Repos
 from foldfront.engine.adapters import AdapterError, AdapterRegistry
 from foldfront.engine.payloads import PayloadError, build_payload
+from foldfront.engine.service import ExecutionService
 from foldfront.engine.results import interpret
 from foldfront.engine.router import Route
 from foldfront.engine.service import ExecutionService
@@ -119,7 +120,9 @@ class Worker:
             return True
 
         self.stats.succeeded += 1
-        await self.repos.jobs.finish(job.job_id, status=JobStatus.SUCCEEDED)
+        #  The result goes on the job first, so it survives this process
+        #  dying before the run has been told about it.
+        await self.repos.jobs.finish(job.job_id, status=JobStatus.SUCCEEDED, result=result)
         if job.node_id:
             await self.service.complete_node(
                 job.run_id, job.node_id, succeeded=True, result=result
@@ -178,10 +181,13 @@ async def run_workers(
 async def reclaim_loop(
     repos: Repos, *, interval: float = 60.0, stop: asyncio.Event | None = None
 ) -> None:
-    """Reclaim expired leases on a timer.
+    """Keep the queue and the runs honest, on a timer.
 
-    A worker that dies leaves its job LEASED. Without this loop that job is
-    locked for good and nothing reports it.
+    Two halves of the same failure. A worker that dies leaves its job LEASED,
+    and without the first half that job is locked for good. But reclaiming
+    works on jobs alone - it can fail a job and leave the run that job
+    belonged to sitting at 「실행 중」 for ever. The second half is what tells
+    the run, and what re-queues work that went missing entirely.
     """
     stop = stop or asyncio.Event()
     while not stop.is_set():
@@ -191,6 +197,12 @@ async def reclaim_loop(
                 log.info("reclaimed %d expired jobs", n)
         except Exception:
             log.exception("error in reclaim loop")
+        try:
+            report = await ExecutionService(repos).reconcile_all()
+            if report["repaired"]:
+                log.info("reconciled %d runs", len(report["repaired"]))
+        except Exception:
+            log.exception("error in reconcile loop")
         try:
             await asyncio.wait_for(stop.wait(), timeout=interval)
         except asyncio.TimeoutError:

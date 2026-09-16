@@ -1,9 +1,10 @@
-import { RotateCcw } from 'lucide-react'
+import { useState } from 'react'
+import { RotateCcw, Stethoscope } from 'lucide-react'
 
 import { api } from '../api/client'
 import { usePolling, useAsync } from '../hooks/useAsync'
 import { PageHeader } from '../components/Shell'
-import { Empty, ErrorBox, Panel, Stat, formatTime } from '../components/Common'
+import { Empty, ErrorBox, Notice, Panel, Stat, formatTime } from '../components/Common'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useIdentity } from '@/lib/identity'
@@ -14,10 +15,31 @@ export function Operations() {
   const audit = useAsync(() => api.listAudit({ limit: 100 }), [])
   const health = useAsync(() => api.health(), [])
   const { canAdmin } = useIdentity()
+  const [message, setMessage] = useState<string | null>(null)
 
   async function reclaim() {
-    await api.reclaimJobs()
+    const { reclaimed } = await api.reclaimJobs()
+    setMessage(`만료된 lease ${reclaimed}건을 큐로 되돌렸습니다.`)
     jobs.reload()
+  }
+
+  /** Reclaiming works on jobs alone. This is the other half: it tells the
+      runs those jobs belonged to, and re-queues work that went missing. */
+  async function reconcile() {
+    setMessage(null)
+    try {
+      const report = await api.reconcileRuns()
+      setMessage(
+        report.repaired.length
+          ? `진행 중인 실행 ${report.checked}건을 점검해 ${report.repaired.length}건을 고쳤습니다 — ${report.repaired
+              .map((r) => r.run_id)
+              .join(', ')}`
+          : `진행 중인 실행 ${report.checked}건 모두 작업과 맞습니다.`,
+      )
+      jobs.reload()
+    } catch (e) {
+      setMessage((e as Error).message)
+    }
   }
 
   const by = jobs.data?.by_status ?? {}
@@ -28,13 +50,20 @@ export function Operations() {
         title="운영"
         description="작업 큐 상태와 감사 로그를 확인합니다."
         actions={
-          <Button variant="outline" size="sm" onClick={reclaim} disabled={!canAdmin}>
-            <RotateCcw />
-            만료 회수
-          </Button>
+          <>
+            <Button variant="outline" size="sm" onClick={reconcile} disabled={!canAdmin}>
+              <Stethoscope />
+              정합성 점검
+            </Button>
+            <Button variant="outline" size="sm" onClick={reclaim} disabled={!canAdmin}>
+              <RotateCcw />
+              만료 회수
+            </Button>
+          </>
         }
       />
       <ErrorBox message={jobs.error ?? audit.error} />
+      <Notice message={message} />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Stat
