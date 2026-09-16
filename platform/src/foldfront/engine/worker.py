@@ -23,6 +23,7 @@ from foldfront.db.models import JobStatus
 from foldfront.db.repositories import Repos
 from foldfront.engine.adapters import AdapterError, AdapterRegistry
 from foldfront.engine.payloads import PayloadError, build_payload
+from foldfront.engine.results import interpret
 from foldfront.engine.router import Route
 from foldfront.engine.service import ExecutionService
 
@@ -102,7 +103,10 @@ class Worker:
             payload["run_id"] = job.run_id
             payload["node_id"] = job.node_id
 
-            result = await self.adapters.invoke(route, payload)
+            reply = await self.adapters.invoke(route, payload)
+            #  The adapter returns what the endpoint sent; a branch condition
+            #  reads metrics. This is where one becomes the other.
+            result = interpret(route.model_id, reply)
 
         except (AdapterError, KeyError, Exception) as exc:  # a worker never dies
             self.stats.failed += 1
