@@ -24,6 +24,7 @@ EXEMPT: dict[str, str] = {
     "lease_job": "Called continuously by every worker; recording each would drown the trail",
     "preflight": "Reads and validates, changes nothing",
     "start_run": "ExecutionService.start records run.create one layer down",
+    "start_forked_run": "ExecutionService.resume records run.start one layer down",
 }
 
 

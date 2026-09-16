@@ -230,6 +230,17 @@ async def fork_run(
     return child.model_dump()
 
 
+@router.post("/runs/{run_id}/start", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["Runs"],
+             summary="Start a forked run that is waiting")
+async def start_forked_run(run_id: str, identity: CurrentIdentity) -> dict[str, Any]:
+    """A fork is created waiting; this is what starts it. Recorded inside the
+    service alongside the event it writes."""
+    run = await ExecutionService(repos()).resume(run_id, actor_id=identity.user_id)
+    if run is None:
+        raise ApiError(E.RUN_NOT_FOUND, run_id=run_id)
+    return run.model_dump()
+
+
 @router.post("/runs/{run_id}/reconcile", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["Runs"],
              summary="Bring a run back in step with its jobs")
 async def reconcile_run(run_id: str, identity: CurrentIdentity) -> dict[str, Any]:

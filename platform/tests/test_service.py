@@ -705,3 +705,55 @@ async def test_전체_점검은_한_실행의_오류로_멈추지_않는다(seed
     assert report["checked"] == 2
     assert any(r.get("status") == "error" and r["run_id"] == bad.run_id for r in report["repaired"])
     assert good.run_id not in [r["run_id"] for r in report["repaired"] if r.get("status") == "error"]
+
+
+#  ---------------------------------------------------------------- fork 시작
+
+
+async def test_fork_한_실행은_시작하기_전까지_기다린다(seeded: Repos):
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(builtin_pipeline_workflow())
+    run = await svc.start(wf)
+    await svc.complete_node(run.run_id, "msa", succeeded=True, result={"depth": 9})
+
+    child = await seeded.runs.fork(run.run_id, from_stage="rfd3")
+
+    assert child.status is RunStatus.PENDING
+    assert await seeded.jobs.list_for_run(child.run_id) == []
+
+
+async def test_fork_를_시작하면_갈라진_단계부터_큐에_들어간다(seeded: Repos):
+    """Everything before the fork point is inherited as done; the fork point
+    is what gets queued. That is the whole reason to fork instead of rerun."""
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(builtin_pipeline_workflow())
+    run = await svc.start(wf)
+    await svc.complete_node(run.run_id, "msa", succeeded=True, result={"depth": 9})
+    child = await seeded.runs.fork(run.run_id, from_stage="rfd3")
+
+    started = await svc.resume(child.run_id, actor_id="me")
+
+    assert started.status is RunStatus.RUNNING
+    assert [j.node_id for j in await seeded.jobs.list_for_run(child.run_id)] == ["rfd3"]
+    #  물려받은 단계는 그대로, 원본은 손대지 않음
+    stages = {s.name: s for s in started.stages}
+    assert stages["msa"].status is RunStatus.SUCCEEDED
+    assert (await seeded.runs.get(run.run_id)).status is RunStatus.RUNNING
+    events = [e.message for e in await seeded.events.list(child.run_id)]
+    assert any("rfd3 단계부터 다시 시작" in m for m in events)
+    assert [a.action for a in await seeded.audit.search(action="run.start")] == ["run.start"]
+
+
+async def test_이미_도는_실행을_시작해도_아무_일도_없다(seeded: Repos):
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(builtin_pipeline_workflow())
+    run = await svc.start(wf)
+
+    again = await svc.resume(run.run_id)
+
+    assert again.status is RunStatus.RUNNING
+    assert [j.node_id for j in await seeded.jobs.list_for_run(run.run_id)] == ["msa"]
+
+
+async def test_없는_실행을_시작하면_없다고_한다(seeded: Repos):
+    assert await ExecutionService(seeded).resume("run-없음") is None

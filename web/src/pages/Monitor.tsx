@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Download, RefreshCw, X } from 'lucide-react'
+import { Download, RefreshCw, X, Play } from 'lucide-react'
 
 import { useProject } from '@/lib/project'
 import { api } from '../api/client'
@@ -102,12 +102,20 @@ export function Monitor() {
         )}
       </Panel>
 
-      {selected && <RunDetail runId={selected} onClose={() => setSelected(null)} />}
+      {selected && <RunDetail runId={selected} onClose={() => setSelected(null)} onOpen={setSelected} />}
     </>
   )
 }
 
-function RunDetail({ runId, onClose }: { runId: string; onClose: () => void }) {
+function RunDetail({
+  runId,
+  onClose,
+  onOpen,
+}: {
+  runId: string
+  onClose: () => void
+  onOpen: (runId: string) => void
+}) {
   const run = usePolling(() => api.getRun(runId), 3000, [runId])
   const events = usePolling(() => api.listEvents(runId), 3000, [runId])
   const artifacts = useAsync(() => api.listArtifacts(runId), [runId])
@@ -139,8 +147,16 @@ function RunDetail({ runId, onClose }: { runId: string; onClose: () => void }) {
   }
 
   async function fork(stage: string) {
-    await api.forkRun(runId, stage)
-    onClose()
+    //  Open the fork rather than close this: it is created waiting, and the
+    //  button that starts it is on its own screen.
+    const child = await api.forkRun(runId, stage)
+    onOpen(child.run_id)
+  }
+
+  async function start() {
+    await api.startForkedRun(runId)
+    run.reload()
+    events.reload()
   }
 
   return (
@@ -148,6 +164,12 @@ function RunDetail({ runId, onClose }: { runId: string; onClose: () => void }) {
       title={`실행 상세 — ${runId}`}
       actions={
         <>
+          {run.data?.status === 'pending' && canRun && (
+            <Button size="sm" onClick={start}>
+              <Play />
+              시작
+            </Button>
+          )}
           {run.data?.status === 'running' && canRun && (
             <>
               <Button variant="outline" size="sm" onClick={reconcile}>
@@ -172,7 +194,7 @@ function RunDetail({ runId, onClose }: { runId: string; onClose: () => void }) {
           <p className="text-muted-foreground text-[13px]">
             <code className="font-mono">{run.data.forked_from_run_id}</code> 의{' '}
             <code className="font-mono">{run.data.forked_from_stage}</code> 단계에서 갈라진
-            실행입니다.
+            실행입니다.{run.data.status === 'pending' && ' 「시작」을 누르면 그 단계부터 돕니다.'}
           </p>
         )}
       </div>
@@ -214,7 +236,7 @@ function RunDetail({ runId, onClose }: { runId: string; onClose: () => void }) {
                       .filter(([k]) => !k.startsWith('_'))
                       .map(([k, v]) => (
                         <span key={k} className="mr-3 inline-block" title={metricTerm(k)?.hint}>
-                          {k}={String(v)}
+                          {k}={Array.isArray(v) ? `${v.length}개` : v !== null && typeof v === 'object' ? `${Object.keys(v as object).length}항목` : String(v)}
                         </span>
                       ))}
               </TableCell>

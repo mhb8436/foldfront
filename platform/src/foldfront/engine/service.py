@@ -110,6 +110,46 @@ class ExecutionService:
 
         return await self.repos.runs.get(run.run_id) or run
 
+    async def resume(self, run_id: str, *, actor_id: str | None = None) -> Run | None:
+        """Start a run that exists but has not begun - a fork, waiting.
+
+        A fork inherits the stages before the point it forked from, as
+        succeeded, and nothing after. Starting it is rebuilding the plan from
+        those stages and queueing what they make ready - the same step the
+        original took at its own start, from further along.
+        """
+        run = await self.repos.runs.get(run_id)
+        if run is None:
+            return None
+        if run.status is not RunStatus.PENDING:
+            #  Already going, or already over. Neither is a start.
+            return run
+
+        loaded = await self.load_plan(run_id)
+        if loaded is None:
+            await self.repos.runs.set_status(run_id, RunStatus.FAILED, error="실행 계획을 복원하지 못했습니다")
+            return await self.repos.runs.get(run_id)
+        graph, plan = loaded
+
+        await self.repos.runs.set_status(run_id, RunStatus.RUNNING)
+        await self.repos.events.append(
+            run_id,
+            f"{run.forked_from_stage} 단계부터 다시 시작했습니다" if run.forked_from_stage else "실행을 시작했습니다",
+        )
+        await self.repos.audit.record(
+            "run.start", actor_id=actor_id, target_type="run", target_id=run_id,
+            detail={"forked_from": run.forked_from_run_id, "from_stage": run.forked_from_stage},
+        )
+        if run.round_id:
+            await self.repos.rounds.link_runs(run.round_id, [run_id])
+
+        await self._enqueue_ready(run_id, graph, plan, request=dict(run.request or {}))
+        if plan.done():
+            final = RunStatus.SUCCEEDED if plan.succeeded() else RunStatus.FAILED
+            await self.repos.runs.set_status(run_id, final)
+            await self.repos.events.append(run_id, f"실행이 끝났습니다 ({final})")
+        return await self.repos.runs.get(run_id)
+
     # ------------------------------------------------------------ progress
 
     async def load_plan(self, run_id: str) -> tuple[Graph, ExecutionPlan] | None:
