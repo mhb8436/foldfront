@@ -386,6 +386,10 @@ export const api = {
       { method: 'POST' },
     ),
 
+  /** A fork is created waiting; this starts it from the stage it forked at. */
+  startForkedRun: (runId: string) =>
+    request<Run>(`/runs/${encodeURIComponent(runId)}/start`, { method: 'POST' }),
+
   reconcileRuns: () =>
     request<{ checked: number; repaired: Array<{ run_id: string }> }>('/runs/reconcile', {
       method: 'POST',
