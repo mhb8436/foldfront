@@ -18,6 +18,7 @@ import {
 
 import { api } from '../api/client'
 import { branding } from '@/lib/branding'
+import { ROLE_LABEL, type Role, useIdentity } from '@/lib/identity'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -37,6 +38,8 @@ type Item = {
   icon?: ComponentType<{ className?: string }>
   badge?: string
   children?: Item[]
+  /** Hidden unless the caller holds one of these. Absent means everyone. */
+  roles?: Role[]
 }
 
 const NAV: Array<{ section: string; items: Item[] }> = [
@@ -60,7 +63,7 @@ const NAV: Array<{ section: string; items: Item[] }> = [
     section: '관리',
     items: [
       { to: '/models', label: '모델 관리', icon: Layers },
-      { to: '/operations', label: '운영', icon: Settings2 },
+      { to: '/operations', label: '운영', icon: Settings2, roles: ['admin'] },
       { label: '설계 Copilot', icon: MessageSquare, badge: '예정' },
     ],
   },
@@ -155,6 +158,8 @@ export function Shell({ children }: { children: ReactNode }) {
   const [dark, setDark] = useDarkMode()
   const health = useHealth()
   const { pathname } = useLocation()
+  const { identity, is } = useIdentity()
+  const role = identity?.roles[0] as Role | undefined
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -210,8 +215,19 @@ export function Shell({ children }: { children: ReactNode }) {
         <Button variant="ghost" size="icon" className="size-8" aria-label="알림">
           <Bell className="size-4" />
         </Button>
-        <div className="bg-primary text-primary-foreground flex size-7 items-center justify-center rounded-full text-[12px] font-semibold">
-          K
+        {/*  Who is signed in, and as what. Previously a fixed letter and a
+            fixed label, which said nothing and could be wrong. */}
+        <div className="flex items-center gap-2">
+          <div className="bg-primary text-primary-foreground flex size-7 items-center justify-center rounded-full text-[12px] font-semibold uppercase">
+            {(identity?.user_id ?? '?').slice(0, 1)}
+          </div>
+          <div className="hidden flex-col leading-tight lg:flex">
+            <span className="text-[12.5px] font-medium">{identity?.user_id ?? '—'}</span>
+            <span className="text-muted-foreground text-[11px]">
+              {role ? ROLE_LABEL[role] : '권한 없음'}
+              {identity && !identity.authenticated && ' · 인증 꺼짐'}
+            </span>
+          </div>
         </div>
       </header>
 
@@ -232,7 +248,9 @@ export function Shell({ children }: { children: ReactNode }) {
               )}
               {collapsed && <Separator className="my-2" />}
               <div className="flex flex-col gap-0.5">
-                {group.items.map((item) =>
+                {group.items
+                  .filter((item) => !item.roles || is(...item.roles))
+                  .map((item) =>
                   item.children ? (
                     <div key={item.label} className="flex flex-col gap-0.5">
                       <NavItem item={{ ...item, to: undefined, badge: undefined }} collapsed={collapsed} />

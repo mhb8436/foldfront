@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     api_port: int = Field(default=18090, alias="API_PORT")
 
     #  How long a worker may hold a job, in seconds
+    #  Role the development identity carries while OIDC is off. Lets the
+    #  console be seen as a viewer or a researcher without an identity provider.
+    dev_role: str = Field(default="admin", alias="DEV_ROLE")
+
     job_lease_seconds: int = Field(default=900, alias="JOB_LEASE_SECONDS")
 
 
