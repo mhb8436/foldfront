@@ -218,10 +218,10 @@ job 이 실제로 남긴 것만 stage 로 옮기고, job 이 없는 노드는 �
 docker compose -f platform/docker-compose.yml up -d    # MongoDB
 uv run pytest platform/tests -q                        # 342건
 cd web && npm test                                     # 128건
-cd web && npm run e2e                                  # 전 과정 1건 (브라우저, 실제 워커)
+cd web && npm run e2e                                  # 화면 시나리오 6건 (브라우저, 실제 워커, 약 40초)
 ```
 
-현재 **470건 통과**(백엔드 342 · 화면 128) + **전 과정 통합 시나리오 1건**(Playwright, 11단계, 6초).
+현재 **470건 통과**(백엔드 342 · 화면 128) + **화면 시나리오 6건**(Playwright — 전 과정 · 실패 경로 · 되살리기 · 조회자 · fork 시작 · 캔버스 간선 잇기).
 백엔드 시험은 실제 MongoDB 에 붙어 돈다. 통합 시나리오는 `docs/e2e/` 에 단계별 캡처를 남긴다.
 
 ## 남은 일
