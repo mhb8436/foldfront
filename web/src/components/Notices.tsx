@@ -89,6 +89,22 @@ export function Notices() {
   }
 
   const navigate = useNavigate()
+  const [repairing, setRepairing] = useState<string | null>(null)
+
+  async function repair(runId: string) {
+    setRepairing(runId)
+    try {
+      await api.reconcileRun(runId)
+      //  Straight away rather than on the next poll: pressing a button and
+      //  watching nothing change reads as the button not working.
+      notices.reload()
+    } catch {
+      //  The notice stays. Whatever went wrong, the run is still stuck, and
+      //  that is the thing this row is for.
+    } finally {
+      setRepairing(null)
+    }
+  }
 
   return (
     <div ref={ref} className="relative">
@@ -132,23 +148,19 @@ export function Notices() {
             </p>
           ) : (
             <div className="p-1">
-              {items.map((n) => {
-                const Row = n.href ? 'button' : 'div'
-                return (
-                  <Row
-                    key={n.id}
-                    {...(n.href
-                      ? {
-                          role: 'menuitem' as const,
-                          type: 'button' as const,
-                          onClick: () => {
-                            navigate(n.href!)
-                            setOpen(false)
-                          },
-                        }
-                      : {})}
+              {items.map((n) => (
+                <div key={n.id} className="flex items-start gap-1">
+                  <button
+                    {...(n.href ? { role: 'menuitem' as const } : {})}
+                    type="button"
+                    disabled={!n.href}
+                    onClick={() => {
+                      if (!n.href) return
+                      navigate(n.href)
+                      setOpen(false)
+                    }}
                     className={cn(
-                      'flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left',
+                      'flex min-w-0 flex-1 items-start gap-2.5 rounded-md px-2.5 py-2 text-left',
                       n.href && 'hover:bg-accent focus-visible:bg-accent cursor-pointer outline-none',
                     )}
                   >
@@ -164,9 +176,23 @@ export function Notices() {
                         </span>
                       )}
                     </span>
-                  </Row>
-                )
-              })}
+                  </button>
+
+                  {/*  Only where there is a repair to run. Saying a run has
+                      stopped and leaving nothing to press is half a message. */}
+                  {n.kind === 'run.stalled' && n.target_id && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-1.5 shrink-0"
+                      disabled={repairing === n.target_id}
+                      onClick={() => repair(n.target_id!)}
+                    >
+                      {repairing === n.target_id ? '점검 중' : '되살리기'}
+                    </Button>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </div>

@@ -201,6 +201,34 @@ async def fork_run(
     return child.model_dump()
 
 
+@router.post("/runs/{run_id}/reconcile", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["Runs"],
+             summary="Bring a run back in step with its jobs")
+async def reconcile_run(run_id: str, identity: CurrentIdentity) -> dict[str, Any]:
+    """Repair a run that cannot progress. Does nothing to a healthy one."""
+    r = repos()
+    report = await ExecutionService(r).reconcile(run_id)
+    if not report.get("ok"):
+        raise ApiError(E.RUN_NOT_FOUND, run_id=run_id)
+    await r.audit.record(
+        "run.reconcile", actor_id=identity.user_id, target_type="run", target_id=run_id,
+        detail={"repaired": len(report.get("repaired", []))},
+    )
+    return report
+
+
+@router.post("/runs/reconcile", dependencies=[Depends(require(Role.ADMIN))], tags=["Operations"],
+             summary="Reconcile every run still in flight")
+async def reconcile_runs(identity: CurrentIdentity) -> dict[str, Any]:
+    r = repos()
+    report = await ExecutionService(r).reconcile_all()
+    #  Recorded even at zero: it says an operator looked, and when.
+    await r.audit.record(
+        "runs.reconcile", actor_id=identity.user_id, target_type="run",
+        detail={"checked": report["checked"], "repaired": len(report["repaired"])},
+    )
+    return report
+
+
 @router.post("/runs/{run_id}/cancel", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["Runs"], summary="Cancel a run")
 async def cancel_run(
     run_id: str, identity: CurrentIdentity, reason: str = "사용자 취소",
@@ -486,6 +514,7 @@ def _notice(
     detail: str,
     href: str | None = None,
     at: datetime | None = None,
+    target_id: str | None = None,
 ) -> dict[str, Any]:
     #  The identifier has to be stable across polls: the console marks a
     #  notice read by remembering it, and an id that changed every few
@@ -498,6 +527,9 @@ def _notice(
         "detail": detail,
         "href": href,
         "at": at,
+        #  What the notice is about, so the console can offer the repair
+        #  without having to take the identifier apart.
+        "target_id": target_id,
     }
 
 
@@ -556,6 +588,7 @@ async def notices(identity: CurrentIdentity) -> dict[str, Any]:
                 detail=f"{run.run_id} — {failed.error if failed and failed.error else '사유 미기록'}",
                 href="/monitor",
                 at=run.finished_at,
+                target_id=run.run_id,
             ))
         elif str(run.status) == "running" and now - run.updated_at > STALLED_AFTER:
             items.append(_notice(
@@ -565,6 +598,7 @@ async def notices(identity: CurrentIdentity) -> dict[str, Any]:
                 detail=f"{run.run_id} — {int((now - run.updated_at).total_seconds() // 60)}분째 변화 없음",
                 href="/monitor",
                 at=run.updated_at,
+                target_id=run.run_id,
             ))
 
     #  Newest first, and a notice with no time of its own last: the auth

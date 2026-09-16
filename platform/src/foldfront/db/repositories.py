@@ -418,12 +418,17 @@ class JobRepo(BaseRepo):
         return Job(**_clean(doc)) if doc else None
 
     async def finish(
-        self, job_id: str, *, status: JobStatus, error: str | None = None
+        self,
+        job_id: str,
+        *,
+        status: JobStatus,
+        error: str | None = None,
+        result: dict[str, Any] | None = None,
     ) -> Job | None:
         doc = await self.col.find_one_and_update(
             {"job_id": job_id},
             {"$set": {
-                "status": status, "error": error,
+                "status": status, "error": error, "result": dict(result or {}),
                 "finished_at": utcnow(), "updated_at": utcnow(),
             }},
             return_document=ReturnDocument.AFTER,

@@ -305,6 +305,130 @@ class ExecutionService:
 
         return queued
 
+    # ------------------------------------------------------------ repair
+
+    async def reconcile(self, run_id: str) -> dict[str, Any]:
+        """Bring a run back in step with its jobs.
+
+        A run and its jobs are written separately, so they can disagree. Three
+        ways, all of which leave a run that will never move again:
+
+        - A job finished but the run was never told. The worker records the
+          job and then the stage; a worker that dies between those two writes
+          leaves the work done and the run still waiting for it.
+        - A lease expired past the retry limit. `reclaim_expired` fails the
+          job, but it works on jobs alone and has no way to fail the run the
+          job belonged to.
+        - A job went missing. Whatever the cause, a run whose next node has no
+          job is waiting for something that will never arrive.
+
+        Nothing here invents an outcome. A stage is only moved to match a job
+        that actually recorded one, and a node with no job is queued again -
+        which is what would have happened had the job never been lost.
+
+        Safe to run on anything: a run that agrees with its jobs is left
+        alone, and the report says so.
+        """
+        run = await self.repos.runs.get(run_id)
+        if run is None:
+            return {"ok": False, "error": "실행을 찾지 못했습니다"}
+        if run.status not in (RunStatus.PENDING, RunStatus.RUNNING):
+            #  A finished run disagreeing with its jobs is history, not a fault
+            #  to repair: moving it now would rewrite what was reported.
+            return {"ok": True, "run_id": run_id, "status": str(run.status), "repaired": []}
+
+        stages = {s.name: s for s in run.stages}
+        jobs = await self.repos.jobs.list_for_run(run_id)
+        repaired: list[dict[str, Any]] = []
+
+        for job in jobs:
+            if not job.node_id:
+                continue
+            stage = stages.get(job.node_id)
+            settled = stage is not None and stage.status in (
+                RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.CANCELLED
+            )
+            if settled:
+                continue
+
+            if str(job.status) == "succeeded":
+                #  An empty result is not the same as no result: a node that
+                #  really returned nothing is recorded as such, and one whose
+                #  result was lost fails rather than feeding nothing onward.
+                if job.result:
+                    await self.complete_node(
+                        run_id, job.node_id, succeeded=True, result=dict(job.result),
+                    )
+                    repaired.append({"node_id": job.node_id, "did": "결과를 실행에 기록했습니다"})
+                else:
+                    await self.complete_node(
+                        run_id, job.node_id, succeeded=False,
+                        error="작업은 끝났으나 결과가 남지 않았습니다. 다시 실행하십시오.",
+                    )
+                    repaired.append({"node_id": job.node_id, "did": "결과를 잃어 실패로 표시했습니다"})
+            elif str(job.status) in ("failed", "cancelled"):
+                await self.complete_node(
+                    run_id, job.node_id, succeeded=False,
+                    error=job.error or "작업이 끝나지 못했습니다",
+                )
+                repaired.append({"node_id": job.node_id, "did": "작업 실패를 실행에 반영했습니다"})
+
+        #  Re-read: completing a node above may have finished the run.
+        run = await self.repos.runs.get(run_id)
+        if run is None or run.status not in (RunStatus.PENDING, RunStatus.RUNNING):
+            return {"ok": True, "run_id": run_id,
+                    "status": str(run.status) if run else "unknown", "repaired": repaired}
+
+        alive = [j for j in await self.repos.jobs.list_for_run(run_id)
+                 if str(j.status) in ("queued", "leased", "running")]
+        if alive:
+            return {"ok": True, "run_id": run_id, "status": str(run.status), "repaired": repaired}
+
+        #  Still live with nothing on the queue. Whatever it was waiting for is
+        #  not coming, so work out what should be running and queue that.
+        loaded = await self.load_plan(run_id)
+        if loaded is None:
+            await self.repos.runs.set_status(
+                run_id, RunStatus.FAILED, error="실행 계획을 복원하지 못했습니다",
+            )
+            repaired.append({"node_id": None, "did": "계획을 복원하지 못해 실패로 닫았습니다"})
+            return {"ok": True, "run_id": run_id, "status": "failed", "repaired": repaired}
+
+        graph, plan = loaded
+        queued = await self._enqueue_ready(run_id, graph, plan)
+        if queued:
+            await self.repos.events.append(
+                run_id, f"정합성 점검으로 {', '.join(queued)} 을(를) 다시 큐에 넣었습니다",
+                level="warning",
+            )
+            repaired.append({"node_id": ", ".join(queued), "did": "잃어버린 작업을 다시 큐에 넣었습니다"})
+        elif plan.done():
+            final = RunStatus.SUCCEEDED if plan.succeeded() else RunStatus.FAILED
+            await self.repos.runs.set_status(run_id, final)
+            await self.repos.events.append(run_id, f"정합성 점검으로 실행을 닫았습니다 ({final})")
+            repaired.append({"node_id": None, "did": f"끝난 실행을 {final} 로 닫았습니다"})
+
+        run = await self.repos.runs.get(run_id)
+        return {"ok": True, "run_id": run_id,
+                "status": str(run.status) if run else "unknown", "repaired": repaired}
+
+    async def reconcile_all(self, *, limit: int = 200) -> dict[str, Any]:
+        """Reconcile every run that is still supposed to be going.
+
+        One query per live run, which is fine while live runs number in the
+        hundreds. If that stops being true, narrow the candidates first - a
+        run with an active job needs no attention.
+        """
+        checked = 0
+        repaired: list[dict[str, Any]] = []
+        for status in (RunStatus.RUNNING, RunStatus.PENDING):
+            for run in await self.repos.runs.list(status=status, limit=limit):
+                checked += 1
+                report = await self.reconcile(run.run_id)
+                if report.get("repaired"):
+                    repaired.append(report)
+        return {"checked": checked, "repaired": repaired}
+
     # ------------------------------------------------------------ cancel
 
     async def cancel(self, run_id: str, *, reason: str = "사용자 취소") -> Run | None:
