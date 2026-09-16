@@ -9,6 +9,7 @@ import { Monitor } from './pages/Monitor'
 import { Analyze } from './pages/Analyze'
 import { Models } from './pages/Models'
 import { Operations } from './pages/Operations'
+import { Users } from './pages/Users'
 
 export function App() {
   return (
@@ -23,6 +24,7 @@ export function App() {
         <Route path="/analyze" element={<Analyze />} />
         <Route path="/models" element={<Models />} />
         <Route path="/operations" element={<Operations />} />
+        <Route path="/users" element={<Users />} />
       </Routes>
     </Shell>
   )

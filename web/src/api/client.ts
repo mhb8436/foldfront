@@ -151,6 +151,16 @@ export interface Notice {
   target_id: string | null
 }
 
+export interface UserAccount {
+  user_id: string
+  subject: string | null
+  email: string | null
+  display_name: string | null
+  roles: string[]
+  active: boolean
+  last_login_at: string | null
+}
+
 export interface Summary {
   runs: {
     total: number
@@ -419,6 +429,15 @@ export const api = {
   pruneInputs: (days?: number) =>
     request<{ days: number; removed: number; freed_bytes: number }>(`/inputs/prune${query({ days })}`, {
       method: 'POST',
+    }),
+
+  // ---------------------------------------------------------- users
+  listUsers: () => request<Listed<UserAccount>>('/users'),
+
+  patchUser: (userId: string, patch: { roles?: string[]; active?: boolean }) =>
+    request<UserAccount>(`/users/${encodeURIComponent(userId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
     }),
 
   // ------------------------------------------------------- projects

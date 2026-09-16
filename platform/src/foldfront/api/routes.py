@@ -523,6 +523,52 @@ async def create_round(round_: Round, identity: CurrentIdentity) -> dict[str, An
     return saved.model_dump()
 
 
+# ---------------------------------------------------------------- users
+
+
+class UserPatch(BaseModel):
+    roles: list[Role] | None = None
+    active: bool | None = None
+
+
+@router.get("/users", dependencies=[Depends(require(Role.ADMIN))], tags=["Operations"],
+            summary="Everyone who has signed in, and what they may do")
+async def list_users() -> dict[str, Any]:
+    items = await repos().users.list()
+    return {"items": [u.model_dump() for u in items], "count": len(items)}
+
+
+@router.patch("/users/{user_id}", dependencies=[Depends(require(Role.ADMIN))], tags=["Operations"],
+              summary="Set an account's roles, or switch it off")
+async def patch_user(user_id: str, patch: UserPatch, identity: CurrentIdentity) -> dict[str, Any]:
+    """An operator's decision about an account. Two things it will not do:
+    leave the installation with no active operator, and let the operator do
+    that to themselves by accident."""
+    r = repos()
+    current = await r.users.get(user_id)
+    if current is None:
+        raise ApiError(E.USER_NOT_FOUND, user_id=user_id)
+
+    losing_admin = (
+        Role.ADMIN in current.roles and current.active
+        and ((patch.roles is not None and Role.ADMIN not in patch.roles) or patch.active is False)
+    )
+    if losing_admin and await r.users.active_admins() <= 1:
+        raise ApiError(E.USER_LAST_ADMIN, user_id=user_id)
+
+    if patch.roles is not None:
+        await r.users.set_roles(user_id, patch.roles)
+    if patch.active is not None:
+        await r.users.set_active(user_id, patch.active)
+    updated = await r.users.get(user_id)
+    await r.audit.record(
+        "user.update", actor_id=identity.user_id, target_type="user", target_id=user_id,
+        detail={"roles": [str(x) for x in (patch.roles or [])] if patch.roles is not None else None,
+                "active": patch.active},
+    )
+    return updated.model_dump() if updated else {}
+
+
 # ---------------------------------------------------------------- identity
 
 

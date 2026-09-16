@@ -18,6 +18,8 @@ from pymongo import ASCENDING, DESCENDING, ReturnDocument
 
 from foldfront.db.client import C, get_db
 from foldfront.db.models import (
+    Role,
+    User,
     InputFile,
     Artifact,
     AuditLog,
@@ -748,6 +750,61 @@ class InputRepo(BaseRepo):
         return [InputFile(**_clean(d)) for d in await cur.to_list(length=limit)]
 
 
+class UserRepo(BaseRepo):
+    """Who has used the console, and what an operator has decided about them.
+
+    The identity provider says who someone is and, coarsely, what they are -
+    the original's tokens carry admin or user and nothing finer. What it
+    cannot say is that this researcher is a viewer here, or that this account
+    is a service account. That is an operator's decision, and it lives here.
+    """
+
+    @property
+    def col(self):
+        return self.db[C.USERS]
+
+    async def get(self, user_id: str) -> User | None:
+        d = await self.col.find_one({"user_id": user_id})
+        return User(**_clean(d)) if d else None
+
+    async def seen(self, user_id: str, *, subject: str | None, email: str | None,
+                   roles: list[Role]) -> User:
+        """Record a sign-in. A first sign-in creates the record with the roles
+        the provider gave; a later one only stamps the time. What an operator
+        set is never overwritten by the provider."""
+        now = utcnow()
+        d = await self.col.find_one_and_update(
+            {"user_id": user_id},
+            {"$set": {"last_login_at": now, "updated_at": now, "email": email or None},
+             "$setOnInsert": {"user_id": user_id, "subject": subject or None,
+                              "roles": [str(r) for r in roles], "active": True, "created_at": now}},
+            upsert=True, return_document=ReturnDocument.AFTER,
+        )
+        return User(**_clean(d))
+
+    async def list(self, *, limit: int = 500) -> list[User]:
+        cur = self.col.find({}).sort("last_login_at", DESCENDING).limit(limit)
+        return [User(**_clean(d)) for d in await cur.to_list(length=limit)]
+
+    async def set_roles(self, user_id: str, roles: list[Role]) -> User | None:
+        d = await self.col.find_one_and_update(
+            {"user_id": user_id},
+            {"$set": {"roles": [str(r) for r in roles], "updated_at": utcnow()}},
+            return_document=ReturnDocument.AFTER,
+        )
+        return User(**_clean(d)) if d else None
+
+    async def set_active(self, user_id: str, active: bool) -> User | None:
+        d = await self.col.find_one_and_update(
+            {"user_id": user_id}, {"$set": {"active": active, "updated_at": utcnow()}},
+            return_document=ReturnDocument.AFTER,
+        )
+        return User(**_clean(d)) if d else None
+
+    async def active_admins(self) -> int:
+        return await self.col.count_documents({"active": True, "roles": str(Role.ADMIN)})
+
+
 class Repos:
     """All repositories in one object, so callers carry a single handle."""
 
@@ -766,4 +823,5 @@ class Repos:
         self.experiments = RecordRepo(C.EXPERIMENTS, db)
         self.reports = ReportRepo(db)
         self.audit = AuditRepo(db)
+        self.users = UserRepo(db)
         self.inputs = InputRepo(db)

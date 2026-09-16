@@ -60,6 +60,8 @@ class E(StrEnum):
     INPUT_QUOTA_EXCEEDED = "input.quota_exceeded"
     ROUND_NOT_IN_PROJECT = "round.not_in_project"
     PROJECT_NOT_FOUND = "project.not_found"
+    USER_NOT_FOUND = "user.not_found"
+    USER_LAST_ADMIN = "user.last_admin"
     MODEL_NOT_FOUND = "model.not_found"
     MODEL_UNRESOLVABLE = "model.unresolvable"
 
@@ -88,6 +90,8 @@ STATUS: dict[E, int] = {
     E.INPUT_QUOTA_EXCEEDED: 413,
     E.ROUND_NOT_IN_PROJECT: 400,
     E.PROJECT_NOT_FOUND: 404,
+    E.USER_NOT_FOUND: 404,
+    E.USER_LAST_ADMIN: 409,
     E.MODEL_NOT_FOUND: 404,
     E.MODEL_UNRESOLVABLE: 404,
 }
@@ -118,6 +122,8 @@ MESSAGES: dict[str, dict[E, str]] = {
         E.INPUT_QUOTA_EXCEEDED: "올린 파일이 한도를 넘습니다. {used_mb}MB 보관 중, 한도 {quota_mb}MB. 실행에 쓰이지 않은 파일은 {days}일 뒤 자동으로 지워집니다.",
         E.ROUND_NOT_IN_PROJECT: "회차 {round_id} 는 프로젝트 {project_id} 의 것이 아닙니다.",
         E.PROJECT_NOT_FOUND: "프로젝트를 찾지 못했습니다: {project_id}",
+        E.USER_NOT_FOUND: "이용자를 찾지 못했습니다: {user_id}",
+        E.USER_LAST_ADMIN: "{user_id} 는 마지막 운영자입니다. 다른 운영자를 먼저 두십시오.",
         E.MODEL_NOT_FOUND: "모델을 찾지 못했습니다: {model_id}",
         E.MODEL_UNRESOLVABLE: "모델의 실행 위치를 해석하지 못했습니다: {reason}",
     },
@@ -143,6 +149,8 @@ MESSAGES: dict[str, dict[E, str]] = {
         E.INPUT_QUOTA_EXCEEDED: "Your uploads exceed the limit: {used_mb}MB stored of {quota_mb}MB. Files no run has read are removed after {days} days.",
         E.ROUND_NOT_IN_PROJECT: "Round {round_id} does not belong to project {project_id}.",
         E.PROJECT_NOT_FOUND: "No such project: {project_id}",
+        E.USER_NOT_FOUND: "No such user: {user_id}",
+        E.USER_LAST_ADMIN: "{user_id} is the last operator. Appoint another first.",
         E.MODEL_NOT_FOUND: "No such model: {model_id}",
         E.MODEL_UNRESOLVABLE: "The model could not be resolved to an endpoint: {reason}",
     },
