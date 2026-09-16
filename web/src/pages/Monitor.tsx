@@ -4,6 +4,7 @@ import { Download, RefreshCw, X } from 'lucide-react'
 import { api } from '../api/client'
 import { StructureViewer } from '../components/StructureViewer'
 import { metricTerm, stageTerm } from '@/lib/glossary'
+import { useIdentity } from '@/lib/identity'
 import { usePolling, useAsync } from '../hooks/useAsync'
 import { PageHeader } from '../components/Shell'
 import {
@@ -108,6 +109,7 @@ function RunDetail({ runId, onClose }: { runId: string; onClose: () => void }) {
   const events = usePolling(() => api.listEvents(runId), 3000, [runId])
   const artifacts = useAsync(() => api.listArtifacts(runId), [runId])
   const [structure, setStructure] = useState<string | null>(null)
+  const { canRun } = useIdentity()
 
   async function cancel() {
     await api.cancelRun(runId, '화면에서 취소')
@@ -124,7 +126,7 @@ function RunDetail({ runId, onClose }: { runId: string; onClose: () => void }) {
       title={`실행 상세 — ${runId}`}
       actions={
         <>
-          {run.data?.status === 'running' && (
+          {run.data?.status === 'running' && canRun && (
             <Button variant="outline" size="sm" onClick={cancel}>
               취소
             </Button>

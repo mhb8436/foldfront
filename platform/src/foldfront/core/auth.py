@@ -54,15 +54,18 @@ class Identity:
         return any(r in self.roles for r in wanted)
 
 
-#  Stands in while authentication is off. Same shape as a real identity, so
-#  the permission checks run down one path rather than two.
-DEV_IDENTITY = Identity(
-    user_id="dev",
-    subject="dev",
-    email="",
-    roles=(Role.ADMIN,),
-    authenticated=False,
-)
+def dev_identity() -> Identity:
+    """Stands in while authentication is off.
+
+    Same shape as a real identity, so the permission checks run down one path
+    rather than two. Its role comes from DEV_ROLE, which is how the console can
+    be seen as a viewer without standing up an identity provider.
+    """
+    try:
+        role = Role(get_settings().dev_role)
+    except ValueError:
+        role = Role.ADMIN
+    return Identity(user_id="dev", subject="dev", email="", roles=(role,), authenticated=False)
 
 
 def oidc_enabled() -> bool:
@@ -108,7 +111,7 @@ async def current_identity(
 ) -> Identity:
     """The identity behind a request, or the development stand-in."""
     if not oidc_enabled():
-        return DEV_IDENTITY
+        return dev_identity()
 
     if not authorization or not authorization.lower().startswith("bearer "):
         raise ApiError(E.AUTH_TOKEN_REQUIRED)

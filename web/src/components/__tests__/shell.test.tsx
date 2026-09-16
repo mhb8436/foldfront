@@ -10,6 +10,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { api } from '../../api/client'
+import { IdentityProvider } from '../../lib/identity'
 import { Shell, PageHeader } from '../Shell'
 
 beforeEach(() => {
@@ -20,12 +21,17 @@ beforeEach(() => {
   vi.spyOn(api, 'health').mockReturnValue(new Promise(() => {}) as never)
 })
 
-function mount(path = '/monitor') {
+function mount(path = '/monitor', roles = ['admin']) {
+  vi.spyOn(api, 'me').mockResolvedValue({
+    user_id: 'tester', email: '', roles, authenticated: true, auth_mode: 'oidc',
+  } as never)
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <Shell>
-        <PageHeader title="실행 감시" description="상태를 확인합니다." />
-      </Shell>
+      <IdentityProvider>
+        <Shell>
+          <PageHeader title="실행 감시" description="상태를 확인합니다." />
+        </Shell>
+      </IdentityProvider>
     </MemoryRouter>,
   )
 }
@@ -43,8 +49,9 @@ describe('콘솔 골격', () => {
     expect(screen.getByRole('heading', { name: '실행 감시' })).toBeInTheDocument()
   })
 
-  it('좌측 내비게이션에 대메뉴와 하위 메뉴를 둔다', () => {
+  it('좌측 내비게이션에 대메뉴와 하위 메뉴를 둔다', async () => {
     const { container } = mount()
+    await screen.findByText('tester')
     const nav = container.querySelector('nav')!
 
     for (const section of ['설계', '관리']) {
@@ -65,8 +72,9 @@ describe('콘솔 골격', () => {
     }
   })
 
-  it('미구현 메뉴는 링크가 아니라 「예정」으로 표시한다', () => {
+  it('미구현 메뉴는 링크가 아니라 「예정」으로 표시한다', async () => {
     const { container } = mount()
+    await screen.findByText('tester')
     const nav = container.querySelector('nav')!
     const hrefs = Array.from(nav.querySelectorAll('a')).map((a) => a.getAttribute('href'))
 
@@ -75,8 +83,9 @@ describe('콘솔 골격', () => {
     expect(nav.textContent).toContain('예정')
   })
 
-  it('현재 경로의 메뉴만 활성 표시한다', () => {
+  it('현재 경로의 메뉴만 활성 표시한다', async () => {
     const { container } = mount('/models')
+    await screen.findByText('tester')
     const active = Array.from(container.querySelectorAll('nav a.bg-accent'))
 
     expect(active).toHaveLength(1)
@@ -111,3 +120,44 @@ describe('콘솔 골격', () => {
 function within(root: Element, text: string): boolean {
   return (root.textContent ?? '').includes(text)
 }
+
+
+describe('권한에 따른 메뉴', () => {
+  it('운영자에게는 운영 메뉴가 보인다', async () => {
+    const { container } = mount('/monitor', ['admin'])
+    await screen.findByText('tester')
+
+    expect(container.querySelector('nav')!.textContent).toContain('운영')
+  })
+
+  it('조회자에게는 운영 메뉴를 감춘다', async () => {
+    const { container } = mount('/monitor', ['viewer'])
+    await screen.findByText('tester')
+
+    expect(container.querySelector('nav')!.textContent).not.toContain('운영')
+  })
+
+  it('헤더에 실제 이용자와 역할을 낸다', async () => {
+    mount('/monitor', ['researcher'])
+
+    expect(await screen.findByText('tester')).toBeInTheDocument()
+    expect(screen.getByText('연구자')).toBeInTheDocument()
+  })
+
+  it('인증이 꺼져 있으면 그 사실을 함께 낸다', async () => {
+    vi.spyOn(api, 'me').mockResolvedValue({
+      user_id: 'dev', email: '', roles: ['admin'], authenticated: false, auth_mode: 'disabled',
+    } as never)
+    render(
+      <MemoryRouter>
+        <IdentityProvider>
+          <Shell>
+            <PageHeader title="x" />
+          </Shell>
+        </IdentityProvider>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText(/인증 꺼짐/)).toBeInTheDocument()
+  })
+})

@@ -16,6 +16,7 @@ import {
   formatTime,
 } from '../components/Common'
 import { stageTerm } from '@/lib/glossary'
+import { useIdentity } from '@/lib/identity'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -31,6 +32,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 export function Dashboard() {
   const summary = usePolling(() => api.summary(6), 8000, [])
   const s = summary.data
+  const { canRun } = useIdentity()
 
   const byStatus = s?.runs.by_status ?? {}
   const succeeded = byStatus.succeeded ?? 0
@@ -48,12 +50,14 @@ export function Dashboard() {
               <RefreshCw />
               새로고침
             </Button>
-            <Button size="sm" asChild>
-              <Link to="/setup">
-                <Play />
-                실행 시작
-              </Link>
-            </Button>
+            {canRun && (
+              <Button size="sm" asChild>
+                <Link to="/setup">
+                  <Play />
+                  실행 시작
+                </Link>
+              </Button>
+            )}
           </>
         }
       />

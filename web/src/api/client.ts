@@ -108,6 +108,14 @@ export interface Job {
   attempts: number
 }
 
+export interface Identity {
+  user_id: string
+  email: string
+  roles: string[]
+  authenticated: boolean
+  auth_mode: 'oidc' | 'disabled'
+}
+
 export interface Summary {
   runs: {
     total: number
@@ -318,6 +326,9 @@ export const api = {
   jobStats: () => request<{ by_status: Record<string, number>; total: number }>('/jobs/stats'),
 
   reclaimJobs: () => request<{ reclaimed: number }>('/jobs/reclaim', { method: 'POST' }),
+
+  // ------------------------------------------------------------ identity
+  me: () => request<Identity>('/me'),
 
   // ------------------------------------------------------------ dashboard
   summary: (recent = 5) => request<Summary>(`/summary${query({ recent })}`),

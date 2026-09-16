@@ -23,7 +23,7 @@ from fastapi import APIRouter, Body, Depends, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from foldfront.core.auth import require
+from foldfront.core.auth import CurrentIdentity, auth_mode, require
 from foldfront.core.config import get_settings
 from foldfront.core.errors import ApiError, E
 from foldfront.db.models import (
@@ -401,6 +401,27 @@ async def create_round(round_: Round) -> dict[str, Any]:
     if not round_.round_id:
         round_.round_id = new_id("round")
     return (await repos().rounds.create(round_)).model_dump()
+
+
+# ---------------------------------------------------------------- identity
+
+
+@router.get("/me", tags=["Operations"], summary="Who the caller is, and what they may do")
+async def me(identity: CurrentIdentity) -> dict[str, Any]:
+    """The console needs this to decide what to offer.
+
+    Permission is enforced on every write path regardless; hiding a control the
+    caller cannot use is a courtesy, not the check. Sending the roles rather
+    than a list of permitted actions keeps that boundary clear - the server
+    says who you are, the console decides what to draw.
+    """
+    return {
+        "user_id": identity.user_id,
+        "email": identity.email,
+        "roles": [str(r) for r in identity.roles],
+        "authenticated": identity.authenticated,
+        "auth_mode": auth_mode(),
+    }
 
 
 # ---------------------------------------------------------------- dashboard

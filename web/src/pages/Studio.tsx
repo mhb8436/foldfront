@@ -26,6 +26,7 @@ import { Field, Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ContextMenu, type MenuItem, type MenuState } from './studio/ContextMenu'
+import { useIdentity } from '@/lib/identity'
 
 /**
  * DAG Workflow Studio.
@@ -140,6 +141,7 @@ export function Studio() {
   const [error, setError] = useState<string | null>(null)
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [flow, setFlow] = useState<ReactFlowInstance | null>(null)
+  const { canRun } = useIdentity()
 
   const registry = useAsync(() => api.listModels({ active_only: true }), [])
   const modelIds = useMemo(
@@ -422,7 +424,7 @@ export function Studio() {
         title="워크플로 스튜디오"
         description="노드를 조합해 실행 흐름을 설계합니다. 병렬 분기와 조건 분기를 지원하며 템플릿으로 저장해 재사용합니다."
         actions={
-          <Button size="sm" onClick={save} disabled={nodes.length === 0}>
+          <Button size="sm" onClick={save} disabled={nodes.length === 0 || !canRun}>
             <Save />
             저장
           </Button>

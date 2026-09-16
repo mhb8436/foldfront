@@ -6,12 +6,14 @@ import { PageHeader } from '../components/Shell'
 import { Empty, ErrorBox, Panel, Stat, formatTime } from '../components/Common'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { useIdentity } from '@/lib/identity'
 
 /** Operations: the job queue and the audit trail. */
 export function Operations() {
   const jobs = usePolling(() => api.jobStats(), 5000, [])
   const audit = useAsync(() => api.listAudit({ limit: 100 }), [])
   const health = useAsync(() => api.health(), [])
+  const { canAdmin } = useIdentity()
 
   async function reclaim() {
     await api.reclaimJobs()
@@ -26,7 +28,7 @@ export function Operations() {
         title="운영"
         description="작업 큐 상태와 감사 로그를 확인합니다."
         actions={
-          <Button variant="outline" size="sm" onClick={reclaim}>
+          <Button variant="outline" size="sm" onClick={reclaim} disabled={!canAdmin}>
             <RotateCcw />
             만료 회수
           </Button>

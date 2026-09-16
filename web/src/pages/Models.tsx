@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Field, Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { useIdentity } from '@/lib/identity'
 
 const KINDS = [
   'backbone',
@@ -27,6 +28,7 @@ const KINDS = [
 export function Models() {
   const models = useAsync(() => api.listModels(), [])
   const [error, setError] = useState<string | null>(null)
+  const { canAdmin } = useIdentity()
   const [form, setForm] = useState({
     model_id: '',
     version: '',
@@ -132,7 +134,7 @@ export function Models() {
               onChange={(e) => setForm({ ...form, gpu_count: Number(e.target.value) })}
             />
           </Field>
-          <Button type="submit">
+          <Button type="submit" disabled={!canAdmin}>
             <Plus />
             등록
           </Button>
@@ -193,12 +195,14 @@ export function Models() {
                       <Button
                         variant="outline"
                         size="sm"
+                        disabled={!canAdmin}
                         onClick={() => toggle(m.model_id, m.version, m.active)}
                       >
                         {m.active ? '비활성' : '활성'}
                       </Button>
                       {m.approval_status !== 'approved' && (
-                        <Button variant="outline" size="sm" onClick={() => approve(m.model_id, m.version)}>
+                        <Button variant="outline" size="sm" disabled={!canAdmin}
+                                onClick={() => approve(m.model_id, m.version)}>
                           승인
                         </Button>
                       )}

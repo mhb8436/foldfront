@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Field, Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { useIdentity } from '@/lib/identity'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 /** Choose a workflow, attach inputs, start a run. */
@@ -22,6 +23,7 @@ export function Setup() {
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const { canRun } = useIdentity()
 
   const selected = workflowId || workflows.data?.items[0]?.workflow_id || ''
 
@@ -76,7 +78,7 @@ export function Setup() {
         <Panel
           title="워크플로"
           actions={
-            <Button variant="outline" size="sm" onClick={seed}>
+            <Button variant="outline" size="sm" onClick={seed} disabled={!canRun}>
               기본 템플릿 등록
             </Button>
           }
@@ -142,7 +144,7 @@ export function Setup() {
               <CheckCircle2 />
               점검
             </Button>
-            <Button size="sm" onClick={start} disabled={!selected || busy}>
+            <Button size="sm" onClick={start} disabled={!selected || busy || !canRun}>
               <Play />
               실행
             </Button>

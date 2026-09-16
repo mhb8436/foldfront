@@ -109,3 +109,34 @@ def test_쓰기_경로에_권한이_걸려_있다():
     ]
 
     assert unguarded == []
+
+
+#  ---------------------------------------------------------------- development role
+
+
+def test_개발_신원의_역할을_설정으로_바꾼다(monkeypatch):
+    """Lets the console be seen as a viewer without an identity provider."""
+    from foldfront.core.config import get_settings
+
+    monkeypatch.setenv("DEV_ROLE", "viewer")
+    get_settings.cache_clear()
+
+    assert auth.dev_identity().roles == (Role.VIEWER,)
+
+    get_settings.cache_clear()
+
+
+def test_모르는_역할을_주면_운영자로_둔다(monkeypatch):
+    """A typo in DEV_ROLE should not lock the developer out of their own console."""
+    from foldfront.core.config import get_settings
+
+    monkeypatch.setenv("DEV_ROLE", "없는역할")
+    get_settings.cache_clear()
+
+    assert auth.dev_identity().roles == (Role.ADMIN,)
+
+    get_settings.cache_clear()
+
+
+def test_개발_신원은_인증된_것으로_위장하지_않는다():
+    assert auth.dev_identity().authenticated is False
