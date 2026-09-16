@@ -8,11 +8,12 @@ import ReactFlow, {
   type Connection,
   type Edge,
   type Node,
+  type ReactFlowInstance,
   useEdgesState,
   useNodesState,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
-import { Plus, Save } from 'lucide-react'
+import { Check, Copy, Layers, Maximize2, Pencil, Plus, Save, Trash2, X } from 'lucide-react'
 
 import { api, type NodeKind, type Workflow } from '../api/client'
 import { useAsync } from '../hooks/useAsync'
@@ -24,6 +25,7 @@ import { Input } from '@/components/ui/input'
 import { Field, Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { ContextMenu, type MenuItem, type MenuState } from './studio/ContextMenu'
 
 /**
  * DAG Workflow Studio.
@@ -136,6 +138,8 @@ export function Studio() {
   const [workflowId, setWorkflowId] = useState('')
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [menu, setMenu] = useState<MenuState | null>(null)
+  const [flow, setFlow] = useState<ReactFlowInstance | null>(null)
 
   const registry = useAsync(() => api.listModels({ active_only: true }), [])
   const modelIds = useMemo(
@@ -161,6 +165,9 @@ export function Studio() {
 
   //  Open a workflow on arrival. A real graph says more than an empty canvas.
   const autoLoaded = useRef(false)
+  const canvas = useRef<HTMLDivElement>(null)
+  //  Where the pane was right-clicked, in canvas coordinates.
+  const pointer = useRef<{ x: number; y: number } | undefined>(undefined)
   useEffect(() => {
     if (autoLoaded.current) return
     const items = workflows.data?.items ?? []
@@ -175,14 +182,14 @@ export function Studio() {
     [setEdges],
   )
 
-  function addNode(kind: NodeKind) {
+  function addNode(kind: NodeKind, at?: { x: number; y: number }) {
     const id = `${kind}-${nodes.length + 1}`
     setKinds((k) => ({ ...k, [id]: kind }))
     setNodes((ns) => [
       ...ns,
       {
         id,
-        position: { x: 60 + (ns.length % 5) * 180, y: 120 + Math.floor(ns.length / 5) * 110 },
+        position: at ?? { x: 60 + (ns.length % 5) * 180, y: 120 + Math.floor(ns.length / 5) * 110 },
         sourcePosition: Position.Right,
         targetPosition: Position.Left,
         data: { label: label({ node_id: id, kind }) },
@@ -228,6 +235,167 @@ export function Studio() {
     } catch (e) {
       //  Defects surface on save. Finding one at run time costs GPU hours.
       setError((e as Error).message)
+    }
+  }
+
+  //  Screen coordinates to canvas coordinates, so a node lands under the pointer.
+  function atPointer(event: { clientX: number; clientY: number }) {
+    if (!flow) return undefined
+    const box = canvas.current?.getBoundingClientRect()
+    if (!box) return undefined
+    return flow.project({ x: event.clientX - box.left, y: event.clientY - box.top })
+  }
+
+  function openMenu(kind: MenuState['kind'], event: React.MouseEvent, id?: string) {
+    event.preventDefault()
+    setMenu({ kind, x: event.clientX, y: event.clientY, id })
+  }
+
+  /** Assign a model and redraw the node, so the canvas shows it at once. */
+  function setNodeModel(nodeId: string, modelId: string) {
+    setModels((m) => ({ ...m, [nodeId]: modelId }))
+    setNodes((ns) =>
+      ns.map((n) =>
+        n.id === nodeId
+          ? { ...n, data: { label: label({ node_id: nodeId, kind: 'model', model_id: modelId || null }) } }
+          : n,
+      ),
+    )
+  }
+
+  /** Send the eye to the condition field rather than editing it in a menu. */
+  function focusCondition(nodeId: string) {
+    const el = document.getElementById(`cond-${nodeId}`)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    window.setTimeout(() => (el as HTMLInputElement | null)?.focus(), 250)
+  }
+
+  function removeNode(nodeId: string) {
+    setNodes((ns) => ns.filter((n) => n.id !== nodeId))
+    setEdges((es) => es.filter((e) => e.source !== nodeId && e.target !== nodeId))
+  }
+
+  function duplicateNode(nodeId: string) {
+    const src = nodes.find((n) => n.id === nodeId)
+    if (!src) return
+    const kind = kinds[nodeId] ?? 'model'
+    const id = `${kind}-${nodes.length + 1}`
+    setKinds((k) => ({ ...k, [id]: kind }))
+    setModels((m) => ({ ...m, [id]: m[nodeId] ?? '' }))
+    setConditions((c) => ({ ...c, [id]: c[nodeId] ?? '' }))
+    setNodes((ns) => [
+      ...ns,
+      {
+        ...src,
+        id,
+        position: { x: src.position.x + 40, y: src.position.y + 60 },
+        data: { label: label({ node_id: id, kind, model_id: models[nodeId] || null }) },
+        selected: false,
+      },
+    ])
+  }
+
+  function menuItems(): { title: string; items: MenuItem[] } {
+    if (!menu) return { title: '', items: [] }
+
+    if (menu.kind === 'pane') {
+      const at = pointer.current
+      return {
+        title: '캔버스',
+        items: [
+          ...(['model', 'transform', 'branch', 'fanout', 'join'] as NodeKind[]).map((k) => ({
+            label: `${KIND_LABEL[k]} 추가`,
+            icon: <Plus className="size-3.5" />,
+            onSelect: () => addNode(k, at),
+          })),
+          { label: '화면 맞춤', icon: <Maximize2 className="size-3.5" />, onSelect: () => flow?.fitView() },
+        ],
+      }
+    }
+
+    //  Double-clicking a model node opens this. Assigning a model is the most
+    //  frequent edit, and it was only reachable from the table below.
+    if (menu.kind === 'model') {
+      const id = menu.id!
+      return {
+        title: `${id} — 실행할 모델`,
+        items: [
+          { label: '— 미지정 —', active: !models[id], onSelect: () => setNodeModel(id, '') },
+          ...modelIds.map((m) => ({
+            label: m,
+            hint: stageTerm(m)?.label,
+            active: models[id] === m,
+            onSelect: () => setNodeModel(id, m),
+          })),
+        ],
+      }
+    }
+
+    if (menu.kind === 'node') {
+      const id = menu.id!
+      const kind = kinds[id] ?? 'model'
+      return {
+        title: id,
+        items: [
+          ...(kind === 'model'
+            ? ([{ label: '모델 지정…', hint: '더블클릭', icon: <Layers className="size-3.5" />,
+                  onSelect: () => setMenu({ kind: 'model', x: menu.x, y: menu.y, id }) }] as MenuItem[])
+            : []),
+          //  Conditions are easy to mistype, so editing happens in the panel
+          //  where the format and an example are stated. This only takes you there.
+          ...(kind === 'branch'
+            ? ([{ label: '조건식 편집…', icon: <Pencil className="size-3.5" />,
+                  onSelect: () => focusCondition(id) }] as MenuItem[])
+            : []),
+          { label: '복제', icon: <Copy className="size-3.5" />, onSelect: () => duplicateNode(id) },
+          {
+            label: '삭제',
+            hint: 'Delete',
+            icon: <Trash2 className="size-3.5" />,
+            danger: true,
+            onSelect: () => removeNode(id),
+          },
+        ],
+      }
+    }
+
+    const edge = edges.find((e) => e.id === menu.id)
+    const fromBranch = edge ? kinds[edge.source] === 'branch' : false
+    const current = edge?.label === '참' ? 'true' : edge?.label === '거짓' ? 'false' : null
+    return {
+      title: edge ? `${edge.source} → ${edge.target}` : '간선',
+      items: [
+        //  Marking a branch edge used to mean finding it again in a table below
+        //  the canvas. This is the same decision, where the edge already is.
+        ...(fromBranch
+          ? ([
+              {
+                label: '참일 때',
+                icon: <Check className="size-3.5" />,
+                active: current === 'true',
+                onSelect: () => setEdgeBranch(menu.id!, 'true'),
+              },
+              {
+                label: '거짓일 때',
+                icon: <X className="size-3.5" />,
+                active: current === 'false',
+                onSelect: () => setEdgeBranch(menu.id!, 'false'),
+              },
+              {
+                label: '표시 없음',
+                active: current === null,
+                onSelect: () => setEdgeBranch(menu.id!, null),
+              },
+            ] as MenuItem[])
+          : []),
+        {
+          label: '삭제',
+          hint: 'Delete',
+          icon: <Trash2 className="size-3.5" />,
+          danger: true,
+          onSelect: () => setEdges((es) => es.filter((e) => e.id !== menu.id)),
+        },
+      ],
     }
   }
 
@@ -313,6 +481,15 @@ export function Studio() {
           </Field>
         </div>
 
+        {menu && (
+          <ContextMenu
+            state={menu}
+            title={menuItems().title}
+            items={menuItems().items}
+            onClose={() => setMenu(null)}
+          />
+        )}
+
         {/*  Drawing an edge is not discoverable from the canvas alone. */}
         <div className="text-muted-foreground mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px]">
           <span>
@@ -327,15 +504,30 @@ export function Studio() {
             <span className="text-foreground font-medium">이동</span> — 노드를 끌거나 빈 곳을
             끌어 화면을 옮깁니다
           </span>
+          <span>
+            <span className="text-foreground font-medium">오른쪽 단추</span> — 노드 추가 · 복제 ·
+            분기 표시
+          </span>
         </div>
 
-        <div className="h-[460px] overflow-hidden rounded-md border">
+        <div ref={canvas} className="h-[460px] overflow-hidden rounded-md border">
           <ReactFlow
             nodes={nodes}
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
+            onInit={setFlow}
+            onPaneContextMenu={(e) => {
+              pointer.current = atPointer(e as unknown as React.MouseEvent)
+              openMenu('pane', e as unknown as React.MouseEvent)
+            }}
+            onNodeContextMenu={(e, node) => openMenu('node', e, node.id)}
+            onNodeDoubleClick={(e, node) => {
+              if ((kinds[node.id] ?? 'model') !== 'model') return
+              openMenu('model', e, node.id)
+            }}
+            onEdgeContextMenu={(e, edge) => openMenu('edge', e, edge.id)}
             fitView
             proOptions={{ hideAttribution: true }}
           >
@@ -387,7 +579,7 @@ export function Studio() {
                     <TableCell>
                       <Select
                         value={models[n.id] ?? ''}
-                        onChange={(e) => setModels((m) => ({ ...m, [n.id]: e.target.value }))}
+                        onChange={(e) => setNodeModel(n.id, e.target.value)}
                       >
                         <option value="">— 미지정 —</option>
                         {modelIds.map((id) => (
