@@ -1,0 +1,3 @@
+target,run_id,rounds,candidate_pool,soluprot_gated,af2_evaluated,expected_af2_budget,without_surrogate_af2_budget,af2_reduction_vs_all_gated,oracle_train,oracle_top_k,best_design_id,best_round,best_phase,best_plddt,best_soluprot,best_relax_score
+3RGK,pys74631_kribb.re.kr_ev_3rgk,4,8000,8000,94,110,8000,0.98825,30,20,rfd3_spec-1_0_model_8:59,1,round_1_train,97.04590604026843,0.7942722319236881,-3.134510067114094
+1LVM,admin_20260430_064926_afb67369,4,8000,8000,49,50,8000,0.993875,30,5,rfd3_spec-1_0_model_0:187,3,round_3_top_k,89.52420814479636,0.7338252058128611,-3.154904977375566

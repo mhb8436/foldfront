@@ -1,0 +1,2465 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RAPID Protein Design Platform</title>
+    <link rel="stylesheet" href="./styles.css?v=20260710_studio_exclude" />
+  </head>
+  <body>
+    <div class="bg-grid" aria-hidden="true"></div>
+
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">RAPID</div>
+        <div class="brand-text">
+          <div class="brand-title">RAPID</div>
+          <div class="brand-subtitle" data-i18n="brand.subtitle">Reproducible AI Pipeline for Integrated Design</div>
+        </div>
+        <div id="environmentBadge" class="environment-badge hidden" data-i18n="env.development">Development</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="lang-switch" role="group" aria-label="Language">
+          <button class="lang-btn" data-lang="ko">KO</button>
+          <button class="lang-btn" data-lang="en">EN</button>
+        </div>
+        <button id="copilotOpenBtn" class="ghost" data-i18n="copilot.open">Copilot</button>
+        <button id="tutorialBtn" class="ghost hidden" type="button" data-i18n="action.tutorial">Tutorial</button>
+        <button
+          id="runpodAdminBtn"
+          class="ghost hidden"
+          type="button"
+          data-i18n="modelProviders.open"
+        >
+          Model Providers
+        </button>
+        <button id="adminBtn" class="ghost hidden" data-i18n="action.admin">Admin</button>
+        <button id="logoutBtn" class="ghost" data-i18n="action.logout">Logout</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <div id="loginGate" class="login-gate">
+        <div class="login-card">
+          <h1 data-i18n="login.title">Enter the Lab</h1>
+          <p id="loginLocalDesc" class="hidden" data-i18n="login.desc">
+            Identify yourself to separate runs and keep artifacts organized.
+          </p>
+          <p id="loginSsoDesc" class="hidden" data-i18n="login.sso.desc">
+            Sign in with KBF SSO to keep the same identity and permissions across services.
+          </p>
+          <div id="loginLoading" class="hint" data-i18n="login.loading">Checking sign-in method...</div>
+          <div id="loginLocalForm" class="login-stack hidden">
+            <label>
+              <span data-i18n="login.username">Username</span>
+              <input
+                id="loginUsername"
+                type="text"
+                placeholder="e.g. hana.kim"
+                data-i18n-placeholder="login.username.placeholder"
+              />
+            </label>
+            <label>
+              <span data-i18n="login.password">Password</span>
+              <input
+                id="loginPassword"
+                type="password"
+                placeholder="••••••••"
+                data-i18n-placeholder="login.password.placeholder"
+              />
+            </label>
+            <button id="loginBtn" class="primary" data-i18n="login.submit">Access Console</button>
+          </div>
+          <div id="loginSsoActions" class="login-stack hidden">
+            <button id="ssoLoginBtn" class="primary" data-i18n="login.sso.submit">Continue with KBF SSO</button>
+            <div class="hint" data-i18n="login.sso.hint">
+              Use your KBF account. Password changes are managed in the SSO account page.
+            </div>
+          </div>
+          <div id="loginError" class="hint"></div>
+        </div>
+      </div>
+
+      <div id="appShell" class="app-shell hidden">
+        <div class="app-shell-frame">
+          <aside id="appSidebar" class="app-sidebar">
+            <div class="app-sidebar-head">
+              <div class="app-sidebar-kicker">RAPID</div>
+              <div class="app-sidebar-title" data-i18n="brand.subtitle">Reproducible AI Pipeline for Integrated Design</div>
+            </div>
+            <nav class="app-sidebar-nav" role="tablist" aria-label="Console modes">
+              <button
+                id="tabBtnHome"
+                class="tab-btn app-nav-btn active"
+                role="tab"
+                aria-selected="true"
+                aria-controls="tab-home"
+                data-tab="home"
+                data-i18n="tabs.home"
+              >
+                Home
+              </button>
+              <button
+                id="tabBtnFast"
+                class="tab-btn app-nav-btn"
+                role="tab"
+                aria-selected="false"
+                aria-controls="tab-fast"
+                data-tab="fast"
+                data-i18n="tabs.fast"
+              >
+                Fast
+              </button>
+              <button
+                id="tabBtnAdvanced"
+                class="tab-btn app-nav-btn"
+                role="tab"
+                aria-selected="false"
+                aria-controls="tab-advanced"
+                data-tab="advanced"
+                data-i18n="tabs.advanced"
+              >
+                Advanced
+              </button>
+              <button
+                id="tabBtnEvolution"
+                class="tab-btn app-nav-btn"
+                role="tab"
+                aria-selected="false"
+                aria-controls="tab-evolution"
+                data-tab="evolution"
+                data-i18n="tabs.evolution"
+              >
+                Evolution
+              </button>
+              <button
+                id="tabBtnStudio"
+                class="tab-btn app-nav-btn"
+                role="tab"
+                aria-selected="false"
+                aria-controls="tab-studio"
+                data-tab="studio"
+                data-i18n="tabs.studio"
+              >
+                Studio
+              </button>
+              <button
+                id="tabBtnMonitor"
+                class="tab-btn app-nav-btn"
+                role="tab"
+                aria-selected="false"
+                aria-controls="tab-monitor"
+                data-tab="monitor"
+                data-i18n="tabs.monitor"
+              >
+                Monitor
+              </button>
+              <button
+                id="tabBtnCath"
+                class="tab-btn app-nav-btn hidden"
+                role="tab"
+                aria-selected="false"
+                aria-controls="tab-cath"
+                data-tab="cath"
+                data-i18n="tabs.cath"
+              >
+                CATH
+              </button>
+              <button
+                id="tabBtnRounds"
+                class="tab-btn app-nav-btn"
+                role="tab"
+                aria-selected="false"
+                aria-controls="tab-rounds"
+                data-tab="rounds"
+                data-i18n="tabs.rounds"
+              >
+                Rounds
+              </button>
+              <button
+                id="tabBtnAnalyze"
+                class="tab-btn app-nav-btn"
+                role="tab"
+                aria-selected="false"
+                aria-controls="tab-analyze"
+                data-tab="analyze"
+                data-i18n="tabs.analyze"
+              >
+                Analyze
+              </button>
+              <button
+                id="tabBtnMcp"
+                class="tab-btn app-nav-btn"
+                role="tab"
+                aria-selected="false"
+                aria-controls="tab-mcp"
+                data-tab="mcp"
+                data-i18n="tabs.mcp"
+              >
+                MCP
+              </button>
+            </nav>
+            <div class="app-sidebar-foot">
+              <div class="user-badge" id="userBadge"></div>
+            </div>
+          </aside>
+
+          <div class="app-shell-main">
+        <section
+          id="tab-home"
+          class="tab-panel active"
+          data-tab="home"
+          role="tabpanel"
+          aria-labelledby="tabBtnHome"
+        >
+          <div class="tab-content-shell">
+            <div class="panel panel-block home-shell">
+              <div class="panel-header home-header">
+                <h2 data-i18n="home.title">Solubility/Stability Workspace</h2>
+                <p data-i18n="home.desc">Target design runs, current rounds, and result triage in one workspace.</p>
+              </div>
+              <div class="experiment-launchpad">
+                <button class="home-mode-card launchpad-primary" type="button" data-home-target="experiment">
+                  <span class="launchpad-eyebrow" data-i18n="home.launchpad.primary">Primary workflow</span>
+                  <h3 data-i18n="home.launchpad.newExperiment">New Experiment</h3>
+                  <p data-i18n="home.launchpad.newExperimentDesc">
+                    Choose Fast, Advanced, Surrogate, Evolution, or Workflow Studio based on the control you need.
+                  </p>
+                </button>
+                <div class="launchpad-secondary-grid">
+                  <button class="launchpad-action-card" type="button" data-home-target="monitor">
+                    <span class="launchpad-step">01</span>
+                    <h3 data-i18n="home.launchpad.loadRun">Load Existing Run</h3>
+                    <p data-i18n="home.launchpad.loadRunDesc">Resume monitoring from the current run list.</p>
+                  </button>
+                  <button class="launchpad-action-card" type="button" data-home-target="analyze">
+                    <span class="launchpad-step">02</span>
+                    <h3 data-i18n="home.launchpad.analyzeResults">Analyze Results</h3>
+                    <p data-i18n="home.launchpad.analyzeResultsDesc">Review ranked candidates and comparison outputs.</p>
+                  </button>
+                </div>
+              </div>
+              <div class="home-context-strip">
+                <div class="home-context-item home-context-item-select">
+                  <span data-i18n="home.context.project">Current Project</span>
+                  <select id="homeProjectSelector" class="run-selector">
+                    <option value="" data-i18n="home.select.projectPlaceholder">Select project</option>
+                  </select>
+                  <div class="home-context-actions">
+                    <button id="homeCreateProjectBtn" class="ghost" type="button" data-i18n="home.action.createProject">
+                      New Project
+                    </button>
+                  </div>
+                </div>
+                <div class="home-context-item">
+                  <span data-i18n="home.context.campaign">Evolution Campaign</span>
+                  <strong id="homeRoundStatusValue" data-i18n="home.context.empty">Not connected yet</strong>
+                </div>
+                <div class="home-context-item">
+                  <span data-i18n="home.context.runs">Runs in Progress</span>
+                  <strong id="homeRunsValue">0</strong>
+                </div>
+                <div class="home-context-item">
+                  <span data-i18n="home.context.report">Recent Result</span>
+                  <strong id="homeReportValue" data-i18n="home.context.empty">Not connected yet</strong>
+                </div>
+              </div>
+              <div class="home-quick-actions">
+                <button id="homeContinueRoundBtn" class="ghost" type="button" data-i18n="home.action.continueRound">
+                  Continue Evolution
+                </button>
+                <button id="homeOpenMonitorBtn" class="ghost" type="button" data-i18n="home.action.openMonitor">
+                  Open Monitor
+                </button>
+                <button id="homeOpenAnalyzeBtn" class="ghost" type="button" data-i18n="home.action.openAnalyze">
+                  Open Analyze
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="tab-fast"
+          class="tab-panel"
+          data-tab="fast"
+          role="tabpanel"
+          aria-labelledby="tabBtnFast"
+        >
+          <div class="tab-content-shell">
+            <div class="panel panel-block fast-shell">
+              <div class="fast-grid">
+                <div class="fast-input-card">
+                  <div class="panel-header">
+                    <h2 data-i18n="fast.title">Fast Launch</h2>
+                    <p data-i18n="fast.desc">
+                      Upload a FASTA/PDB/mmCIF file, or paste text if needed, then launch with standard defaults.
+                    </p>
+                  </div>
+                  <div class="fast-upload-primary">
+                    <div>
+                      <span data-i18n="fast.input.label">FASTA/PDB/mmCIF file or text</span>
+                      <strong data-i18n="fast.upload.title">Upload target file</strong>
+                      <p data-i18n="fast.upload.desc">
+                        Use a PDB, mmCIF, CIF, FASTA, FA, or text file for the usual Fast launch path.
+                      </p>
+                    </div>
+                    <input id="fastTargetFile" type="file" class="hidden" accept=".pdb,.ent,.cif,.mmcif,.bcif,.fa,.fasta,.txt,.seq" />
+                    <button id="fastLoadFileBtn" class="ghost" type="button" data-i18n="fast.action.loadFile">
+                      Choose File
+                    </button>
+                    <p id="fastTargetStatus" class="fast-target-status" data-i18n="fast.upload.statusEmpty">
+                      No target loaded yet.
+                    </p>
+                  </div>
+                  <details id="fastPasteDetails" class="fast-paste-details">
+                    <summary data-i18n="fast.paste.summary">Paste FASTA/PDB/mmCIF text instead</summary>
+                    <label class="fast-field">
+                      <span data-i18n="fast.paste.label">Direct text input</span>
+                      <small data-i18n="fast.input.help">
+                        Use raw FASTA, PDB, or mmCIF text only when you do not have a file.
+                      </small>
+                      <textarea
+                        id="fastTargetInput"
+                        rows="8"
+                        placeholder="Paste FASTA, PDB, or mmCIF text here."
+                        data-i18n-placeholder="fast.input.placeholder"
+                      ></textarea>
+                    </label>
+                  </details>
+                  <label class="fast-field">
+                    <span data-i18n="fast.note.label">Run Notes</span>
+                    <small data-i18n="fast.note.help">Optional notes copied into the run prompt.</small>
+                    <textarea
+                      id="fastPromptInput"
+                      rows="4"
+                      placeholder="Optional notes for this launch."
+                      data-i18n-placeholder="fast.note.placeholder"
+                    ></textarea>
+                  </label>
+                  <label class="fast-field">
+                    <span data-i18n="setup.customRunId.label">Run name</span>
+                    <small data-i18n="setup.customRunId.help">Optional. Leave blank to create one automatically.</small>
+                    <input id="fastCustomRunIdInput" type="text" placeholder="custom_run_01" />
+                  </label>
+                  <div class="fast-actions">
+                    <button id="fastOpenAdvancedBtn" class="ghost" type="button" data-i18n="fast.action.reviewAdvanced">
+                      Review in Advanced
+                    </button>
+                    <button id="fastRunBtn" class="primary" type="button" data-i18n="fast.action.run">
+                      Run Fast
+                    </button>
+                  </div>
+                </div>
+                <aside class="fast-options-card mode-shell-placeholder">
+                  <div class="panel-header">
+                    <h3 data-i18n="fast.options.title">Launch Options</h3>
+                    <p data-i18n="fast.options.desc">
+                      Fast keeps ProteinMPNN at 2 sequences per backbone and rounds backbone counts up to satisfy the
+                      total output target.
+                    </p>
+                  </div>
+                  <label class="fast-field">
+                    <span data-i18n="question.selectedTiers.label">Sequence Conservation</span>
+                    <small data-i18n="question.selectedTiers.help">
+                      Choose which sequence-conservation levels to generate. Default: 30%, 50%, 70%.
+                    </small>
+                    <div id="fastSelectedTiers" class="choice-group" role="group" aria-label="Sequence conservation">
+                      <button type="button" class="choice-btn selected" data-fast-tier="0.3" aria-pressed="true">30%</button>
+                      <button type="button" class="choice-btn selected" data-fast-tier="0.5" aria-pressed="true">50%</button>
+                      <button type="button" class="choice-btn selected" data-fast-tier="0.7" aria-pressed="true">70%</button>
+                    </div>
+                  </label>
+                  <label class="fast-field">
+                    <span data-i18n="fast.totalOutput.label">Total Output Sequences</span>
+                    <small data-i18n="fast.totalOutput.help">
+                      Target total ProteinMPNN designs across the selected sequence-conservation levels. PDB input uses
+                      RFD3 + BioEmu; FASTA input uses BioEmu only.
+                    </small>
+                    <input id="fastTotalOutputInput" type="number" min="1" step="1" value="120" />
+                  </label>
+                  <div class="fast-field fast-surrogate-field">
+                    <span data-i18n="fast.surrogate.label">Surrogate AF2 Budget Triage</span>
+                    <small data-i18n="fast.surrogate.help">
+                      Optional. Use a surrogate model to select the final AF2/ColabFold Top K from a larger candidate pool.
+                    </small>
+                    <div id="fastSurrogateTriageToggle" class="choice-group fast-surrogate-toggle" role="group" aria-label="Surrogate AF2 Budget Triage">
+                      <button type="button" class="choice-btn selected" data-fast-surrogate="false" aria-pressed="true" data-i18n="common.off">Off</button>
+                      <button type="button" class="choice-btn" data-fast-surrogate="true" aria-pressed="false" data-i18n="common.on">On</button>
+                    </div>
+                  </div>
+
+                  <!-- Literature-Driven Masking UI (Fast) -->
+                  <div class="paper-mask-panel field-group paper-mask-panel-compact">
+                    <label class="paper-mask-label">Extract Constraints from Paper (PDF)</label>
+                    <div class="paper-mask-controls">
+                      <input class="paper-mask-input" type="file" id="paperMaskInputFast" accept="application/pdf" />
+                      <button type="button" class="ghost paper-mask-upload" id="paperMaskUploadBtnFast">Upload PDF</button>
+                      <span id="paperMaskStatusFast" class="status-subtitle paper-mask-status"></span>
+                    </div>
+                    <div id="paperMaskReviewPanelFast" class="paper-mask-review hidden">
+                      <div class="status-subtitle paper-mask-review-title">AI Suggested Masks</div>
+                      <div id="paperMaskListFast" class="paper-mask-list"></div>
+                      <div class="paper-mask-actions">
+                        <button type="button" class="ghost paper-mask-action" id="paperMaskCancelBtnFast">Cancel</button>
+                        <button type="button" class="primary paper-mask-action" id="paperMaskApplyBtnFast">Apply</button>
+                      </div>
+                    </div>
+                  </div>
+                </aside>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="tab-advanced"
+          class="tab-panel"
+          data-tab="advanced"
+          role="tabpanel"
+          aria-labelledby="tabBtnAdvanced"
+        >
+          <div class="panel panel-chat setup-shell">
+            <div id="chatArea" class="chat-area">
+              <div class="chat-header">
+                <div>
+                  <h2 data-i18n="setup.title">Advanced Run Setup</h2>
+                  <p data-i18n="setup.desc">Choose a workflow, attach inputs, and launch the job.</p>
+                </div>
+              </div>
+              <div class="tab-run-context">
+                <label class="run-context-select">
+                  <span data-i18n="monitor.runId">Run ID</span>
+                  <select id="setupRunSelector" class="run-selector">
+                    <option value="" data-i18n="monitor.selectRun">Select run</option>
+                  </select>
+                </label>
+                <div class="setup-run-reuse">
+                  <div class="setup-run-reuse-actions">
+                    <button id="setupLoadRunRequest" class="ghost" type="button" data-i18n="setup.loadRequest">
+                      Load Request
+                    </button>
+                  </div>
+                  <div id="setupRunReuseHint" class="run-context-hint" data-i18n="setup.runReuse.default">
+                    Advanced always launches a new run. Load Request copies settings from the selected run.
+                  </div>
+                </div>
+                <div class="run-context-meta">
+                  <span class="run-context-item">
+                    <span class="label" data-i18n="monitor.stage">Stage</span>
+                    <span id="setupContextStageValue" class="value">-</span>
+                  </span>
+                  <span class="run-context-item">
+                    <span class="label" data-i18n="monitor.state">State</span>
+                    <span id="setupContextStateValue" class="value state-badge">-</span>
+                  </span>
+                </div>
+              </div>
+
+              <div id="setupPrimaryLayout" class="setup-ux-grid setup-primary-layout">
+                <section class="setup-lane setup-lane-input">
+                  <div class="setup-section-title">
+                    <h3 data-i18n="setup.section.input">Input</h3>
+                    <p data-i18n="setup.section.inputDesc">Start with the target. Checks, notes, and literature constraints are below.</p>
+                  </div>
+
+                  <div id="questionInputStack" class="question-stack section-stack"></div>
+
+                  <div class="composer">
+                    <div class="composer-actions advanced-primary-actions">
+                      <button id="checkBtn" class="ghost" data-i18n="setup.check">Check Advanced</button>
+                      <button id="planBtn" class="ghost" data-i18n="setup.reset">Reset Inputs</button>
+                    </div>
+                    <details id="advancedPromptDetails" class="advanced-prompt-details">
+                      <summary data-i18n="setup.prompt.summary">Optional notes or natural-language setup</summary>
+                      <label class="advanced-prompt-field">
+                        <span data-i18n="setup.prompt.label">Notes or setup instructions</span>
+                        <small data-i18n="setup.prompt.help">
+                          Leave this empty for normal step-by-step setup. Use it only to add notes or ask the system to infer settings from text.
+                        </small>
+                        <textarea
+                          id="promptInput"
+                          rows="3"
+                          placeholder="Optional notes for this run. Leave blank for normal setup."
+                          data-i18n-placeholder="setup.prompt.placeholder"
+                        ></textarea>
+                      </label>
+                      <div class="advanced-prompt-actions">
+                        <button id="clearBtn" class="ghost" data-i18n="setup.clear">Clear Note</button>
+                      </div>
+                    </details>
+                    <div class="status-subtitle run-subtitle">
+                      <span data-i18n="setup.section.log">Activity Log</span>
+                      <button id="clearMonitorMessages" class="ghost" data-i18n="monitor.clearLog">Clear</button>
+                    </div>
+                    <div id="messages" class="messages monitor-messages"></div>
+                  </div>
+
+                  <div
+                    id="advancedPaperMaskPanel"
+                    class="paper-mask-panel field-group paper-mask-panel-advanced paper-mask-panel-featured"
+                  >
+                    <div class="paper-mask-heading">
+                      <label class="paper-mask-label" data-i18n="setup.pdfAgent.label">
+                        Extract Literature Constraints (PDF)
+                      </label>
+                      <p class="paper-mask-help" data-i18n="setup.pdfAgent.help">
+                        Upload a paper when residues or mutation-sensitive regions should guide fixed-position choices.
+                      </p>
+                    </div>
+                    <div class="paper-mask-controls">
+                      <input class="paper-mask-input" type="file" id="paperMaskInputAdvanced" accept="application/pdf" />
+                      <button
+                        type="button"
+                        class="ghost paper-mask-upload"
+                        id="paperMaskUploadBtnAdvanced"
+                        data-i18n="setup.pdfAgent.upload"
+                      >
+                        Upload PDF
+                      </button>
+                      <span id="paperMaskStatusAdvanced" class="status-subtitle paper-mask-status"></span>
+                    </div>
+                    <div id="paperMaskReviewPanelAdvanced" class="paper-mask-review hidden">
+                      <div class="status-subtitle paper-mask-review-title">AI Suggested Masks</div>
+                      <div id="paperMaskListAdvanced" class="paper-mask-list"></div>
+                      <div class="paper-mask-actions">
+                        <button type="button" class="ghost paper-mask-action" id="paperMaskCancelBtnAdvanced">Cancel</button>
+                        <button type="button" class="primary paper-mask-action" id="paperMaskApplyBtnAdvanced">Apply</button>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="setup-lane setup-lane-execution">
+                  <div class="setup-section-title">
+                    <h3 data-i18n="setup.section.execution">Step Setup</h3>
+                    <p data-i18n="setup.section.executionDesc">
+                      Work through one step at a time.
+                    </p>
+                  </div>
+
+                  <div class="advanced-launch-frame">
+                    <div id="setupStepSummary" class="setup-step-summary hidden"></div>
+                    <div id="setupStepper" class="setup-stepper hidden">
+                      <div id="setupStepMeta" class="setup-step-meta"></div>
+                      <div id="setupStepDots" class="setup-step-dots"></div>
+                      <div class="setup-step-actions">
+                        <button id="setupStepPrev" class="ghost" type="button"></button>
+                        <button id="setupStepNext" class="ghost" type="button"></button>
+                      </div>
+                    </div>
+                    <div id="questionConfigStack" class="question-stack section-stack"></div>
+
+                    <label class="fast-field setup-custom-run-field hidden">
+                      <span data-i18n="setup.customRunId.label">Run name</span>
+                      <small data-i18n="setup.customRunId.help">Optional. Leave blank to create one automatically.</small>
+                      <input id="customRunIdInput" type="text" placeholder="custom_run_01" />
+                    </label>
+
+                    <div class="run-actions">
+                      <button id="runBtn" class="primary" disabled>Run</button>
+                      <div id="runHint" class="hint" data-i18n="setup.hint">
+                        Complete required inputs to enable execution.
+                      </div>
+                    </div>
+                    <div id="runInlineStatus" class="run-inline-status" data-i18n="setup.runStatus.empty">
+                      Run status: -
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <div id="questionStack" class="question-stack hidden"></div>
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="surrogate-advanced-preset-template"
+          class="tab-panel hidden"
+          data-template="surrogate"
+          role="tabpanel"
+          aria-hidden="true"
+        >
+          <div class="tab-content-shell">
+            <div class="panel panel-block evolution-shell surrogate-shell">
+              <div class="panel-header">
+                <h2 data-i18n="surrogate.title">AF2 Surrogate Triage</h2>
+                <p data-i18n="surrogate.desc">
+                  Run ProteinMPNN/SoluProt with GPU-backed ESM embedding and a fixed AF2/ColabFold acquisition budget.
+                </p>
+              </div>
+              <div class="evolution-grid surrogate-grid">
+                <div class="evolution-input-card surrogate-input-card">
+                  <label class="fast-field">
+                    <span data-i18n="surrogate.input.label">Target Sequence or Structure</span>
+                    <small data-i18n="surrogate.input.help">Provide FASTA, PDB, or mmCIF input for the budget-aware triage path.</small>
+                    <textarea
+                      id="surrogateTargetInput"
+                      rows="10"
+                      placeholder="Paste FASTA, PDB, or mmCIF here."
+                      data-i18n-placeholder="surrogate.input.placeholder"
+                    ></textarea>
+                  </label>
+                  <label class="fast-field">
+                    <span data-i18n="setup.customRunId.label">Run name</span>
+                    <small data-i18n="setup.customRunId.help">Optional. Leave blank to create one automatically.</small>
+                    <input id="surrogateCustomRunIdInput" type="text" placeholder="surrogate_triage_01" />
+                  </label>
+                  <div class="fast-inline-actions">
+                    <input id="surrogateTargetFile" type="file" class="hidden" accept=".pdb,.ent,.cif,.mmcif,.bcif,.fasta,.fa,.txt" />
+                    <button id="surrogateLoadFileBtn" class="ghost" type="button" data-i18n="fast.action.loadFile">
+                      Load File
+                    </button>
+                    <button id="surrogateOpenAdvancedBtn" class="ghost" type="button" data-i18n="surrogate.action.openAdvanced">
+                      Review in Advanced
+                    </button>
+                  </div>
+                  <div class="evolution-actions">
+                    <button id="surrogateRunBtn" class="primary" type="button" data-i18n="surrogate.action.run">
+                      Start Surrogate Triage
+                    </button>
+                  </div>
+                </div>
+                <aside class="evolution-options-card surrogate-options-card">
+                  <div class="panel-header">
+                    <h3 data-i18n="surrogate.options.title">Surrogate Settings</h3>
+                    <p data-i18n="surrogate.options.desc">
+                      This mode disables RFD3 and BioEmu, embeds the SoluProt-passing candidate pool with the configured ESM worker, and spends AF2 only on the sampled training set plus Top K candidates.
+                    </p>
+                  </div>
+                  <label class="fast-field">
+                    <span data-i18n="surrogate.initialSamples.label">Training AF2 samples</span>
+                    <input id="surrogateInitialSamplesInput" type="number" min="5" step="5" value="30" />
+                  </label>
+                  <label class="fast-field">
+                    <span data-i18n="surrogate.topK.label">Top K final AF2 candidates</span>
+                    <input id="surrogateTopKInput" type="number" min="1" step="1" value="20" />
+                  </label>
+                  <label class="fast-field">
+                    <span data-i18n="surrogate.numSeqPerTier.label">ProteinMPNN candidates per tier</span>
+                    <input id="surrogateNumSeqPerTierInput" type="number" min="1" step="1" value="3333" />
+                    <small data-i18n="surrogate.numSeqPerTier.help">
+                      Default 3333 per tier gives about 9999 multi-tier designs before the shared AF2 training and Top K budgets are spent.
+                    </small>
+                  </label>
+                  <label class="fast-field">
+                    <span data-i18n="surrogate.acquisition.label">Top K selection method</span>
+                    <select id="surrogateAcquisitionPolicyInput">
+                      <option value="auto" data-i18n="choice.surrogatePolicy.auto">Choose by CV</option>
+                      <option value="rf" data-i18n="choice.surrogateModel.rf">Random Forest</option>
+                      <option value="ridge" data-i18n="choice.surrogateModel.ridge">Ridge</option>
+                      <option value="xgboost" data-i18n="choice.surrogateModel.xgboost">XGBoost</option>
+                      <option value="lightgbm" data-i18n="choice.surrogateModel.lightgbm">LightGBM</option>
+                      <option value="ensemble" data-i18n="choice.surrogateModel.ensemble">Rank ensemble</option>
+                    </select>
+                    <input id="surrogateModelInput" type="hidden" value="auto" />
+                    <small data-i18n="surrogate.acquisition.help">
+                      RAPID labels training candidates with AF2, compares the checked models by cross-validation, then sends the best model's Top K candidates to AF2.
+                    </small>
+                  </label>
+                  <label class="fast-field">
+                    <span data-i18n="surrogate.comparators.label">Models to compare</span>
+                    <div
+                      id="surrogateModelChoices"
+                      class="model-choice-grid"
+                      role="group"
+                      aria-describedby="surrogateModelHelp"
+                    >
+                      <label class="model-choice-card">
+                        <input type="checkbox" value="rf" data-surrogate-model-choice="rf" checked />
+                        <span data-i18n="choice.surrogateModel.rf">Random Forest</span>
+                      </label>
+                      <label class="model-choice-card">
+                        <input type="checkbox" value="ridge" data-surrogate-model-choice="ridge" checked />
+                        <span data-i18n="choice.surrogateModel.ridge">Ridge</span>
+                      </label>
+                      <label class="model-choice-card">
+                        <input type="checkbox" value="xgboost" data-surrogate-model-choice="xgboost" checked />
+                        <span data-i18n="choice.surrogateModel.xgboost">XGBoost</span>
+                      </label>
+                      <label class="model-choice-card">
+                        <input type="checkbox" value="lightgbm" data-surrogate-model-choice="lightgbm" checked />
+                        <span data-i18n="choice.surrogateModel.lightgbm">LightGBM</span>
+                      </label>
+                    </div>
+                    <small id="surrogateModelHelp" data-i18n="surrogate.model.help">
+                      RAPID compares these models on the same AF2-labelled training set. If the method is CV, the best model selects the final Top K.
+                    </small>
+                  </label>
+                  <label class="fast-field">
+                    <span data-i18n="surrogate.ensembleMembers.label">Optional rank ensemble</span>
+                    <div
+                      id="surrogateEnsembleModelChoices"
+                      class="model-choice-grid"
+                      role="group"
+                      aria-describedby="surrogateEnsembleModelHelp"
+                    >
+                      <label class="model-choice-card">
+                        <input type="checkbox" value="rf" data-surrogate-ensemble-model-choice="rf" />
+                        <span data-i18n="choice.surrogateModel.rf">Random Forest</span>
+                      </label>
+                      <label class="model-choice-card">
+                        <input type="checkbox" value="ridge" data-surrogate-ensemble-model-choice="ridge" />
+                        <span data-i18n="choice.surrogateModel.ridge">Ridge</span>
+                      </label>
+                      <label class="model-choice-card">
+                        <input type="checkbox" value="xgboost" data-surrogate-ensemble-model-choice="xgboost" />
+                        <span data-i18n="choice.surrogateModel.xgboost">XGBoost</span>
+                      </label>
+                      <label class="model-choice-card">
+                        <input type="checkbox" value="lightgbm" data-surrogate-ensemble-model-choice="lightgbm" />
+                        <span data-i18n="choice.surrogateModel.lightgbm">LightGBM</span>
+                      </label>
+                    </div>
+                    <small id="surrogateEnsembleModelHelp" data-i18n="surrogate.ensembleMembers.help">
+                      Leave empty by default. Select members only when you also want RAPID to compare a rank-averaged ensemble.
+                    </small>
+                  </label>
+                  <label class="fast-field">
+                    <span data-i18n="question.af2Provider.label">Structure predictor</span>
+                    <select id="surrogateAf2ProviderInput">
+                      <option value="colabfold">ColabFold</option>
+                      <option value="alphafold2">AlphaFold2</option>
+                    </select>
+                  </label>
+                  <label class="fast-field">
+                    <span data-i18n="question.soluprotCutoff.label">SoluProt cutoff</span>
+                    <input id="surrogateSoluprotCutoffInput" type="number" min="0" max="1" step="0.01" value="0.5" />
+                  </label>
+                  <label class="fast-field">
+                    <span data-i18n="question.af2PlddtCutoff.label">pLDDT cutoff</span>
+                    <input id="surrogateAf2PlddtCutoffInput" type="number" min="0" max="100" step="0.1" value="85" />
+                  </label>
+                  <label class="fast-field">
+                    <span data-i18n="question.af2RmsdCutoff.label">RMSD cutoff</span>
+                    <input id="surrogateAf2RmsdCutoffInput" type="number" min="0.01" step="0.001" value="2.0" />
+                  </label>
+                  <div class="choice-note" data-i18n="surrogate.note">
+                    Use Evolution only when experimental measurements are available or planned. Use this Surrogate tab when the goal is a one-round compute budget reduction.
+                  </div>
+                </aside>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="tab-evolution"
+          class="tab-panel"
+          data-tab="evolution"
+          role="tabpanel"
+          aria-labelledby="tabBtnEvolution"
+        >
+          <div class="tab-content-shell">
+            <div class="panel panel-block evolution-shell">
+              <div class="panel-header">
+                <h2 data-i18n="evolution.title">Evolution Studio</h2>
+                <p data-i18n="evolution.desc">
+                  Upload a PDB/mmCIF structure and run the multi-round evolution pipeline with one click.
+                </p>
+              </div>
+              <div class="evolution-grid">
+                <div class="evolution-input-card">
+                  <label class="fast-field">
+                    <span data-i18n="evolution.input.label">Target Structure</span>
+                    <small data-i18n="evolution.input.help">Provide a PDB or mmCIF structure to evolve.</small>
+                    <textarea
+                      id="evolutionTargetInput"
+                      rows="10"
+                      placeholder="Paste PDB or mmCIF here."
+                      data-i18n-placeholder="evolution.input.placeholder"
+                    ></textarea>
+                  </label>
+                  <label class="fast-field">
+                    <span data-i18n="setup.customRunId.label">Run name</span>
+                    <small data-i18n="setup.customRunId.help">Optional. Leave blank to create one automatically.</small>
+                    <input id="evolutionCustomRunIdInput" type="text" placeholder="custom_run_01" />
+                  </label>
+                  <div class="fast-inline-actions">
+                    <input id="evolutionTargetFile" type="file" class="hidden" accept=".pdb,.ent,.cif,.mmcif,.bcif" />
+                    <button id="evolutionLoadFileBtn" class="ghost" type="button" data-i18n="fast.action.loadFile">
+                      Load File
+                    </button>
+                  </div>
+                  <div class="evolution-actions">
+                    <button id="evolutionRunBtn" class="primary" type="button" data-i18n="evolution.action.run">
+                      Start Evolution
+                    </button>
+                  </div>
+                </div>
+                <aside class="evolution-options-card mode-shell-placeholder">
+                  <div class="panel-header">
+                    <h3 data-i18n="evolution.options.title">Evolution Settings</h3>
+                    <p data-i18n="evolution.options.desc">
+                      Configure active-learning AF2 triage parameters for the evolution process.
+                    </p>
+                  </div>
+                  <div id="evolutionFeedbackGuide" class="choice-note evolution-feedback-guide" data-i18n="evolution.feedbackGuide.experimental">
+                    Experiment-guided mode first chooses candidates to measure. After measured values are saved, the next run recommends candidates.
+                  </div>
+                  <label class="fast-field">
+                    <span data-i18n="evolution.poolSize.label">Candidate pool size</span>
+                    <input id="evolutionPoolSizeInput" type="number" min="10" step="10" value="1000" />
+                  </label>
+                  <label class="fast-field">
+                    <span data-i18n="evolution.labelSource.label">Candidate selection mode</span>
+                    <select id="evolutionLabelSourceInput">
+                      <option value="experimental" data-i18n="evolution.labelSource.experimental">Use experiment values</option>
+                      <option value="in_silico_af2" data-i18n="evolution.labelSource.inSilicoAf2">Test with AF2 scores</option>
+                    </select>
+                  </label>
+                  <label id="evolutionObjectiveMetricField" class="fast-field">
+                    <span data-i18n="evolution.objectiveMetric.label">Optimization metric</span>
+                    <input id="evolutionObjectiveMetricInput" type="text" value="activity" />
+                  </label>
+                  <label id="evolutionExperimentSourceRunIdField" class="fast-field">
+                    <span data-i18n="evolution.experimentSourceRunId.label">Previous run with measurements</span>
+                    <div class="input-row two evolution-source-row">
+                      <input
+                        id="evolutionExperimentSourceRunIdInput"
+                        type="text"
+                        list="evolutionExperimentSourceRunIdOptions"
+                        placeholder="optional previous run ID"
+                        data-i18n-placeholder="evolution.experimentSourceRunId.placeholder"
+                      />
+                      <button
+                        id="evolutionExperimentSourceRefreshBtn"
+                        class="ghost"
+                        type="button"
+                        data-i18n="evolution.experimentSourceRunId.refresh"
+                      >
+                        Refresh runs
+                      </button>
+                    </div>
+                    <datalist id="evolutionExperimentSourceRunIdOptions"></datalist>
+                    <small
+                      id="evolutionExperimentSourceRunIdStatus"
+                      data-i18n="evolution.experimentSourceRunId.help"
+                    >
+                      Choose a previous run with recorded experiment labels, or type a run ID manually.
+                    </small>
+                  </label>
+                  <div id="evolutionExperimentPanel" class="evolution-experiment-panel">
+                    <div class="panel-header evolution-section-heading">
+                      <h4 data-i18n="evolution.experiment.title">Experiment Values</h4>
+                      <p data-i18n="evolution.experiment.desc">
+                        Record wet-lab labels for the selected run without leaving Evolution.
+                      </p>
+                    </div>
+                    <div class="form-row">
+                      <label>
+                        <span data-i18n="experiment.assay">Assay type</span>
+                        <select id="evolutionExperimentAssay"></select>
+                      </label>
+                      <label>
+                        <span data-i18n="experiment.result">Result</span>
+                        <select id="evolutionExperimentResult"></select>
+                      </label>
+                    </div>
+                    <div class="form-row">
+                      <label>
+                        <span data-i18n="experiment.candidate">Candidate ID</span>
+                        <input
+                          id="evolutionExperimentCandidateId"
+                          type="text"
+                          placeholder="e.g. evo_r1_0003"
+                          data-i18n-placeholder="experiment.candidate.placeholder"
+                        />
+                      </label>
+                      <label>
+                        <span data-i18n="experiment.sequence">Sequence ID (optional)</span>
+                        <input
+                          id="evolutionExperimentSequenceId"
+                          type="text"
+                          placeholder="e.g. seq_001"
+                          data-i18n-placeholder="experiment.sequence.placeholder"
+                        />
+                      </label>
+                    </div>
+                    <div class="form-row">
+                      <label>
+                        <span data-i18n="experiment.metricName">Objective metric</span>
+                        <input
+                          id="evolutionExperimentMetricName"
+                          type="text"
+                          value="activity"
+                          placeholder="activity"
+                          data-i18n-placeholder="experiment.metricName.placeholder"
+                        />
+                      </label>
+                      <label>
+                        <span data-i18n="experiment.metricValue">Metric value</span>
+                        <input
+                          id="evolutionExperimentMetricValue"
+                          type="number"
+                          step="any"
+                          placeholder="0.0"
+                          data-i18n-placeholder="experiment.metricValue.placeholder"
+                        />
+                      </label>
+                    </div>
+                    <div class="form-row">
+                      <label>
+                        <span data-i18n="experiment.metricUnit">Metric unit (optional)</span>
+                        <input
+                          id="evolutionExperimentMetricUnit"
+                          type="text"
+                          placeholder="e.g. RFU, mg/mL"
+                          data-i18n-placeholder="experiment.metricUnit.placeholder"
+                        />
+                      </label>
+                      <label>
+                        <span data-i18n="experiment.metricDirection">Metric direction</span>
+                        <select id="evolutionExperimentMetricDirection"></select>
+                      </label>
+                    </div>
+                    <label>
+                      <span data-i18n="experiment.replicate">Replicate ID (optional)</span>
+                      <input
+                        id="evolutionExperimentReplicateId"
+                        type="text"
+                        placeholder="replicate_1"
+                        data-i18n-placeholder="experiment.replicate.placeholder"
+                      />
+                    </label>
+                    <label>
+                      <span data-i18n="experiment.conditions">Conditions / Notes</span>
+                      <textarea
+                        id="evolutionExperimentConditions"
+                        rows="2"
+                        placeholder="Buffer, temperature, assay details"
+                        data-i18n-placeholder="experiment.conditions.placeholder"
+                      ></textarea>
+                    </label>
+                    <button id="evolutionSubmitExperiment" class="primary" type="button" data-i18n="evolution.experiment.submit">
+                      Save Experiment Value
+                    </button>
+                    <div id="evolutionExperimentStatus" class="hint"></div>
+                    <div class="status-subtitle" data-i18n="evolution.experiment.recent">Recent Evolution Labels</div>
+                    <div id="evolutionExperimentList" class="run-list"></div>
+                  </div>
+                  <label class="fast-field">
+                    <span data-i18n="evolution.initialSamples.label">First measurement set size</span>
+                    <input id="evolutionInitialSamplesInput" type="number" min="10" step="5" value="30" />
+                  </label>
+                  <label class="fast-field">
+                    <span data-i18n="evolution.oracleSamples.label">Next recommendation count</span>
+                    <input id="evolutionOracleSamplesInput" type="number" min="1" step="1" value="20" />
+                  </label>
+                  <div class="panel-header evolution-section-heading">
+                    <h4 data-i18n="evolution.filtering.title">Filtering</h4>
+                  </div>
+                  <label class="fast-field">
+                    <span data-i18n="evolution.af2PlddtCutoff.label">ColabFold pLDDT Cutoff</span>
+                    <input id="evolutionAf2PlddtCutoffInput" type="number" min="0" max="100" step="0.1" value="85" />
+                  </label>
+                  <label class="fast-field">
+                    <span data-i18n="evolution.af2RmsdCutoff.label">ColabFold RMSD Cutoff</span>
+                    <input id="evolutionAf2RmsdCutoffInput" type="number" min="0.01" step="0.01" value="2.0" />
+                  </label>
+                  <label class="fast-field">
+                    <span data-i18n="evolution.relaxScoreCutoff.label">Rosetta Relax Score/Residue Cutoff</span>
+                    <input id="evolutionRelaxScoreCutoffInput" type="number" step="0.1" value="0.0" />
+                  </label>
+                  <label class="fast-field">
+                    <span data-i18n="evolution.bioemuTargetRmsdCutoff.label">BioEmu Input-Backbone RMSD Limit</span>
+                    <input id="evolutionBioemuTargetRmsdCutoffInput" type="number" min="0" step="0.01" value="2.0" />
+                  </label>
+                  <label class="fast-field">
+                    <span data-i18n="evolution.rfd3TargetRmsdCutoff.label">RFD3 Input-Backbone RMSD Limit</span>
+                    <input id="evolutionRfd3TargetRmsdCutoffInput" type="number" min="0" step="0.01" value="2.0" />
+                  </label>
+
+                  <div class="panel-header evolution-section-heading">
+                    <h4 data-i18n="evolution.constraints.title">Constraints</h4>
+                  </div>
+                  <label class="fast-field">
+                    <span data-i18n="evolution.bioemuSteeringConfig.label">BioEmu Steering Config</span>
+                    <textarea id="evolutionBioemuSteeringConfigInput" rows="3" placeholder="JSON config"></textarea>
+                  </label>
+                  <label class="fast-field">
+                    <span data-i18n="evolution.fixedPositionsExtra.label">Fixed Positions Extra</span>
+                    <textarea id="evolutionFixedPositionsExtraInput" rows="3" placeholder="A:6,10;*:120"></textarea>
+                  </label>
+
+                  <!-- Literature-Driven Masking UI -->
+                  <div class="paper-mask-panel field-group">
+                    <label class="paper-mask-label">Extract Constraints from Paper (PDF)</label>
+                    <div class="paper-mask-controls">
+                      <input class="paper-mask-input" type="file" id="paperMaskInput" accept="application/pdf" />
+                      <button type="button" class="ghost paper-mask-upload" id="paperMaskUploadBtn">Upload PDF</button>
+                      <span id="paperMaskStatus" class="status-subtitle paper-mask-status"></span>
+                    </div>
+                    <div id="paperMaskReviewPanel" class="paper-mask-review hidden">
+                      <div class="status-subtitle paper-mask-review-title">AI Suggested Masks</div>
+                      <div id="paperMaskList" class="paper-mask-list paper-mask-list-tall">
+                        <!-- Items injected here -->
+                      </div>
+                      <div class="paper-mask-actions">
+                        <button type="button" class="ghost paper-mask-action" id="paperMaskCancelBtn">Cancel</button>
+                        <button type="button" class="primary paper-mask-action" id="paperMaskApplyBtn">
+                          Apply Selected to Constraints
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="panel-divider"></div>
+
+                </aside>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="tab-studio"
+          class="tab-panel"
+          data-tab="studio"
+          role="tabpanel"
+          aria-labelledby="tabBtnStudio"
+        >
+          <div class="tab-content-shell">
+            <div class="panel panel-block studio-shell-panel">
+              <div class="panel-header">
+                <h3 data-i18n="studio.title">Workflow Studio</h3>
+                <p data-i18n="studio.desc">
+                  Run one stage at a time, adjust key parameters, and decide whether to rerun or move forward.
+                </p>
+              </div>
+              <div class="studio-toolbar">
+                <div class="studio-session-panel">
+                  <div class="studio-session-head">
+                    <strong data-i18n="studio.session">Session</strong>
+                  </div>
+                  <div id="studioSessionList" class="run-list studio-session-list"></div>
+                </div>
+                <div class="studio-toolbar-actions">
+                  <button id="studioCreateBtn" class="ghost" type="button" data-i18n="studio.create">
+                    Create Workflow Studio
+                  </button>
+                  <button id="studioRunBtn" class="primary" type="button" data-i18n="studio.action.run">
+                    Run This Stage
+                  </button>
+                  <button id="studioStopBtn" class="ghost" type="button" data-i18n="monitor.stop">
+                    Stop Run
+                  </button>
+                  <button id="studioResumeBtn" class="ghost" type="button" data-i18n="monitor.resume">
+                    Resume Run
+                  </button>
+                  <button id="studioAdoptRunBtn" class="ghost" type="button" data-i18n="studio.adoptRun">
+                    Adopt Current Run
+                  </button>
+                  <button id="studioRefreshBtn" class="ghost" type="button" data-i18n="studio.refresh">
+                    Refresh Studio
+                  </button>
+                  <button id="studioOpenMonitorBtn" class="ghost" type="button" data-i18n="studio.openMonitor">
+                    Open Monitor
+                  </button>
+                </div>
+              </div>
+              <div id="studioRunPanel" class="studio-run-panel">
+                <div class="studio-run-panel-head">
+                  <strong data-i18n="studio.runStatus.title">Execution Status</strong>
+                  <div id="studioRunInlineStatus" class="run-inline-status studio-run-inline-status" data-i18n="studio.runStatus.empty">
+                    Studio run: -
+                  </div>
+                </div>
+                <div class="studio-run-panel-grid">
+                  <div class="studio-run-stat">
+                    <span class="label" data-i18n="studio.runStatus.run">Run</span>
+                    <strong id="studioRunIdValue" class="value">-</strong>
+                  </div>
+                  <div class="studio-run-stat">
+                    <span class="label" data-i18n="studio.runStatus.backend">Backend Stage</span>
+                    <strong id="studioRunStageValue" class="value">-</strong>
+                  </div>
+                  <div class="studio-run-stat">
+                    <span class="label" data-i18n="studio.runStatus.requested">Requested</span>
+                    <strong id="studioRunRequestedValue" class="value">-</strong>
+                  </div>
+                  <div class="studio-run-stat">
+                    <span class="label" data-i18n="studio.runStatus.updated">Updated</span>
+                    <strong id="studioRunUpdatedValue" class="value">-</strong>
+                  </div>
+                  <div class="studio-run-stat">
+                    <span class="label" data-i18n="studio.runStatus.state">State</span>
+                    <span id="studioRunStateValue" class="value state-badge">-</span>
+                  </div>
+                </div>
+              </div>
+              <div class="panel-divider"></div>
+              <div id="workflowStudioRoot" class="workflow-studio-root"></div>
+              <div class="panel-divider"></div>
+              <div class="panel-header small">
+                <h3 data-i18n="artifacts.preview.title">Artifact Preview</h3>
+                <p data-i18n="artifacts.preview.desc">3D structures, images, or text extracts.</p>
+              </div>
+              <div id="studioArtifactPreview" class="artifact-preview studio-artifact-preview">
+                <div class="placeholder" data-i18n="artifacts.preview.placeholder">
+                  Select an artifact to preview it here.
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="tab-rounds"
+          class="tab-panel"
+          data-tab="rounds"
+          role="tabpanel"
+          aria-labelledby="tabBtnRounds"
+        >
+          <div class="tab-content-shell">
+            <div class="panel panel-block rounds-shell">
+              <div class="panel-header">
+                <h2 data-i18n="rounds.title">Rounds Workspace</h2>
+                <p data-i18n="rounds.desc">Organize projects, experiment rounds, and linked runs in one place.</p>
+              </div>
+              <div class="rounds-grid">
+                <section class="rounds-column">
+                  <section class="rounds-block rounds-project-block">
+                    <div class="rounds-block-head">
+                      <div>
+                        <div class="status-subtitle" data-i18n="rounds.projects">Projects</div>
+                        <p class="rounds-block-copy" data-i18n="rounds.projects.desc">
+                          Create and select campaign spaces for each target.
+                        </p>
+                      </div>
+                    </div>
+                    <div id="roundsProjectToolbar" class="home-context-actions rounds-toolbar rounds-primary-toolbar">
+                      <button id="roundsCreateProjectBtn" class="ghost" type="button" data-i18n="home.action.createProject">
+                        New Project
+                      </button>
+                      <label class="toggle rounds-archive-toggle rounds-filter-chip">
+                        <input id="roundsShowArchived" type="checkbox" />
+                        <span data-i18n="rounds.action.showArchived">Show archived</span>
+                      </label>
+                    </div>
+                    <div id="roundsProjectList" class="run-list rounds-list"></div>
+                    <div id="roundsProjectManageRow" class="home-context-actions rounds-toolbar rounds-manage-toolbar" hidden>
+                      <button id="roundsEditProjectBtn" class="ghost" type="button" data-i18n="rounds.action.editProject">
+                        Edit Project
+                      </button>
+                      <button id="roundsArchiveProjectBtn" class="ghost" type="button" data-i18n="rounds.action.archiveProject">
+                        Archive Project
+                      </button>
+                      <button id="roundsRestoreProjectBtn" class="ghost" type="button" data-i18n="rounds.action.restoreProject">
+                        Restore Project
+                      </button>
+                      <button id="roundsDeleteProjectBtn" class="ghost danger-action" type="button" data-i18n="rounds.action.deleteProject">
+                        Delete Project
+                      </button>
+                    </div>
+                  </section>
+                  <section class="rounds-block rounds-round-block">
+                    <div class="rounds-block-head">
+                      <div>
+                        <div class="status-subtitle" data-i18n="rounds.list">Rounds</div>
+                        <p class="rounds-block-copy" data-i18n="rounds.rounds.desc">
+                          Keep each design-test-learn cycle grouped under the current project.
+                        </p>
+                      </div>
+                    </div>
+                    <div id="roundsRoundToolbar" class="home-context-actions rounds-toolbar rounds-primary-toolbar">
+                      <button id="roundsCreateRoundBtn" class="ghost" type="button" data-i18n="home.action.createRound">
+                        New Round
+                      </button>
+                    </div>
+                    <div id="roundsList" class="run-list rounds-list"></div>
+                    <div id="roundsRoundManageRow" class="home-context-actions rounds-toolbar rounds-manage-toolbar" hidden>
+                      <button id="roundsEditRoundBtn" class="ghost" type="button" data-i18n="rounds.action.edit">
+                        Edit Round
+                      </button>
+                      <button id="roundsArchiveRoundBtn" class="ghost" type="button" data-i18n="rounds.action.archiveRound">
+                        Archive Round
+                      </button>
+                      <button id="roundsRestoreRoundBtn" class="ghost" type="button" data-i18n="rounds.action.restoreRound">
+                        Restore Round
+                      </button>
+                      <button id="roundsDeleteRoundBtn" class="ghost danger-action" type="button" data-i18n="rounds.action.deleteRound">
+                        Delete Round
+                      </button>
+                    </div>
+                  </section>
+                </section>
+                <section id="roundsDetail" class="rounds-detail-card mode-shell-placeholder">
+                  <div class="rounds-detail-head">
+                    <div class="panel-header small">
+                      <h3 data-i18n="rounds.detail.title">Round Detail</h3>
+                      <p data-i18n="rounds.detail.empty">
+                        Select a round to see its goal, notes, and linked runs.
+                      </p>
+                    </div>
+                  </div>
+                  <div id="roundsDetailBody" class="rounds-detail-body">
+                    <div class="placeholder" data-i18n="rounds.detail.empty">
+                      Select a round to see its goal, notes, and linked runs.
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="tab-monitor"
+          class="tab-panel"
+          data-tab="monitor"
+          role="tabpanel"
+          aria-labelledby="tabBtnMonitor"
+        >
+          <div class="tab-content-shell">
+            <div class="tab-grid monitor-grid">
+            <div class="panel panel-block monitor-summary-panel span-2">
+              <div class="panel-header">
+                <h3 data-i18n="monitor.title">Run Monitor</h3>
+                <p data-i18n="monitor.desc">Track live status, scores, and recent runs.</p>
+              </div>
+              <div class="monitor-summary-top">
+                <div class="status-card monitor-selector-card">
+                  <div class="status-row status-row-run-select">
+                    <span class="label" data-i18n="monitor.runId">Run ID</span>
+                    <div class="run-id-select-wrap">
+                      <span id="runIdValue" class="value">-</span>
+                      <select id="runSelector" class="run-selector">
+                        <option value="" data-i18n="monitor.selectRun">Select run</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="status-row status-detail-row">
+                    <span class="label" data-i18n="monitor.detail">Detail</span>
+                    <span id="runDetailValue" class="value status-detail-value">-</span>
+                  </div>
+                  <details id="runErrorDetails" class="error-details hidden">
+                    <summary id="runErrorSummary">Error summary</summary>
+                    <pre id="runErrorRaw"></pre>
+                  </details>
+                </div>
+                <div class="monitor-meta-grid">
+                  <div class="monitor-meta-card">
+                    <span class="monitor-meta-label" data-i18n="monitor.stage">Stage</span>
+                    <strong id="runStageValue" class="monitor-meta-value">-</strong>
+                  </div>
+                  <div class="monitor-meta-card">
+                    <span class="monitor-meta-label" data-i18n="monitor.state">State</span>
+                    <strong id="runStateValue" class="monitor-meta-value">-</strong>
+                  </div>
+                  <div class="monitor-meta-card">
+                    <span class="monitor-meta-label" data-i18n="monitor.updated">Updated</span>
+                    <strong id="runUpdatedValue" class="monitor-meta-value">-</strong>
+                  </div>
+                </div>
+              </div>
+              <div class="monitor-summary-bottom">
+                <div class="status-card monitor-progress-card">
+                  <div class="status-subtitle" data-i18n="monitor.progress">Progress</div>
+                  <div class="progress-wrap">
+                    <div class="progress-meta">
+                      <span id="runProgressLabel" class="progress-label">-</span>
+                      <span id="runProgressPercent" class="progress-percent">0%</span>
+                    </div>
+                    <div class="progress-bar">
+                      <div id="runProgressFill" class="progress-fill"></div>
+                    </div>
+                    <div id="runProgressStages" class="progress-stages"></div>
+                  </div>
+                </div>
+                <div class="status-card monitor-score-card">
+                  <div class="status-subtitle" data-i18n="monitor.scoring">Scoring</div>
+                  <div class="score-row score-row-compact monitor-score-row">
+                    <div class="score-pill" id="runScoreValue">Score: -</div>
+                    <div class="score-pill" id="runEvidenceValue">Evidence: -</div>
+                    <div class="score-pill" id="runRecommendationValue">Recommendation: -</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel panel-block monitor-status-panel">
+              <div class="status-card monitor-ops-card">
+                <div class="status-subtitle" data-i18n="monitor.completeness">Data Completeness</div>
+                <div id="monitorCompletenessBadges" class="completeness-badges">
+                  <span class="placeholder" data-i18n="monitor.completeness.placeholder">
+                    Select a run to show data completeness.
+                  </span>
+                </div>
+                <div id="queueEtaCard" class="status-subtitle queue-eta-card" hidden></div>
+                <div id="workflowReviewPanel" class="workflow-review hidden"></div>
+                <div class="status-actions">
+                  <button id="pollBtn" class="ghost" data-i18n="monitor.poll">Poll Now</button>
+                  <button id="cancelRunBtn" class="ghost" data-i18n="monitor.stop">Stop Run</button>
+                  <button id="resumeRunBtn" class="ghost" data-i18n="monitor.resume">Resume Run</button>
+                  <label class="toggle">
+                    <input id="autoPoll" type="checkbox" checked />
+                    <span data-i18n="monitor.autoPoll">Auto Poll</span>
+                  </label>
+                </div>
+                <div class="status-subtitle run-subtitle">
+                  <span data-i18n="monitor.recentRuns">Recent Runs</span>
+                  <button id="refreshRunsBtn" class="ghost" data-i18n="monitor.refreshRuns">
+                    Refresh
+                  </button>
+                </div>
+                <label class="run-search-field">
+                  <span data-i18n="monitor.runSearch">Run ID search</span>
+                  <input
+                    id="runSearchInput"
+                    type="search"
+                    autocomplete="off"
+                    placeholder="Search all visible runs"
+                    data-i18n-placeholder="monitor.runSearch.placeholder"
+                  />
+                </label>
+                <div id="runList" class="run-list"></div>
+                <label id="adminRunsToggle" class="toggle">
+                  <input id="showAllRuns" type="checkbox" />
+                  <span data-i18n="monitor.showAll">Show all runs (admin)</span>
+                </label>
+                <div class="status-subtitle run-subtitle">
+                  <span data-i18n="monitor.activity">Activity Log</span>
+                  <button
+                    id="clearMonitorMessagesMonitor"
+                    class="ghost"
+                    data-i18n="monitor.clearLog"
+                  >
+                    Clear
+                  </button>
+                </div>
+                <div id="monitorMessages" class="messages monitor-messages"></div>
+              </div>
+            </div>
+
+            <div class="panel panel-block monitor-artifacts-panel">
+              <div class="panel-header">
+                <h3 data-i18n="artifacts.title">Artifacts</h3>
+                <p data-i18n="artifacts.desc">Filter outputs from the run.</p>
+              </div>
+              <div class="artifact-controls">
+                <input
+                  id="artifactFilter"
+                  type="text"
+                  placeholder="Filter by name or stage"
+                  data-i18n-placeholder="artifacts.filter.placeholder"
+                />
+                <select id="artifactStageFilter" class="artifact-select"></select>
+                <select id="artifactTierFilter" class="artifact-select"></select>
+                <select id="artifactTypeFilter" class="artifact-select"></select>
+                <button id="refreshArtifacts" class="ghost" data-i18n="artifacts.refresh">Refresh</button>
+              </div>
+              <div id="artifactList" class="artifact-list"></div>
+              <div class="panel-divider"></div>
+              <div class="panel-header small">
+                <h3 data-i18n="artifacts.preview.title">Artifact Preview</h3>
+                <p data-i18n="artifacts.preview.desc">3D structures, images, or text extracts.</p>
+              </div>
+              <div id="monitorArtifactPreview" class="artifact-preview">
+                <div class="placeholder" data-i18n="artifacts.preview.placeholder">
+                  Select an artifact to preview it here.
+                </div>
+              </div>
+            </div>
+
+            <div class="panel panel-block span-2 monitor-agent-panel">
+              <div class="panel-header">
+                <h3 data-i18n="agent.title">Agent Panel</h3>
+                <p data-i18n="agent.desc">Stage-by-stage expert consensus and recovery notes.</p>
+              </div>
+              <div class="agent-controls">
+                <button id="refreshAgentPanel" class="ghost" data-i18n="agent.refresh">Refresh</button>
+                <button id="viewRunReport" class="ghost" data-i18n="agent.viewReport">
+                  View Report
+                </button>
+                <button id="viewAgentReport" class="ghost" data-i18n="agent.viewAgentReport">
+                  View Agent Report
+                </button>
+                <span id="agentPanelStatus" class="agent-status"></span>
+              </div>
+              <div id="agentPanelList" class="agent-panel-list"></div>
+            </div>
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="tab-cath"
+          class="tab-panel"
+          data-tab="cath"
+          role="tabpanel"
+          aria-labelledby="tabBtnCath"
+        >
+          <div class="tab-content-shell">
+            <div class="tab-grid">
+              <div id="cathOpsPanel" class="panel panel-block monitor-cath-panel hidden">
+                <div class="panel-header">
+                  <h3 data-i18n="cath.title">CATH Pipeline</h3>
+                  <p data-i18n="cath.desc">Run subset pipeline jobs and inspect progress. Agent and Gemini features stay disabled here.</p>
+                </div>
+                <div class="cath-toolbar">
+                  <label class="toggle">
+                    <input id="cathKeepLocal" type="checkbox" />
+                    <span data-i18n="cath.keepLocal">Keep local outputs</span>
+                  </label>
+                  <label class="toggle">
+                    <input id="cathStopOnError" type="checkbox" />
+                    <span data-i18n="cath.stopOnError">에러 발생 시 정지</span>
+                  </label>
+                  <label class="cath-inline-field">
+                    <span data-i18n="cath.maxWorkers">Max workers</span>
+                    <input id="cathMaxWorkers" type="number" min="1" step="1" value="2" />
+                  </label>
+                  <button id="cathRefreshBtn" class="ghost" data-i18n="cath.refresh">Refresh</button>
+                </div>
+                <div id="cathSubsetGrid" class="cath-subset-grid"></div>
+                <div class="panel-divider"></div>
+                <div class="status-subtitle" data-i18n="cath.jobs">Managed Jobs</div>
+                <div id="cathJobsList" class="cath-jobs-list"></div>
+                <div class="status-subtitle" data-i18n="cath.log">Job Log</div>
+                <pre id="cathJobLog" class="cath-job-log" data-i18n="cath.logPlaceholder">Select a job to inspect its log.</pre>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="tab-analyze"
+          class="tab-panel"
+          data-tab="analyze"
+          role="tabpanel"
+          aria-labelledby="tabBtnAnalyze"
+        >
+          <div class="tab-content-shell">
+            <div class="tab-run-context">
+            <label class="run-context-select">
+              <span data-i18n="monitor.runId">Run ID</span>
+              <input
+                id="analyzeRunSearchInput"
+                class="run-search-input"
+                type="search"
+                autocomplete="off"
+                placeholder="Search all visible runs"
+                data-i18n-placeholder="monitor.runSearch.placeholder"
+              />
+              <select id="analyzeRunSelector" class="run-selector">
+                <option value="" data-i18n="monitor.selectRun">Select run</option>
+              </select>
+            </label>
+            <div class="run-context-meta">
+              <span class="run-context-item">
+                <span class="label" data-i18n="monitor.stage">Stage</span>
+                <span id="analyzeContextStageValue" class="value">-</span>
+              </span>
+              <span class="run-context-item">
+                <span class="label" data-i18n="monitor.state">State</span>
+                <span id="analyzeContextStateValue" class="value state-badge">-</span>
+              </span>
+            </div>
+            </div>
+            <div class="analyze-summary">
+            <div class="analyze-kpi">
+              <span class="kpi-label" data-i18n="analyze.kpi.feedback">Feedback</span>
+              <strong id="analyzeFeedbackCount" class="kpi-value">0</strong>
+            </div>
+            <div class="analyze-kpi">
+              <span class="kpi-label" data-i18n="analyze.kpi.experiment">Experiments</span>
+              <strong id="analyzeExperimentCount" class="kpi-value">0</strong>
+            </div>
+            <div class="analyze-kpi">
+              <span class="kpi-label" data-i18n="analyze.kpi.recommendation">Recommendation</span>
+              <strong id="analyzeRecommendationValue" class="kpi-value">-</strong>
+            </div>
+            </div>
+            <div class="tab-grid analyze-grid">
+            <div class="span-2 compare-studio-mount">
+              <div id="compareStudioPanel" class="panel panel-block analyze-compare">
+              <div class="panel-header">
+                <h3 data-i18n="analyze.compareStudio.title">Structure Compare Studio</h3>
+                <p data-i18n="analyze.compareStudio.desc">
+                  Run 3D/sequence diff and review WT/RFD3/BioEmu comparison in one place.
+                </p>
+              </div>
+              <div class="status-card feedback-card compare-studio-card">
+                <div class="artifact-compare-controls">
+                  <select id="artifactCompareMode" class="artifact-select">
+                    <option value="sequence" data-i18n="artifacts.preview.compare.mode.sequence">
+                      Sequence Diff
+                    </option>
+                    <option value="structure" data-i18n="artifacts.preview.compare.mode.structure">
+                      Structure Diff
+                    </option>
+                  </select>
+                  <select id="artifactCompareLeft" class="artifact-select"></select>
+                  <select id="artifactCompareRight" class="artifact-select"></select>
+                  <button id="artifactCompareSwap" class="ghost" data-i18n="artifacts.preview.compare.swap">
+                    Swap
+                  </button>
+                  <button id="artifactCompareRun" class="ghost" data-i18n="artifacts.preview.compare.run">
+                    Compare 3D
+                  </button>
+                  <button id="artifactCompareClear" class="ghost" data-i18n="artifacts.preview.compare.clear">
+                    Clear
+                  </button>
+                </div>
+                <div id="artifactCompareRefs" class="compare-reference-strip"></div>
+                <div id="artifactComparePresets" class="compare-preset-strip"></div>
+                <div id="artifactCompareManifest" class="compare-manifest-strip"></div>
+                <div class="compare-studio-grid">
+                  <div class="compare-studio-column">
+                    <div class="status-subtitle" data-i18n="artifacts.preview.title">Artifact Preview</div>
+                    <div id="compareStudioPreview" class="artifact-preview">
+                      <div class="placeholder" data-i18n="artifacts.preview.placeholder">
+                        Select an artifact to preview it here.
+                      </div>
+                    </div>
+                  </div>
+                  <div class="compare-studio-column">
+                    <div class="status-subtitle" data-i18n="artifacts.compare.title">Comparison Summary</div>
+                    <div id="artifactComparisonSummary" class="comparison-summary">
+                      <div class="placeholder" data-i18n="artifacts.compare.placeholder">
+                        Generate report to load comparison metrics.
+                      </div>
+                    </div>
+                    <div class="comparison-actions">
+                      <button
+                        id="artifactGenerateReport"
+                        class="ghost hidden"
+                        data-i18n="artifacts.compare.generateReport"
+                      >
+                        Generate Report
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            </div>
+
+            <div class="panel panel-block span-2 analyze-file-preview">
+              <div class="panel-header">
+                <h3 data-i18n="analyze.files.title">Artifact File Viewer</h3>
+                <p data-i18n="analyze.files.desc">
+                  Open PDB/FASTA/CSV and text outputs directly inside Analyze.
+                </p>
+              </div>
+              <div class="status-card feedback-card">
+                <div class="artifact-controls">
+                  <input
+                    id="analyzeArtifactFilter"
+                    type="text"
+                    placeholder="Filter by name or stage"
+                    data-i18n-placeholder="artifacts.filter.placeholder"
+                  />
+                  <select id="analyzeArtifactStageFilter" class="artifact-select"></select>
+                  <select id="analyzeArtifactTierFilter" class="artifact-select"></select>
+                  <select id="analyzeArtifactTypeFilter" class="artifact-select"></select>
+                  <button id="analyzeRefreshArtifacts" class="ghost" data-i18n="artifacts.refresh">
+                    Refresh
+                  </button>
+                </div>
+                <div id="analyzeArtifactList" class="artifact-list"></div>
+                <div class="panel-divider"></div>
+                <div class="panel-header small">
+                  <h3 data-i18n="artifacts.preview.title">Artifact Preview</h3>
+                  <p data-i18n="artifacts.preview.desc">3D structures, images, or text extracts.</p>
+                </div>
+                <div id="analyzeArtifactPreview" class="artifact-preview">
+                  <div class="placeholder" data-i18n="analyze.files.placeholder">
+                    Select an artifact file to preview it in Analyze.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel panel-block analyze-feedback">
+              <div class="panel-header">
+                <h3 data-i18n="feedback.title">Feedback</h3>
+                <p data-i18n="feedback.desc">Capture expert reviews and ratings.</p>
+              </div>
+              <div class="status-card feedback-card">
+                <div class="form-row">
+                  <span class="label" data-i18n="feedback.rating">Rating</span>
+                  <div id="feedbackRating" class="choice-group"></div>
+                </div>
+                <div class="form-row">
+                  <span class="label" data-i18n="feedback.reasons">Reasons</span>
+                  <div id="feedbackReasons" class="choice-group"></div>
+                </div>
+                <div class="form-row">
+                  <label>
+                    <span data-i18n="feedback.artifact">Artifact (optional)</span>
+                    <select id="feedbackArtifact"></select>
+                  </label>
+                  <label>
+                    <span data-i18n="feedback.stage">Stage (optional)</span>
+                    <select id="feedbackStage"></select>
+                  </label>
+                </div>
+                <label>
+                  <span data-i18n="feedback.comment">Comment</span>
+                  <textarea
+                    id="feedbackComment"
+                    rows="3"
+                    placeholder="Short context or interpretation"
+                    data-i18n-placeholder="feedback.comment.placeholder"
+                  ></textarea>
+                </label>
+                <button id="submitFeedback" class="primary" data-i18n="feedback.submit">
+                  Submit Feedback
+                </button>
+                <div class="form-row export-actions">
+                  <button id="exportFeedbackCsv" class="ghost" data-i18n="feedback.exportCsv">
+                    Export CSV
+                  </button>
+                  <button id="exportFeedbackTsv" class="ghost" data-i18n="feedback.exportTsv">
+                    Export TSV
+                  </button>
+                </div>
+                <div id="feedbackStatus" class="hint"></div>
+                <div class="status-subtitle" data-i18n="feedback.recent">Recent Feedback</div>
+                <div id="feedbackList" class="run-list"></div>
+              </div>
+            </div>
+
+            <div class="panel panel-block analyze-experiment">
+              <div class="panel-header">
+                <h3 data-i18n="experiment.title">Experiment</h3>
+                <p data-i18n="experiment.desc">Log wet-lab outcomes and metrics.</p>
+              </div>
+              <div class="status-card feedback-card">
+                <div class="form-row">
+                  <label>
+                    <span data-i18n="experiment.assay">Assay Type</span>
+                    <select id="experimentAssay"></select>
+                  </label>
+                  <label>
+                    <span data-i18n="experiment.result">Result</span>
+                    <select id="experimentResult"></select>
+                  </label>
+                </div>
+                <div class="form-row">
+                  <label>
+                    <span data-i18n="experiment.sample">Sample ID (optional)</span>
+                    <input
+                      id="experimentSampleId"
+                      type="text"
+                      placeholder="e.g. seq_001"
+                      data-i18n-placeholder="experiment.sample.placeholder"
+                    />
+                  </label>
+                  <label>
+                    <span data-i18n="experiment.artifact">Artifact (optional)</span>
+                    <select id="experimentArtifact"></select>
+                  </label>
+                </div>
+                <div class="form-row">
+                  <label>
+                    <span data-i18n="experiment.candidate">Candidate ID (optional)</span>
+                    <input
+                      id="experimentCandidateId"
+                      type="text"
+                      placeholder="e.g. evo_r1_0003"
+                      data-i18n-placeholder="experiment.candidate.placeholder"
+                    />
+                  </label>
+                  <label>
+                    <span data-i18n="experiment.sequence">Sequence ID (optional)</span>
+                    <input
+                      id="experimentSequenceId"
+                      type="text"
+                      placeholder="e.g. seq_001"
+                      data-i18n-placeholder="experiment.sequence.placeholder"
+                    />
+                  </label>
+                </div>
+                <div class="form-row">
+                  <label>
+                    <span data-i18n="experiment.metricName">Objective metric</span>
+                    <input
+                      id="experimentMetricName"
+                      type="text"
+                      value="activity"
+                      placeholder="activity"
+                      data-i18n-placeholder="experiment.metricName.placeholder"
+                    />
+                  </label>
+                  <label>
+                    <span data-i18n="experiment.metricValue">Metric value</span>
+                    <input
+                      id="experimentMetricValue"
+                      type="number"
+                      step="any"
+                      placeholder="0.0"
+                      data-i18n-placeholder="experiment.metricValue.placeholder"
+                    />
+                  </label>
+                </div>
+                <div class="form-row">
+                  <label>
+                    <span data-i18n="experiment.metricUnit">Metric unit (optional)</span>
+                    <input
+                      id="experimentMetricUnit"
+                      type="text"
+                      placeholder="e.g. RFU, mg/mL"
+                      data-i18n-placeholder="experiment.metricUnit.placeholder"
+                    />
+                  </label>
+                  <label>
+                    <span data-i18n="experiment.metricDirection">Metric direction</span>
+                    <select id="experimentMetricDirection"></select>
+                  </label>
+                </div>
+                <label>
+                  <span data-i18n="experiment.replicate">Replicate ID (optional)</span>
+                  <input
+                    id="experimentReplicateId"
+                    type="text"
+                    placeholder="replicate_1"
+                    data-i18n-placeholder="experiment.replicate.placeholder"
+                  />
+                </label>
+                <label>
+                  <span data-i18n="experiment.metrics">Metrics (JSON, optional)</span>
+                  <textarea
+                    id="experimentMetrics"
+                    rows="3"
+                    placeholder='{"kd_nM": 12.5, "t50_C": 48}'
+                    data-i18n-placeholder="experiment.metrics.placeholder"
+                  ></textarea>
+                </label>
+                <label>
+                  <span data-i18n="experiment.conditions">Conditions / Notes</span>
+                  <textarea
+                    id="experimentConditions"
+                    rows="3"
+                    placeholder="Buffer, temperature, assay details"
+                    data-i18n-placeholder="experiment.conditions.placeholder"
+                  ></textarea>
+                </label>
+                <button id="submitExperiment" class="primary" data-i18n="experiment.submit">
+                  Submit Experiment
+                </button>
+                <div class="form-row export-actions">
+                  <button id="exportExperimentCsv" class="ghost" data-i18n="experiment.exportCsv">
+                    Export CSV
+                  </button>
+                  <button id="exportExperimentTsv" class="ghost" data-i18n="experiment.exportTsv">
+                    Export TSV
+                  </button>
+                </div>
+                <div id="experimentStatus" class="hint"></div>
+                <div class="status-subtitle" data-i18n="experiment.recent">Recent Experiments</div>
+                <div id="experimentList" class="run-list"></div>
+              </div>
+            </div>
+
+            <div class="panel panel-block span-2 analyze-report">
+              <div class="panel-header">
+                <h3 data-i18n="report.title">Report</h3>
+                <p data-i18n="report.desc">Generate a consolidated run summary.</p>
+              </div>
+              <div class="status-card feedback-card">
+                <div class="score-row">
+                  <div class="score-pill" id="reportScoreValue">Score: -</div>
+                  <div class="score-pill" id="reportEvidenceValue">Evidence: -</div>
+                  <div class="score-pill" id="reportRecommendationValue">Recommendation: -</div>
+                </div>
+                <label>
+                  <span data-i18n="report.label">Report (Markdown)</span>
+                  <textarea
+                    id="reportContent"
+                    rows="6"
+                    placeholder="Generate or edit the report"
+                    data-i18n-placeholder="report.placeholder"
+                  ></textarea>
+                </label>
+                <div class="form-row report-actions">
+                  <button id="loadReport" class="ghost" data-i18n="report.load">Load</button>
+                  <button id="generateReport" class="ghost" data-i18n="report.generate">Generate</button>
+                  <button id="viewReportRendered" class="ghost" data-i18n="report.viewRendered">
+                    Rendered View
+                  </button>
+                  <button id="exportRunPackage" class="ghost" data-i18n="report.exportPackage">
+                    Export Package
+                  </button>
+                  <button id="saveReport" class="primary" data-i18n="report.save">Save</button>
+                </div>
+                <div id="reportStatus" class="hint"></div>
+                <div class="panel-divider"></div>
+                <div class="panel-header small">
+                  <h3 data-i18n="report.review.title">Report Review</h3>
+                  <p data-i18n="report.review.desc">Rate the report and provide reasons.</p>
+                </div>
+                <div class="report-review">
+                  <div class="form-row">
+                    <span class="label" data-i18n="report.review.rating">Rating</span>
+                    <div id="reportReviewRating" class="choice-group"></div>
+                  </div>
+                  <div class="form-row">
+                    <span class="label" data-i18n="report.review.reasons">Reasons</span>
+                    <div id="reportReviewReasons" class="choice-group"></div>
+                  </div>
+                  <label>
+                    <span data-i18n="report.review.comment">Comment</span>
+                    <textarea
+                      id="reportReviewComment"
+                      rows="2"
+                      placeholder="Optional notes"
+                      data-i18n-placeholder="report.review.comment.placeholder"
+                    ></textarea>
+                  </label>
+                  <button id="submitReportReview" class="primary" data-i18n="report.review.submit">
+                    Submit Review
+                  </button>
+                  <div id="reportReviewStatus" class="hint"></div>
+                </div>
+                <div class="status-subtitle" data-i18n="report.links">Artifact Links</div>
+                <div id="reportArtifactLinks" class="report-links"></div>
+              </div>
+            </div>
+
+            <div class="panel panel-block span-2 analyze-runcompare">
+              <div class="panel-header">
+                <h3 data-i18n="analyze.runCompare.title">Run-to-Run Compare</h3>
+                <p data-i18n="analyze.runCompare.desc">
+                  Compare pLDDT, RMSD, Relax, SoluProt, and pass-rate deltas versus another run.
+                </p>
+              </div>
+              <div class="status-card feedback-card">
+                <div class="form-row run-compare-controls">
+                  <label>
+                    <span data-i18n="analyze.runCompare.baseline">Baseline Run</span>
+                    <select id="runCompareBaseline"></select>
+                  </label>
+                  <div class="run-compare-actions">
+                    <button id="runCompareRefresh" class="ghost" data-i18n="analyze.runCompare.refresh">
+                      Compare
+                    </button>
+                    <button id="runCompareDetails" class="ghost hidden" data-i18n="analyze.runCompare.details">
+                      View Details
+                    </button>
+                  </div>
+                </div>
+                <div id="runCompareSummary" class="comparison-summary">
+                  <div class="placeholder" data-i18n="analyze.runCompare.placeholder">
+                    Select a baseline run to load run-to-run deltas.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel panel-block span-2 analyze-hitlist">
+              <div class="panel-header">
+                <h3 data-i18n="analyze.hitList.title">Hit List</h3>
+                <p data-i18n="analyze.hitList.desc">
+                  Weighted ranking of final candidates with score cutoff filtering.
+                </p>
+              </div>
+              <div class="status-card feedback-card">
+                <div class="hit-list-controls">
+                  <label>
+                    <span data-i18n="analyze.hitList.cutoff">Score Cutoff</span>
+                    <input id="hitListCutoff" type="range" min="0" max="100" step="1" value="0" />
+                    <span id="hitListCutoffValue" class="hint-inline">0</span>
+                  </label>
+                  <label>
+                    <span data-i18n="analyze.hitList.limit">Rows</span>
+                    <input id="hitListLimit" type="number" min="10" max="500" step="10" value="120" />
+                  </label>
+                  <div class="hit-list-weights">
+                    <label>
+                      <span data-i18n="analyze.hitList.weight.soluprot">SoluProt W</span>
+                      <input id="hitWeightSoluprot" type="number" step="0.05" min="0" value="0.4" />
+                    </label>
+                    <label>
+                      <span data-i18n="analyze.hitList.weight.plddt">pLDDT W</span>
+                      <input id="hitWeightPlddt" type="number" step="0.05" min="0" value="0.3" />
+                    </label>
+                    <label>
+                      <span data-i18n="analyze.hitList.weight.rmsd">RMSD W</span>
+                      <input id="hitWeightRmsd" type="number" step="0.05" min="0" value="0.2" />
+                    </label>
+                  </div>
+                  <div class="hit-list-note" data-i18n="analyze.hitList.identityInfo">
+                    Identity is shown as percent and does not affect ranking/filtering.
+                  </div>
+                  <div class="hit-list-actions">
+                    <button id="hitListRefresh" class="ghost" data-i18n="analyze.hitList.refresh">
+                      Refresh
+                    </button>
+                    <button id="hitListDetails" class="ghost hidden" data-i18n="analyze.hitList.details">
+                      View Details
+                    </button>
+                  </div>
+                </div>
+                <div id="hitListSummary" class="score-row score-row-compact"></div>
+                <div id="surrogateTriageSummary" class="surrogate-triage-summary hidden"></div>
+                <div class="chart-explorer">
+                  <div class="chart-explorer-head">
+                    <label>
+                      <span data-i18n="analyze.chart.select">Chart</span>
+                      <select id="analyzeChartType" class="artifact-select">
+                        <option value="plddt_rmsd" data-i18n="analyze.chart.option.plddtRmsd">
+                          Scatter: pLDDT vs RMSD
+                        </option>
+                        <option value="plddt_soluprot" data-i18n="analyze.chart.option.plddtSoluprot">
+                          Scatter: pLDDT vs SoluProt
+                        </option>
+                        <option value="score_hist" data-i18n="analyze.chart.option.scoreHist">
+                          Histogram: Hit Score
+                        </option>
+                        <option value="tier_pass" data-i18n="analyze.chart.option.tierPass">
+                          Tier AF2 Pass Rate
+                        </option>
+                      </select>
+                    </label>
+                  </div>
+                  <div id="analyzeChartCanvas" class="chart-canvas">
+                    <div class="placeholder" data-i18n="analyze.chart.placeholder">
+                      Run hit list to render candidate charts.
+                    </div>
+                  </div>
+                  <div id="analyzeChartCaption" class="hint"></div>
+                </div>
+                <div id="hitListTable" class="hit-list-table-wrap">
+                  <div class="placeholder" data-i18n="analyze.hitList.placeholder">
+                    Load a run to build the hit list.
+                  </div>
+                </div>
+              </div>
+            </div>
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="tab-mcp"
+          class="tab-panel"
+          data-tab="mcp"
+          role="tabpanel"
+          aria-labelledby="tabBtnMcp"
+        >
+          <div class="tab-content-shell">
+            <div class="panel panel-block">
+              <div id="mcpGuidePanel"></div>
+            </div>
+          </div>
+        </section>
+          </div>
+        </div>
+      </div>
+      <section id="detachedResiduePickerRoot" class="detached-picker-root hidden" aria-live="polite"></section>
+    </main>
+
+    <div id="workspaceRecordPanel" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="workspaceRecordHeading">
+      <div class="overlay-card workspace-record-card">
+        <div class="overlay-header">
+          <div>
+            <h4 id="workspaceRecordHeading">Workspace Record</h4>
+            <div id="workspaceRecordSubheading" class="hint"></div>
+          </div>
+          <button id="workspaceRecordClose" class="ghost" data-i18n="common.close">Close</button>
+        </div>
+        <form id="workspaceRecordForm" class="workspace-record-form">
+          <input id="workspaceRecordKind" type="hidden" value="" />
+          <input id="workspaceRecordMode" type="hidden" value="" />
+          <input id="workspaceRecordProjectId" type="hidden" value="" />
+          <input id="workspaceRecordRoundId" type="hidden" value="" />
+          <label class="workspace-record-field">
+            <span id="workspaceRecordTitleLabel" data-i18n="workspaceRecord.projectName">Project Name</span>
+            <input id="workspaceRecordTitleInput" type="text" />
+          </label>
+          <label id="workspaceRecordDescriptionField" class="workspace-record-field">
+            <span data-i18n="workspaceRecord.projectDescription">Project Description</span>
+            <textarea id="workspaceRecordDescriptionInput" rows="3"></textarea>
+          </label>
+          <label id="workspaceRecordGoalField" class="workspace-record-field">
+            <span data-i18n="workspaceRecord.roundGoal">Goal</span>
+            <textarea id="workspaceRecordGoalInput" rows="3"></textarea>
+          </label>
+          <label id="workspaceRecordHypothesisField" class="workspace-record-field">
+            <span data-i18n="workspaceRecord.roundHypothesis">Hypothesis</span>
+            <textarea id="workspaceRecordHypothesisInput" rows="3"></textarea>
+          </label>
+          <label id="workspaceRecordNotesField" class="workspace-record-field">
+            <span data-i18n="workspaceRecord.roundNotes">Notes</span>
+            <textarea id="workspaceRecordNotesInput" rows="4"></textarea>
+          </label>
+          <label id="workspaceRecordNextRoundNotesField" class="workspace-record-field">
+            <span data-i18n="workspaceRecord.nextRoundNotes">Next-Round Notes</span>
+            <textarea id="workspaceRecordNextRoundNotesInput" rows="3"></textarea>
+          </label>
+          <div id="workspaceRecordManagedHint" class="hint" data-i18n="workspaceRecord.roundManagedHint">
+            Selected candidates and experiment summary are auto-managed from linked run results.
+          </div>
+          <div class="settings-actions workspace-record-actions">
+            <button id="workspaceRecordSubmit" class="primary" type="submit" data-i18n="common.save">Save</button>
+            <button id="workspaceRecordCancel" class="ghost" type="button" data-i18n="common.close">Close</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="experimentChoicePanel" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="experimentChoiceHeading">
+      <div class="overlay-card experiment-choice-card">
+        <div class="overlay-header">
+          <div>
+            <h4 id="experimentChoiceHeading" data-i18n="home.experimentChoice.title">Choose Experiment Type</h4>
+            <p class="hint" data-i18n="home.experimentChoice.desc">
+              Start with the path that matches how much setup and review control you need.
+            </p>
+          </div>
+          <button id="experimentChoiceClose" class="ghost" type="button" data-i18n="common.close">Close</button>
+        </div>
+        <div class="experiment-choice-grid">
+          <button class="experiment-choice-btn" type="button" data-experiment-target="fast">
+            <span class="experiment-choice-kicker" data-i18n="home.experimentChoice.fast.kicker">Default path</span>
+            <strong data-i18n="home.experimentChoice.fast.title">Fast</strong>
+            <span data-i18n="home.experimentChoice.fast.desc">Upload a target file or paste text, then run standard defaults.</span>
+          </button>
+          <button class="experiment-choice-btn" type="button" data-experiment-target="advanced">
+            <span class="experiment-choice-kicker" data-i18n="home.experimentChoice.advanced.kicker">Guided setup</span>
+            <strong data-i18n="home.experimentChoice.advanced.title">Advanced</strong>
+            <span data-i18n="home.experimentChoice.advanced.desc">Step through input, workflow, criteria, expert options, and review.</span>
+          </button>
+          <button class="experiment-choice-btn" type="button" data-experiment-target="surrogate">
+            <span class="experiment-choice-kicker" data-i18n="home.experimentChoice.surrogate.kicker">Budget triage</span>
+            <strong data-i18n="home.experimentChoice.surrogate.title">Surrogate</strong>
+            <span data-i18n="home.experimentChoice.surrogate.desc">Use SoluProt, K-means, and a local surrogate to reduce final AF2 calls.</span>
+          </button>
+          <button class="experiment-choice-btn" type="button" data-experiment-target="evolution">
+            <span class="experiment-choice-kicker" data-i18n="home.experimentChoice.evolution.kicker">Iterative design</span>
+            <strong data-i18n="home.experimentChoice.evolution.title">Evolution</strong>
+            <span data-i18n="home.experimentChoice.evolution.desc">Configure active-learning rounds and Top K selection.</span>
+          </button>
+          <button class="experiment-choice-btn" type="button" data-experiment-target="studio">
+            <span class="experiment-choice-kicker" data-i18n="home.experimentChoice.studio.kicker">Stage review</span>
+            <strong data-i18n="home.experimentChoice.studio.title">Workflow Studio</strong>
+            <span data-i18n="home.experimentChoice.studio.desc">Build or resume a staged workflow with checkpoints.</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="settingsPanel" class="overlay hidden" role="dialog" aria-modal="true">
+      <div class="overlay-card settings-card">
+        <div class="overlay-header">
+          <h4 data-i18n="settings.title">Settings</h4>
+          <button id="settingsClose" class="ghost" data-i18n="common.close">Close</button>
+        </div>
+        <div class="settings-fixed">
+          <div class="settings-label" data-i18n="settings.baseLabel">MCP HTTP Base URL</div>
+          <div id="apiBaseValue" class="settings-value"></div>
+          <div class="hint" data-i18n="settings.baseHint">
+            This value is fixed by the server configuration.
+          </div>
+        </div>
+        <div class="settings-section">
+          <label>
+            <span data-i18n="settings.reportLang.label">Report Language</span>
+            <select id="reportLangSelect">
+              <option value="auto" data-i18n="settings.reportLang.auto">Follow UI</option>
+              <option value="en" data-i18n="settings.reportLang.en">English</option>
+              <option value="ko" data-i18n="settings.reportLang.ko">Korean</option>
+            </select>
+          </label>
+          <div class="hint" data-i18n="settings.reportLang.hint">
+            Applies to run reports and agent reports.
+          </div>
+        </div>
+        <div class="settings-actions">
+          <button id="healthCheck" class="ghost" data-i18n="settings.health">Health Check</button>
+        </div>
+        <div id="healthStatus" class="hint"></div>
+      </div>
+    </div>
+
+    <div id="reportModal" class="overlay hidden" role="dialog" aria-modal="true">
+      <div class="overlay-card report-card">
+        <div class="overlay-header">
+          <h4 id="reportModalTitle">Report</h4>
+          <div class="modal-actions">
+            <button id="reportModalToggle" class="ghost" data-i18n="report.modal.toggleRendered">
+              Rendered
+            </button>
+            <button id="reportModalDownload" class="ghost" data-i18n="report.modal.download">
+              Download
+            </button>
+            <button id="reportModalClose" class="ghost" data-i18n="common.close">Close</button>
+          </div>
+        </div>
+        <div id="reportModalContent" class="report-modal-content"></div>
+      </div>
+    </div>
+
+    <div id="modelProvidersPanel" class="overlay hidden" role="dialog" aria-modal="true">
+      <div class="overlay-card model-providers-card">
+        <div class="overlay-header">
+          <div>
+            <h4 data-i18n="modelProviders.title">Model Providers</h4>
+            <p class="hint" data-i18n="modelProviders.desc">
+              Register each model as RunPod, HTTP API, or disabled.
+            </p>
+          </div>
+          <div class="modal-actions">
+            <button id="modelProviderAddBtn" class="ghost" type="button" data-i18n="modelProviders.add.open">
+              Add Model
+            </button>
+            <button id="modelProvidersClose" class="ghost" data-i18n="common.close">Close</button>
+          </div>
+        </div>
+        <div id="modelProvidersStatus" class="hint"></div>
+        <div class="model-provider-scope-row">
+          <label>
+            <span data-i18n="modelProviders.scope">Settings scope</span>
+            <select id="modelProviderScope">
+              <option value="user" data-i18n="modelProviders.scope.user">My model settings</option>
+              <option value="global" data-i18n="modelProviders.scope.global">Global defaults</option>
+            </select>
+          </label>
+          <p class="hint" data-i18n="modelProviders.scope.help">
+            Global defaults apply to all users. My model settings apply only to your runs.
+          </p>
+        </div>
+        <div id="modelProviderAddPanel" class="model-provider-add-panel hidden">
+          <div class="model-provider-add-head">
+            <div>
+              <strong data-i18n="modelProviders.add.title">Add Custom Model</strong>
+              <p class="hint" data-i18n="modelProviders.add.desc">
+                Register a RunPod endpoint or HTTP API that can be reused by the platform.
+              </p>
+            </div>
+          </div>
+          <div class="model-provider-add-grid">
+            <label>
+              <span data-i18n="modelProviders.add.key">Model key</span>
+              <input id="modelProviderAddKey" type="text" placeholder="esmfold_large" />
+            </label>
+            <label>
+              <span data-i18n="modelProviders.add.label">Display name</span>
+              <input id="modelProviderAddLabel" type="text" placeholder="ESMFold Large" />
+            </label>
+            <label>
+              <span data-i18n="modelProviders.type">Provider</span>
+              <select id="modelProviderAddType">
+                <option value="http_api" data-i18n="modelProviders.type.http_api">HTTP API</option>
+                <option value="runpod" data-i18n="modelProviders.type.runpod">RunPod</option>
+                <option value="disabled" data-i18n="modelProviders.type.disabled">Disabled</option>
+              </select>
+            </label>
+            <label>
+              <span data-i18n="modelProviders.endpoint">RunPod endpoint ID</span>
+              <input id="modelProviderAddEndpoint" type="text" />
+            </label>
+            <label class="model-provider-wide">
+              <span data-i18n="modelProviders.baseUrl">HTTP API URL</span>
+              <input id="modelProviderAddBaseUrl" type="url" placeholder="http://gpu.example:18162" />
+            </label>
+            <label>
+              <span data-i18n="modelProviders.credential">RunPod API key / HTTP token</span>
+              <input id="modelProviderAddToken" type="password" autocomplete="new-password" />
+            </label>
+            <label>
+              <span data-i18n="modelProviders.timeout">Timeout (sec)</span>
+              <input id="modelProviderAddTimeout" type="number" min="1" step="1" value="21600" />
+            </label>
+          </div>
+          <div class="model-provider-add-actions">
+            <button id="modelProviderAddCancel" class="ghost" type="button" data-i18n="common.close">Close</button>
+            <button id="modelProviderAddSave" class="primary" type="button" data-i18n="modelProviders.add.save">
+              Add Model
+            </button>
+          </div>
+        </div>
+        <details class="model-provider-guide" open>
+          <summary data-i18n="modelProviders.guide.title">Model registration guide</summary>
+          <div class="model-provider-guide-grid">
+            <section>
+              <strong data-i18n="modelProviders.guide.runpod.title">Use a RunPod image</strong>
+              <p data-i18n="modelProviders.guide.runpod.body">
+                Create a RunPod Serverless endpoint from your DockerHub image, for example
+                mimikyou0607/proteinmpnn-runpod:latest, then enter the endpoint ID and RunPod API key here.
+              </p>
+            </section>
+            <section>
+              <strong data-i18n="modelProviders.guide.gpu.title">Register a GPU server API</strong>
+              <p data-i18n="modelProviders.guide.gpu.body">
+                Install or copy /opt/protein-model-api-registration on the GPU server, expose /healthz and /run, then paste the HTTP API URL here.
+              </p>
+              <button
+                id="modelProviderSkillDownload"
+                class="ghost model-provider-guide-action"
+                type="button"
+                data-i18n="modelProviders.guide.gpu.download"
+              >
+                Download GPU registration skill
+              </button>
+            </section>
+            <section>
+              <strong data-i18n="modelProviders.guide.contract.title">Required API contract</strong>
+              <p data-i18n="modelProviders.guide.contract.body">
+                Workers should provide GET /healthz, POST /run, and optional POST /cancel with JSON inputs and outputs.
+              </p>
+            </section>
+          </div>
+        </details>
+        <div id="modelProvidersList" class="model-provider-list"></div>
+      </div>
+    </div>
+
+    <div id="adminPanel" class="overlay hidden" role="dialog" aria-modal="true">
+      <div class="overlay-card admin-card">
+        <div class="overlay-header">
+          <h4 data-i18n="admin.title">Admin: Create User</h4>
+          <button id="adminClose" class="ghost" data-i18n="common.close">Close</button>
+        </div>
+        <label>
+          <span data-i18n="admin.username">New Username</span>
+          <input
+            id="adminUsername"
+            type="text"
+            placeholder="new.user"
+            data-i18n-placeholder="admin.username.placeholder"
+          />
+        </label>
+        <label>
+          <span data-i18n="admin.password">New Password</span>
+          <input
+            id="adminPassword"
+            type="password"
+            placeholder="min 8 chars"
+            data-i18n-placeholder="admin.password.placeholder"
+          />
+        </label>
+        <label>
+          <span data-i18n="admin.role">Role</span>
+          <select id="adminRole">
+            <option value="user" data-i18n="admin.role.user">User</option>
+            <option value="model_manager" data-i18n="admin.role.modelManager">Model Manager</option>
+            <option value="admin" data-i18n="admin.role.admin">Admin</option>
+          </select>
+        </label>
+        <div class="settings-actions">
+          <button id="adminCreateUser" class="primary" data-i18n="admin.create">Create User</button>
+        </div>
+        <div id="adminStatus" class="hint"></div>
+        <div class="panel-divider"></div>
+        <div class="admin-users-section">
+          <div class="admin-users-head">
+            <div>
+              <div class="status-subtitle" data-i18n="admin.users.title">User Approval</div>
+              <p class="hint" data-i18n="admin.users.desc">
+                Approve new Google/OIDC users and assign model-management rights.
+              </p>
+            </div>
+            <button id="adminRefreshUsers" class="ghost" type="button" data-i18n="admin.users.refresh">Refresh</button>
+          </div>
+          <div id="adminUserList" class="admin-user-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="helpPanel" class="overlay hidden" role="dialog" aria-modal="true">
+      <div class="overlay-card help-card">
+        <div class="overlay-header">
+          <h4 data-i18n="help.title">Usage Guide</h4>
+          <button id="helpClose" class="ghost" data-i18n="common.close">Close</button>
+        </div>
+        <div class="help-body">
+          <div class="help-section">
+            <h5 data-i18n="help.quick.title">Quick Start</h5>
+            <ul>
+              <li data-i18n="help.quick.step1">
+                  Advanced: choose Pipeline or Workflow Studio, attach target input, run preflight, then launch.
+              </li>
+              <li data-i18n="help.quick.step2">
+                Monitor: follow stage status, review checkpoint artifacts, and continue from the monitor panel when needed.
+              </li>
+              <li data-i18n="help.quick.step3">
+                Analyze: start with Compare Studio, Run-to-Run Compare, and Hit List, then save feedback, experiments, and reports.
+              </li>
+            </ul>
+          </div>
+          <div class="help-section">
+            <h5 data-i18n="help.setup.title">Advanced Tips</h5>
+            <ul>
+              <li data-i18n="help.setup.step1">
+                Select a recent run and use Load Request to copy its settings into a new run before editing.
+              </li>
+              <li data-i18n="help.setup.step2">
+                Use Resume Run in Monitor or Studio for same-run continuation. Advanced is for fresh runs only.
+              </li>
+            </ul>
+          </div>
+          <div class="help-section">
+            <h5 data-i18n="help.monitor.title">Monitoring</h5>
+            <ul>
+              <li data-i18n="help.monitor.step1">
+                Select a recent run to load status, artifacts, reports, and workflow review context.
+              </li>
+              <li data-i18n="help.monitor.step2">
+                Use Auto Poll for live updates and workflow actions when a checkpoint pauses execution.
+              </li>
+            </ul>
+          </div>
+          <div class="help-section">
+            <h5 data-i18n="help.analyze.title">Analysis</h5>
+            <ul>
+              <li data-i18n="help.analyze.step1">
+                Use Compare Studio for tier-based WT/RFD3/BioEmu comparison, and open folded baselines only when needed.
+              </li>
+              <li data-i18n="help.analyze.step2">
+                Read the inline Comparison Summary, then review full-run deltas and ranked candidates in Run-to-Run Compare and Hit List.
+              </li>
+              <li data-i18n="help.analyze.step3">
+                After triage, log feedback and experiments, then generate the final report package.
+              </li>
+            </ul>
+          </div>
+          <div class="help-section">
+            <h5 data-i18n="help.admin.title">Admin</h5>
+            <ul>
+              <li data-i18n="help.admin.step1">Admins can create users from the Admin button.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div
+      id="tutorialOverlay"
+      class="tutorial-overlay hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="tutorialStepTitle"
+    >
+      <div id="tutorialSpotlight" class="tutorial-spotlight" aria-hidden="true"></div>
+      <div id="tutorialCard" class="tutorial-card" role="document">
+        <div class="tutorial-card-head">
+          <div id="tutorialStepMeta" class="tutorial-step-meta"></div>
+          <button id="tutorialClose" class="ghost" type="button" data-i18n="common.close">Close</button>
+        </div>
+        <div
+          id="tutorialContents"
+          class="tutorial-contents"
+          aria-label="Tutorial contents"
+        ></div>
+        <h4 id="tutorialStepTitle"></h4>
+        <p id="tutorialStepBody"></p>
+        <div id="tutorialStepExample" class="tutorial-step-example" hidden></div>
+        <div id="tutorialStepHint" class="tutorial-step-hint"></div>
+        <div id="tutorialDots" class="tutorial-dots" aria-hidden="true"></div>
+        <div class="tutorial-actions">
+          <button id="tutorialSkip" class="ghost" type="button" data-i18n="tutorial.skip">Skip</button>
+          <div class="tutorial-step-actions">
+            <button id="tutorialPrev" class="ghost" type="button" data-i18n="tutorial.prev">Back</button>
+            <button id="tutorialNext" class="primary" type="button" data-i18n="tutorial.next">Next</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="copilotBackdrop" class="copilot-backdrop hidden" aria-hidden="true"></div>
+    <div id="copilotDrawer" class="copilot-drawer hidden" role="dialog" aria-modal="false">
+      <div class="copilot-header">
+        <div>
+          <h4 data-i18n="copilot.title">Context Copilot</h4>
+          <p data-i18n="copilot.desc">Ask about usage, interpretation, and next actions for current run.</p>
+        </div>
+        <div class="copilot-header-actions">
+          <button id="copilotClearBtn" class="ghost" data-i18n="copilot.clear">Clear</button>
+          <button id="copilotCloseBtn" class="ghost" data-i18n="common.close">Close</button>
+        </div>
+      </div>
+      <div class="copilot-conversations">
+        <button id="copilotNewChatBtn" class="ghost" type="button">+ New</button>
+        <select id="copilotConvSelect" class="copilot-conv-select"><option value="">Conversations</option></select>
+        <button id="copilotDeleteConvBtn" class="ghost" type="button" title="Delete conversation">🗑</button>
+      </div>
+      <div class="copilot-body">
+        <details class="copilot-section copilot-panel chat-ai-settings">
+          <summary>AI Assistant settings</summary>
+          <label>
+            <span>Provider</span>
+            <select id="chatProviderSelect"></select>
+          </label>
+          <label id="chatProviderKeyRow">
+            <span>API key</span>
+            <input id="chatProviderKey" type="password" autocomplete="off"
+                   placeholder="stored in this browser only" />
+          </label>
+          <div class="copilot-header-actions">
+            <button id="chatLoadModelsBtn" class="ghost" type="button">Load models</button>
+          </div>
+          <label>
+            <span>Model</span>
+            <select id="chatModelSelect"></select>
+          </label>
+          <div id="chatProviderStatus" class="status-subtitle" aria-live="polite"></div>
+        </details>
+        <details class="copilot-section copilot-panel copilot-context-panel">
+          <summary>Run context &amp; quick prompts</summary>
+          <div class="copilot-section">
+            <div class="status-subtitle" data-i18n="copilot.summary.title">Live Snapshot</div>
+            <div id="copilotSummary" class="copilot-summary">
+              <div class="placeholder" data-i18n="copilot.summary.empty">Open a run to build the live snapshot.</div>
+            </div>
+          </div>
+          <div class="copilot-section copilot-section-grid">
+            <div class="copilot-panel">
+              <div class="status-subtitle" data-i18n="copilot.context.title">Current Context</div>
+              <div id="copilotContext" class="copilot-context">
+                <div class="placeholder" data-i18n="copilot.context.empty">Select a run to load context.</div>
+              </div>
+            </div>
+            <div class="copilot-panel">
+              <div class="status-subtitle" data-i18n="copilot.actions.title">Suggested Actions</div>
+              <div id="copilotActions" class="copilot-actions">
+                <div class="placeholder" data-i18n="copilot.actions.empty">Select a run to unlock in-place actions.</div>
+              </div>
+            </div>
+          </div>
+          <div class="copilot-section copilot-panel">
+            <div class="status-subtitle" data-i18n="copilot.quick.title">Quick Prompts</div>
+            <div class="copilot-quick">
+              <button id="copilotQuickUsage" class="ghost" data-i18n="copilot.quick.usage">How to use this page?</button>
+              <button id="copilotQuickInterpret" class="ghost" data-i18n="copilot.quick.interpret">Interpret current metrics</button>
+              <button id="copilotQuickSummary" class="ghost" data-i18n="copilot.quick.summary">Summarize this run</button>
+              <button id="copilotQuickCompare" class="ghost" data-i18n="copilot.quick.compare">Explain compare state</button>
+              <button id="copilotQuickNext" class="ghost" data-i18n="copilot.quick.next">What should I do next?</button>
+              <button id="copilotQuickResume" class="ghost" data-i18n="copilot.quick.resume">How does resume work?</button>
+              <button id="copilotQuickTarget" class="ghost" data-i18n="copilot.quick.target">Briefly explain the target</button>
+            </div>
+          </div>
+        </details>
+        <div class="copilot-section copilot-panel copilot-chat-panel">
+          <div class="status-subtitle" data-i18n="copilot.conversation.title">Conversation</div>
+          <div id="copilotMessages" class="copilot-messages"></div>
+        </div>
+      </div>
+      <div class="copilot-attachments" id="copilotAttachments"></div>
+      <div id="copilotRunAction" class="copilot-run-action" hidden>
+        <button id="copilotRunNowBtn" class="primary" type="button">▶ Run now</button>
+      </div>
+      <div class="copilot-input-row">
+        <input id="copilotFileInput" type="file" multiple hidden />
+        <input id="copilotFolderInput" type="file" webkitdirectory directory multiple hidden />
+        <button id="copilotAttachBtn" class="ghost" type="button" title="Attach files">📎</button>
+        <button id="copilotAttachFolderBtn" class="ghost" type="button" title="Attach a folder">📁</button>
+        <input
+          id="copilotInput"
+          type="text"
+          placeholder="Ask about current run or this UI"
+          data-i18n-placeholder="copilot.input.placeholder"
+        />
+        <button id="copilotSendBtn" class="primary" data-i18n="copilot.send">Send</button>
+      </div>
+    </div>
+    <button id="copilotFabBtn" class="primary copilot-fab" data-i18n="copilot.open">Copilot</button>
+
+    <script src="https://cdn.jsdelivr.net/npm/3dmol@2.0.4/build/3Dmol-min.js"></script>
+    <script type="module" src="./app.js?v=20260713_studio_create"></script>
+  </body>
+</html>

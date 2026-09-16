@@ -1,0 +1,132 @@
+# --- Requested exclusions (repo root) ---
+/alphafold2/
+/mmseqs-runpod/
+/ProteinMPNN-runpod/
+/colabfold-runpod/
+/esm-runpod/
+/simplefold-runpod/
+rfd3-runpod/
+/diffdock_runpod/
+/bioemu-runpod/
+/relax_runpod/
+# --- Pipeline outputs ---
+/outputs/
+/cath_outputs/
+/cath_embeddings.npy
+/data/
+/logs/*
+!/logs/.gitkeep
+/_ops/
+/_ops/jobs/
+/batch_success_*.csv
+/batch_failed_*.csv
+/batch_status.csv
+
+# --- Local scratch / artifacts ---
+/tmp/
+/.codex
+/pipeline-mcp/tests/_tmp/
+/pytest-cache-files-*/
+/pipeline-mcp/pytest-cache-files-*/
+*.pdb
+*.pdb.gz
+*.cif
+*.cif.gz
+*.sdf
+*.mol
+*.mol2
+*.smiles
+*.smi
+*.fasta
+*.fa
+*.a3m
+*.tsv
+*.pdf
+!/figures/benchmark/*.pdf
+*.json
+!/frontend/package-lock.json
+/af2_wt_*_job.json
+
+#  원본은 파이프라인 산출물(*.json)을 통째로 무시한다. 그 규칙이 신규 콘솔의
+#  의존성 명세까지 덮어 clone 한 저장소에서 web/ 이 설치·빌드되지 않았다.
+#  아래 셋은 소스다 — 되살린다.
+!/web/package.json
+!/web/package-lock.json
+!/web/tsconfig.json
+
+# --- Public release package allowlist ---
+!/public_data/**/*.json
+!/public_data/**/*.fasta
+!/public_data/**/*.pdb
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyd
+.Python
+.venv/
+venv/
+ENV/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+
+# --- Env / secrets ---
+.env
+.env.*
+!/web/.env.example
+*.pem
+*.key
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.vscode/
+.worktrees/
+
+# --- Frontend ---
+/frontend/node_modules/
+/frontend/dist/
+
+# --- docs ---
+manuscript (5).docx
+manuscript (5).md
+
+# Internal dev artifacts — kept on disk / worker, not published to the repo.
+# (Public setup/reproduction/architecture docs in docs/ stay tracked.)
+/docs/plans/
+/docs/superpowers/
+/docs/2026-04-15-meta-surrogate-prototype-results/
+/docs/2026-04-24-meta-surrogate-bias-analysis-ko.md
+/docs/veo_video_scenario.md
+/docs/veo_video_scenario_slides.md
+/docs/project_intake_system_paper.md
+# Binary manuscript exports — Markdown sources stay tracked.
+/docs/manuscript.docx
+/docs/supplementary.docx
+# Superseded figure assets.
+/figures/benchmark/_legacy/
+
+# Agent / dev tooling — local only, not published.
+/.claude/
+/.agents/
+/AGENT.md
+/todo.md
+
+# /promote SSO session (never commit)
+.claude/promote/
+*.storageState.json
+
+# 신규 플랫폼 계층
+.venv/
+platform/data/
+**/__pycache__/
+.pytest_cache/
+web/node_modules/
+web/dist/
+
+web/tsconfig.tsbuildinfo
+web/*.tsbuildinfo

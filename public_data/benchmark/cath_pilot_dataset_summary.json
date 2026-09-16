@@ -1,0 +1,170 @@
+{
+  "dataset": "cath_outputs/paper_curated/curated_dataset.csv",
+  "n_targets": 23,
+  "n_rows": 2737,
+  "n_plddt_labels": 2737,
+  "n_soluprot_labels": 2737,
+  "per_target": [
+    {
+      "run_id": "cath_test_1b65A00",
+      "target": "1b65A00",
+      "n_rows": 118,
+      "n_plddt": 118,
+      "n_solu": 118
+    },
+    {
+      "run_id": "cath_test_1e1hB02",
+      "target": "1e1hB02",
+      "n_rows": 119,
+      "n_plddt": 119,
+      "n_solu": 119
+    },
+    {
+      "run_id": "cath_test_1efnD00",
+      "target": "1efnD00",
+      "n_rows": 120,
+      "n_plddt": 120,
+      "n_solu": 120
+    },
+    {
+      "run_id": "cath_test_1f4hB01",
+      "target": "1f4hB01",
+      "n_rows": 119,
+      "n_plddt": 119,
+      "n_solu": 119
+    },
+    {
+      "run_id": "cath_test_1h41B03",
+      "target": "1h41B03",
+      "n_rows": 120,
+      "n_plddt": 120,
+      "n_solu": 120
+    },
+    {
+      "run_id": "cath_test_1jmoL00",
+      "target": "1jmoL00",
+      "n_rows": 120,
+      "n_plddt": 120,
+      "n_solu": 120
+    },
+    {
+      "run_id": "cath_test_1jmzG00",
+      "target": "1jmzG00",
+      "n_rows": 120,
+      "n_plddt": 120,
+      "n_solu": 120
+    },
+    {
+      "run_id": "cath_test_1kvdD00",
+      "target": "1kvdD00",
+      "n_rows": 120,
+      "n_plddt": 120,
+      "n_solu": 120
+    },
+    {
+      "run_id": "cath_test_1ltsA00",
+      "target": "1ltsA00",
+      "n_rows": 120,
+      "n_plddt": 120,
+      "n_solu": 120
+    },
+    {
+      "run_id": "cath_test_1m3iC02",
+      "target": "1m3iC02",
+      "n_rows": 120,
+      "n_plddt": 120,
+      "n_solu": 120
+    },
+    {
+      "run_id": "cath_test_1no3A05",
+      "target": "1no3A05",
+      "n_rows": 110,
+      "n_plddt": 110,
+      "n_solu": 110
+    },
+    {
+      "run_id": "cath_test_1nqlA03",
+      "target": "1nqlA03",
+      "n_rows": 119,
+      "n_plddt": 119,
+      "n_solu": 119
+    },
+    {
+      "run_id": "cath_test_1ogmX01",
+      "target": "1ogmX01",
+      "n_rows": 120,
+      "n_plddt": 120,
+      "n_solu": 120
+    },
+    {
+      "run_id": "cath_test_1ohgC01",
+      "target": "1ohgC01",
+      "n_rows": 120,
+      "n_plddt": 120,
+      "n_solu": 120
+    },
+    {
+      "run_id": "cath_test_1qmbB00",
+      "target": "1qmbB00",
+      "n_rows": 120,
+      "n_plddt": 120,
+      "n_solu": 120
+    },
+    {
+      "run_id": "cath_test_2vvrB00",
+      "target": "2vvrB00",
+      "n_rows": 120,
+      "n_plddt": 120,
+      "n_solu": 120
+    },
+    {
+      "run_id": "cath_test_2wejA00",
+      "target": "2wejA00",
+      "n_rows": 120,
+      "n_plddt": 120,
+      "n_solu": 120
+    },
+    {
+      "run_id": "cath_test_2x62B00",
+      "target": "2x62B00",
+      "n_rows": 120,
+      "n_plddt": 120,
+      "n_solu": 120
+    },
+    {
+      "run_id": "cath_test_3ab2G02",
+      "target": "3ab2G02",
+      "n_rows": 120,
+      "n_plddt": 120,
+      "n_solu": 120
+    },
+    {
+      "run_id": "cath_test_3ablS00",
+      "target": "3ablS00",
+      "n_rows": 120,
+      "n_plddt": 120,
+      "n_solu": 120
+    },
+    {
+      "run_id": "cath_test_3asnY00",
+      "target": "3asnY00",
+      "n_rows": 120,
+      "n_plddt": 120,
+      "n_solu": 120
+    },
+    {
+      "run_id": "cath_test_3b5mC01",
+      "target": "3b5mC01",
+      "n_rows": 120,
+      "n_plddt": 120,
+      "n_solu": 120
+    },
+    {
+      "run_id": "cath_test_3bukC01",
+      "target": "3bukC01",
+      "n_rows": 112,
+      "n_plddt": 112,
+      "n_solu": 112
+    }
+  ]
+}

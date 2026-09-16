@@ -1,0 +1,13 @@
+cff-version: 1.2.0
+message: "If you use this software or benchmark data, please cite the associated manuscript and this archived release."
+title: "RAPID: A Reproducible Pipeline for Solubility-Oriented Protein Redesign with Resource-Aware Surrogate Triage"
+version: "1.0.29"
+date-released: "2026-07-13"
+license: MIT
+repository-code: "https://github.com/sblabkribb/protein_pipeline"
+doi: "10.5281/zenodo.20619413"
+authors:
+  - family-names: Park
+    given-names: Yaeseong
+    orcid: "https://orcid.org/0009-0004-5318-2423"
+    affiliation: "Korea Research Institute of Bioscience and Biotechnology (KRIBB)"

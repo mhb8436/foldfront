@@ -1,0 +1,61 @@
+{
+  "run_id": "admin_20260430_064926_afb67369",
+  "evolution_mode": "multi-round-local-active-learning-kmeans",
+  "surrogate_model": "rf",
+  "pool_statistics": {
+    "rounds": 4,
+    "initial": 8000,
+    "gated": 8000,
+    "per_round": [
+      {
+        "round": 1,
+        "pool_run_id": "admin_20260430_064926_afb67369_round1_pool",
+        "initial": 2000,
+        "gated": 2000
+      },
+      {
+        "round": 2,
+        "pool_run_id": "admin_20260430_064926_afb67369_round2_pool",
+        "initial": 2000,
+        "gated": 2000
+      },
+      {
+        "round": 3,
+        "pool_run_id": "admin_20260430_064926_afb67369_round3_pool",
+        "initial": 2000,
+        "gated": 2000
+      },
+      {
+        "round": 4,
+        "pool_run_id": "admin_20260430_064926_afb67369_round4_pool",
+        "initial": 2000,
+        "gated": 2000
+      }
+    ],
+    "oracle_train": 30,
+    "oracle_top_k": 5,
+    "oracle_top_k_per_round": 5,
+    "oracle_total": 49,
+    "expected_oracle_budget": 50,
+    "without_surrogate_oracle_budget": 8000
+  },
+  "budget_model": {
+    "round_1": 35,
+    "later_rounds_each": 5,
+    "with_surrogate": 50,
+    "without_surrogate": 8000,
+    "actual_evaluated": 49
+  },
+  "best_design": {
+    "id": "rfd3_spec-1_0_model_0:187",
+    "round": 3,
+    "phase": "round_3_top_k",
+    "plddt": 89.52420814479636,
+    "soluprot": 0.7338252058128611,
+    "relax_score": -3.154904977375566,
+    "predicted_plddt": 89.89662081447966,
+    "selection_rank": 2
+  },
+  "archive_name": "evolution_results_20260430_183430.zip",
+  "evaluated_sample_count": 49
+}

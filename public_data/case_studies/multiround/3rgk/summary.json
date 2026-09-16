@@ -1,0 +1,59 @@
+{
+  "run_id": "pys74631_kribb.re.kr_ev_3rgk",
+  "evolution_mode": "multi-round-local-active-learning-kmeans",
+  "surrogate_model": "rf",
+  "pool_statistics": {
+    "rounds": 4,
+    "initial": 8000,
+    "gated": 8000,
+    "per_round": [
+      {
+        "round": 1,
+        "pool_run_id": "pys74631_kribb.re.kr_ev_3rgk_round1_pool",
+        "initial": 2000,
+        "gated": 2000
+      },
+      {
+        "round": 2,
+        "pool_run_id": "pys74631_kribb.re.kr_ev_3rgk_round2_pool",
+        "initial": 2000,
+        "gated": 2000
+      },
+      {
+        "round": 3,
+        "pool_run_id": "pys74631_kribb.re.kr_ev_3rgk_round3_pool",
+        "initial": 2000,
+        "gated": 2000
+      },
+      {
+        "round": 4,
+        "pool_run_id": "pys74631_kribb.re.kr_ev_3rgk_round4_pool",
+        "initial": 2000,
+        "gated": 2000
+      }
+    ],
+    "oracle_train": 30,
+    "oracle_top_k": 20,
+    "oracle_top_k_per_round": 20,
+    "oracle_total": 94,
+    "expected_oracle_budget": 110,
+    "without_surrogate_oracle_budget": 8000
+  },
+  "budget_model": {
+    "round_1": 50,
+    "later_rounds_each": 20,
+    "with_surrogate": 110,
+    "without_surrogate": 8000,
+    "actual_evaluated": 94
+  },
+  "best_design": {
+    "id": "rfd3_spec-1_0_model_8:59",
+    "round": 1,
+    "phase": "round_1_train",
+    "plddt": 97.04590604026843,
+    "soluprot": 0.7942722319236881,
+    "relax_score": -3.134510067114094
+  },
+  "archive_name": "evolution_results_20260430_202245.zip",
+  "evaluated_sample_count": 94
+}
