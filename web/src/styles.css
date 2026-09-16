@@ -115,3 +115,47 @@
     font-variant-numeric: tabular-nums;
   }
 }
+
+/*  Workflow editor.
+
+    Connection handles ship as small grey dots, which disappear on a filled
+    black node. Nobody can draw an edge they cannot see, so they are given a
+    light core and a dark ring - legible on a filled node and an outlined one
+    alike - and a hit area larger than they look. */
+.react-flow__handle {
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--foreground);
+  background: var(--background);
+  opacity: 0.9;
+}
+.react-flow__handle:hover,
+.react-flow__node:hover .react-flow__handle {
+  opacity: 1;
+  width: 12px;
+  height: 12px;
+  background: var(--foreground);
+  border-color: var(--background);
+}
+.react-flow__handle-right { right: -6px; }
+.react-flow__handle-left { left: -6px; }
+
+/*  The line drawn while dragging, and a valid drop target. */
+.react-flow__connection-path {
+  stroke: var(--foreground);
+  stroke-width: 2;
+}
+.react-flow__handle-connecting {
+  background: var(--color-status-running);
+  border-color: var(--color-status-running);
+}
+.react-flow__handle-valid {
+  background: var(--color-status-succeeded);
+  border-color: var(--color-status-succeeded);
+}
+
+/*  Selected edge, so it is clear what Delete will remove. */
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--color-status-running);
+  stroke-width: 3;
+}
