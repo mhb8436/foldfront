@@ -63,7 +63,7 @@ export function Models() {
   }
 
   async function approve(modelId: string, version: string) {
-    await api.approveModel(modelId, version, 'admin')
+    await api.approveModel(modelId, version)
     models.reload()
   }
 

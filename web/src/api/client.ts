@@ -313,10 +313,10 @@ export const api = {
       { method: 'POST' },
     ),
 
-  approveModel: (modelId: string, version: string, approvedBy: string, decision = 'approved') =>
+  //  Who approved is taken from the verified identity, not from the caller.
+  approveModel: (modelId: string, version: string, decision = 'approved') =>
     request<ModelVersion>(
       `/models/${encodeURIComponent(modelId)}/${encodeURIComponent(version)}/approve${query({
-        approved_by: approvedBy,
         decision,
       })}`,
       { method: 'POST' },
