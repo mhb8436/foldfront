@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { RotateCcw, Stethoscope } from 'lucide-react'
+import { Eraser, RotateCcw, Stethoscope } from 'lucide-react'
 
 import { api } from '../api/client'
 import { usePolling, useAsync } from '../hooks/useAsync'
@@ -21,6 +21,20 @@ export function Operations() {
     const { reclaimed } = await api.reclaimJobs()
     setMessage(`만료된 lease ${reclaimed}건을 큐로 되돌렸습니다.`)
     jobs.reload()
+  }
+
+  async function prune() {
+    setMessage(null)
+    try {
+      const r = await api.pruneInputs()
+      setMessage(
+        r.removed
+          ? `${r.days}일 넘게 어느 실행도 읽지 않은 파일 ${r.removed}개를 지웠습니다 (${Math.round(r.freed_bytes / 1024)} KB).`
+          : `${r.days}일 넘게 읽히지 않은 파일이 없습니다.`,
+      )
+    } catch (e) {
+      setMessage((e as Error).message)
+    }
   }
 
   /** Reclaiming works on jobs alone. This is the other half: it tells the
@@ -58,6 +72,10 @@ export function Operations() {
             <Button variant="outline" size="sm" onClick={reclaim} disabled={!canAdmin}>
               <RotateCcw />
               만료 회수
+            </Button>
+            <Button variant="outline" size="sm" onClick={prune} disabled={!canAdmin}>
+              <Eraser />
+              입력 파일 정리
             </Button>
           </>
         }

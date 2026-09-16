@@ -1089,3 +1089,84 @@ async def test_거부된_모델은_승인_대기로_울리지_않는다(client):
 
     assert [n for n in notices if n["kind"] == "model.approval"] == []
     assert summary["models"]["pending_approval"] == []
+
+
+#  ---------------------------------------------------------------- 입력 파일 보존·한도
+
+
+async def test_올린_파일은_기록되고_사용량에_잡힌다(client, tmp_path, monkeypatch):
+    from foldfront.core.config import get_settings
+
+    monkeypatch.setenv("PIPELINE_OUTPUT_ROOT", str(tmp_path))
+    get_settings.cache_clear()
+    await client.post("/api/v1/inputs", files={"file": ("a.fasta", FASTA, "text/plain")})
+
+    usage = (await client.get("/api/v1/inputs/usage")).json()
+
+    assert usage["used_bytes"] == len(FASTA)
+    assert usage["quota_bytes"] > 0 and usage["retention_days"] > 0
+    assert [i["name"] for i in usage["items"]] == ["a.fasta"]
+
+
+async def test_한도를_넘기면_올리지_못한다(client, tmp_path, monkeypatch):
+    from foldfront.core.config import get_settings
+
+    monkeypatch.setenv("PIPELINE_OUTPUT_ROOT", str(tmp_path))
+    monkeypatch.setenv("INPUT_QUOTA_MB", "0")
+    get_settings.cache_clear()
+
+    r = await client.post("/api/v1/inputs", files={"file": ("a.fasta", FASTA, "text/plain")})
+
+    assert r.status_code == 413
+    assert r.json()["error"]["code"] == "input.quota_exceeded"
+    assert not list(tmp_path.rglob("*.fasta"))
+
+
+async def test_실행이_읽은_파일은_그_실행에_묶인다(client, tmp_path, monkeypatch):
+    from foldfront.core.config import get_settings
+    from foldfront.db.models import ModelVersion
+    from foldfront.db.repositories import Repos
+
+    from foldfront.engine.dag import builtin_pipeline_workflow
+
+    monkeypatch.setenv("PIPELINE_OUTPUT_ROOT", str(tmp_path))
+    get_settings.cache_clear()
+    wf = await Repos().workflows.save(builtin_pipeline_workflow())
+    await Repos().models.register(ModelVersion(model_id="msa", version="v1", endpoint_id="ep", active=True, is_default=True))
+    up = (await client.post("/api/v1/inputs", files={"file": ("a.fasta", FASTA, "text/plain")})).json()
+
+    started = await client.post("/api/v1/runs", json={
+        "workflow_id": wf.workflow_id, "request": {"target_fasta": up["path"]},
+    })
+    assert started.status_code == 200, started.text
+    run = started.json()
+
+    items = await Repos().inputs.by_paths([up["path"]])
+    assert items[0].run_ids == [run["run_id"]]
+
+
+async def test_정리는_아무_실행도_읽지_않은_옛_파일만_지운다(client, tmp_path, monkeypatch):
+    """A file a run read is that run's provenance and stays with it."""
+    from datetime import timedelta
+
+    from foldfront.core.config import get_settings
+    from foldfront.db.models import utcnow
+    from foldfront.db.repositories import Repos
+
+    monkeypatch.setenv("PIPELINE_OUTPUT_ROOT", str(tmp_path))
+    get_settings.cache_clear()
+    old = (await client.post("/api/v1/inputs", files={"file": ("old.fasta", FASTA, "text/plain")})).json()
+    kept = (await client.post("/api/v1/inputs", files={"file": ("kept.fasta", FASTA, "text/plain")})).json()
+    fresh = (await client.post("/api/v1/inputs", files={"file": ("fresh.fasta", FASTA, "text/plain")})).json()
+    long_ago = utcnow() - timedelta(days=90)
+    await Repos().inputs.col.update_many(
+        {"input_id": {"$in": [old["input_id"], kept["input_id"]]}}, {"$set": {"created_at": long_ago}},
+    )
+    await Repos().inputs.link_run([kept["path"]], "run-x")
+
+    report = (await client.post("/api/v1/inputs/prune", params={"days": 30})).json()
+
+    assert [i["name"] for i in report["items"]] == ["old.fasta"]
+    assert not Path(old["path"]).exists()
+    assert Path(kept["path"]).exists() and Path(fresh["path"]).exists()
+    assert report["freed_bytes"] == len(FASTA)

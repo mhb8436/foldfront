@@ -200,6 +200,7 @@ async def reclaim_loop(
     the run, and what re-queues work that went missing entirely.
     """
     stop = stop or asyncio.Event()
+    _last_prune: float | None = None
     while not stop.is_set():
         try:
             n = await repos.jobs.reclaim_expired()
@@ -207,6 +208,18 @@ async def reclaim_loop(
                 log.info("reclaimed %d expired jobs", n)
         except Exception:
             log.exception("error in reclaim loop")
+        try:
+            #  Retention runs here too, once a day, so it does not depend on
+            #  an operator remembering the command.
+            from foldfront.engine.housekeeping import prune_inputs
+
+            if _last_prune is None or (asyncio.get_event_loop().time() - _last_prune) > 86400:
+                _last_prune = asyncio.get_event_loop().time()
+                pruned = await prune_inputs(repos)
+                if pruned["removed"]:
+                    log.info("pruned %d unused inputs (%d bytes)", pruned["removed"], pruned["freed_bytes"])
+        except Exception:
+            log.exception("error in prune loop")
         try:
             report = await ExecutionService(repos).reconcile_all()
             if report["repaired"]:

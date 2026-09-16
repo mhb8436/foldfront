@@ -408,6 +408,19 @@ export const api = {
     })
   },
 
+  inputUsage: () =>
+    request<{
+      used_bytes: number
+      quota_bytes: number
+      retention_days: number
+      items: Array<{ input_id: string; name: string; kind: string; size_bytes: number; run_ids: string[]; created_at?: string | null }>
+    }>('/inputs/usage'),
+
+  pruneInputs: (days?: number) =>
+    request<{ days: number; removed: number; freed_bytes: number }>(`/inputs/prune${query({ days })}`, {
+      method: 'POST',
+    }),
+
   // ------------------------------------------------------- projects
   listProjects: (include_archived = false) =>
     request<Listed<Project>>(`/projects${query({ include_archived })}`),

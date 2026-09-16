@@ -31,6 +31,7 @@ from foldfront.core.auth import CurrentIdentity, auth_mode, require
 from foldfront.core.config import get_settings
 from foldfront.core.errors import ApiError, E
 from foldfront.db.models import (
+    InputFile,
     ModelVersion,
     Project,
     Role,
@@ -120,6 +121,8 @@ async def start_run(body: StartRunBody, identity: CurrentIdentity) -> dict[str, 
                 project_id=body.project_id or "(없음)",
             )
 
+    named = [v.strip() for v in body.request.values() if isinstance(v, str) and "/" in v and "\n" not in v]
+
     try:
         run = await ExecutionService(r).start(
             wf,
@@ -131,6 +134,8 @@ async def start_run(body: StartRunBody, identity: CurrentIdentity) -> dict[str, 
     except GraphError as exc:
         raise ApiError(E.WORKFLOW_GRAPH_INVALID, reason=str(exc)) from exc
 
+    #  What a run read stays with it: these are now provenance, not clutter.
+    await r.inputs.link_run(named, run.run_id)
     return run.model_dump()
 
 
@@ -605,22 +610,64 @@ async def upload_input(identity: CurrentIdentity, request: Request) -> dict[str,
     if not body.strip():
         raise ApiError(E.INPUT_EMPTY)
 
-    root = Path(get_settings().output_root).resolve()
+    #  One person's uploads, in total. The file the run reads is kept with
+    #  the run; only files nothing read count against anyone for long.
+    settings = get_settings()
+    quota = settings.input_quota_mb * 1024 * 1024
+    used = await repos().inputs.usage(identity.user_id)
+    if used + len(body) > quota:
+        raise ApiError(
+            E.INPUT_QUOTA_EXCEEDED, used_mb=used // (1024 * 1024),
+            quota_mb=settings.input_quota_mb, days=settings.input_retention_days,
+        )
+
+    root = Path(settings.output_root).resolve()
     folder = root / "inputs" / utcnow().strftime("%Y%m%d")
     folder.mkdir(parents=True, exist_ok=True)
     stored = folder / f"{new_id('in')}{suffix}"
     stored.write_bytes(body)
 
+    item = await repos().inputs.record(InputFile(
+        input_id=stored.stem, owner_id=identity.user_id, name=original, kind=kind,
+        path=str(stored), size_bytes=len(body),
+    ))
     await repos().audit.record(
         "input.upload", actor_id=identity.user_id, target_type="input",
-        target_id=stored.name, detail={"name": original, "bytes": len(body), "kind": kind},
+        target_id=item.input_id, detail={"name": original, "bytes": len(body), "kind": kind},
     )
     return {
         "path": str(stored),
         "name": original,
         "kind": kind,
         "size_bytes": len(body),
+        "input_id": item.input_id,
     }
+
+
+@router.get("/inputs/usage", tags=["Runs"], summary="What the caller has uploaded, against the limit")
+async def input_usage(identity: CurrentIdentity) -> dict[str, Any]:
+    settings = get_settings()
+    r = repos()
+    return {
+        "used_bytes": await r.inputs.usage(identity.user_id),
+        "quota_bytes": settings.input_quota_mb * 1024 * 1024,
+        "retention_days": settings.input_retention_days,
+        "items": [i.model_dump() for i in await r.inputs.list(identity.user_id, limit=50)],
+    }
+
+
+@router.post("/inputs/prune", dependencies=[Depends(require(Role.ADMIN))], tags=["Operations"],
+             summary="Remove old uploads no run has read")
+async def prune_inputs_now(identity: CurrentIdentity, days: int | None = None) -> dict[str, Any]:
+    from foldfront.engine.housekeeping import prune_inputs
+
+    r = repos()
+    report = await prune_inputs(r, days=days)
+    await r.audit.record(
+        "inputs.prune", actor_id=identity.user_id, target_type="input",
+        detail={"days": report["days"], "removed": report["removed"], "freed_bytes": report["freed_bytes"]},
+    )
+    return report
 
 
 # ---------------------------------------------------------------- notices

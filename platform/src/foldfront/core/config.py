@@ -51,6 +51,12 @@ class Settings(BaseSettings):
 
     job_lease_seconds: int = Field(default=900, alias="JOB_LEASE_SECONDS")
 
+    #  Uploaded inputs. One person may hold this much at once, and a file no
+    #  run has read is removed after this many days. A file a run read stays
+    #  as long as the run does - it is that run's provenance.
+    input_quota_mb: int = Field(default=512, alias="INPUT_QUOTA_MB")
+    input_retention_days: int = Field(default=30, alias="INPUT_RETENTION_DAYS")
+
 
 @lru_cache
 def get_settings() -> Settings:

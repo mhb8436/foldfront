@@ -201,6 +201,13 @@ async def cmd_migrate(path: str) -> None:
     print(json.dumps(report.as_dict(), ensure_ascii=False, indent=2))
 
 
+async def cmd_prune_inputs(days: int | None) -> None:
+    from foldfront.engine.housekeeping import prune_inputs
+
+    report = await prune_inputs(Repos(), days=days)
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+
+
 async def cmd_status() -> None:
     repos = Repos()
     runs = await repos.runs.count()
@@ -236,6 +243,8 @@ def main() -> None:
         asyncio.run(cmd_migrate(rest[0]))
     elif cmd == "status":
         asyncio.run(cmd_status())
+    elif cmd == "prune-inputs":
+        asyncio.run(cmd_prune_inputs(int(rest[0]) if rest else None))
     else:
         print(__doc__)
 

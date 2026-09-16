@@ -20,6 +20,7 @@ from foldfront.db.models import (
     Doc,
     Experiment,
     Feedback,
+    InputFile,
     Job,
     ModelVersion,
     Project,
@@ -48,6 +49,7 @@ SCHEMA: dict[str, type[Doc]] = {
     C.REPORTS: Report,
     C.AUDIT: AuditLog,
     C.USERS: User,
+    C.INPUTS: InputFile,
 }
 
 
@@ -102,6 +104,7 @@ def test_identifiers_are_unique_where_the_code_assumes_so():
         C.RUNS: "run_id",
         C.PROJECTS: "project_id",
         C.USERS: "user_id",
+        C.INPUTS: "input_id",
     }
     for collection, field in expected.items():
         unique = [

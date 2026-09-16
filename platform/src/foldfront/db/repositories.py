@@ -18,6 +18,7 @@ from pymongo import ASCENDING, DESCENDING, ReturnDocument
 
 from foldfront.db.client import C, get_db
 from foldfront.db.models import (
+    InputFile,
     Artifact,
     AuditLog,
     Job,
@@ -698,6 +699,55 @@ class AuditRepo(BaseRepo):
 # ---------------------------------------------------------------- bundle
 
 
+class InputRepo(BaseRepo):
+    """Uploaded inputs: who stored what, and which runs read it."""
+
+    @property
+    def col(self):
+        return self.db[C.INPUTS]
+
+    async def record(self, item: InputFile) -> InputFile:
+        await self.col.insert_one(item.model_dump())
+        return item
+
+    async def usage(self, owner_id: str | None) -> int:
+        """Bytes this owner has stored."""
+        rows = await self.col.aggregate([
+            {"$match": {"owner_id": owner_id}},
+            {"$group": {"_id": None, "bytes": {"$sum": "$size_bytes"}}},
+        ]).to_list(length=1)
+        return int(rows[0]["bytes"]) if rows else 0
+
+    async def by_paths(self, paths: list[str]) -> list[InputFile]:
+        if not paths:
+            return []
+        cur = self.col.find({"path": {"$in": paths}})
+        return [InputFile(**_clean(d)) for d in await cur.to_list(length=len(paths))]
+
+    async def link_run(self, paths: list[str], run_id: str) -> int:
+        """Remember that a run read these. What a run read is kept with it."""
+        if not paths:
+            return 0
+        res = await self.col.update_many(
+            {"path": {"$in": paths}}, {"$addToSet": {"run_ids": run_id}, "$set": {"updated_at": utcnow()}},
+        )
+        return res.modified_count
+
+    async def prunable(self, *, older_than: datetime, limit: int = 1000) -> list[InputFile]:
+        """Old and unread by any run. A file a run read is that run's provenance."""
+        cur = self.col.find(
+            {"created_at": {"$lt": older_than}, "run_ids": {"$size": 0}}
+        ).sort("created_at", ASCENDING).limit(limit)
+        return [InputFile(**_clean(d)) for d in await cur.to_list(length=limit)]
+
+    async def forget(self, input_id: str) -> None:
+        await self.col.delete_one({"input_id": input_id})
+
+    async def list(self, owner_id: str | None, *, limit: int = 200) -> list[InputFile]:
+        cur = self.col.find({"owner_id": owner_id}).sort("created_at", DESCENDING).limit(limit)
+        return [InputFile(**_clean(d)) for d in await cur.to_list(length=limit)]
+
+
 class Repos:
     """All repositories in one object, so callers carry a single handle."""
 
@@ -716,3 +766,4 @@ class Repos:
         self.experiments = RecordRepo(C.EXPERIMENTS, db)
         self.reports = ReportRepo(db)
         self.audit = AuditRepo(db)
+        self.inputs = InputRepo(db)
