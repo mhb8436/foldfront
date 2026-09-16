@@ -116,6 +116,28 @@ export interface Identity {
   auth_mode: 'oidc' | 'disabled'
 }
 
+export interface Project {
+  project_id: string
+  name: string
+  description: string | null
+  owner_id: string | null
+  archived: boolean
+  tags: string[]
+  created_at?: string | null
+}
+
+export interface Round {
+  round_id: string
+  project_id: string
+  name: string | null
+  /** 1, 2, 3 - which pass of the redesign loop this is. */
+  index: number
+  linked_run_ids: string[]
+  objective: string | null
+  archived: boolean
+  created_at?: string | null
+}
+
 export interface Summary {
   runs: {
     total: number
@@ -152,6 +174,8 @@ export interface Summary {
     target_id: string | null
     created_at: string | null
   }>
+  /** What the numbers above cover. Null project means the whole installation. */
+  scope: { project_id: string | null }
 }
 
 export interface Preflight {
@@ -224,8 +248,14 @@ interface Listed<T> {
 
 export const api = {
   // ------------------------------------------------------------ runs
-  listRuns: (params: { status?: RunStatus; project_id?: string; limit?: number } = {}) =>
-    request<Listed<Run>>(`/runs${query(params)}`),
+  listRuns: (
+    params: {
+      status?: RunStatus
+      project_id?: string
+      round_id?: string
+      limit?: number
+    } = {},
+  ) => request<Listed<Run>>(`/runs${query(params)}`),
 
   getRun: (runId: string) => request<Run>(`/runs/${encodeURIComponent(runId)}`),
 
@@ -331,7 +361,32 @@ export const api = {
   me: () => request<Identity>('/me'),
 
   // ------------------------------------------------------------ dashboard
-  summary: (recent = 5) => request<Summary>(`/summary${query({ recent })}`),
+  summary: (recent = 5, project_id?: string) =>
+    request<Summary>(`/summary${query({ recent, project_id })}`),
+
+  // ------------------------------------------------------- projects
+  listProjects: (include_archived = false) =>
+    request<Listed<Project>>(`/projects${query({ include_archived })}`),
+
+  createProject: (body: { name: string; description?: string | null; tags?: string[] }) =>
+    request<Project>('/projects', {
+      method: 'POST',
+      body: JSON.stringify({ project_id: '', archived: false, tags: [], ...body }),
+    }),
+
+  listRounds: (projectId: string) =>
+    request<Listed<Round>>(`/projects/${encodeURIComponent(projectId)}/rounds`),
+
+  createRound: (body: {
+    project_id: string
+    name?: string | null
+    index?: number
+    objective?: string | null
+  }) =>
+    request<Round>('/rounds', {
+      method: 'POST',
+      body: JSON.stringify({ round_id: '', linked_run_ids: [], archived: false, ...body }),
+    }),
 
   // ------------------------------------------------------------ operations
   listAudit: (params: { actor_id?: string; action?: string; limit?: number } = {}) =>

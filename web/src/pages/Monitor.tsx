@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Download, RefreshCw, X } from 'lucide-react'
 
+import { useProject } from '@/lib/project'
 import { api } from '../api/client'
 import { StructureViewer } from '../components/StructureViewer'
 import { metricTerm, stageTerm } from '@/lib/glossary'
@@ -24,7 +25,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 /** Run status, artifacts and the event log. */
 export function Monitor() {
   const [selected, setSelected] = useState<string | null>(null)
-  const runs = usePolling(() => api.listRuns({ limit: 50 }), 4000, [])
+  const { filter } = useProject()
+  const runs = usePolling(() => api.listRuns({ project_id: filter, limit: 50 }), 4000, [filter])
   const jobs = usePolling(() => api.jobStats(), 4000, [])
 
   const by = jobs.data?.by_status ?? {}

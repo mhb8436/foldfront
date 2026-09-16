@@ -345,12 +345,17 @@ class WorkflowRepo(BaseRepo):
     async def list(
         self, *, templates_only: bool = False, project_id: str | None = None, limit: int = 100
     ) -> list[Workflow]:
-        """Latest version of each workflow_id."""
+        """Latest version of each workflow_id.
+
+        `project_id` means "this project's, and the shared ones" rather than
+        "this project's only". The built-in templates carry no project, and a
+        project that could not see them would start with an empty studio.
+        """
         match: dict[str, Any] = {}
         if templates_only:
             match["is_template"] = True
         if project_id:
-            match["project_id"] = project_id
+            match["$or"] = [{"project_id": project_id}, {"project_id": None}]
         pipeline: list[dict[str, Any]] = [
             {"$match": match},
             {"$sort": {"workflow_id": 1, "version": -1}},

@@ -110,8 +110,12 @@
 
 ## React 통합 콘솔
 
-- 탭 여섯을 한 벌로 묶었다 — Setup·Workflow Studio·Monitor·Analyze·
+- 화면 일곱을 한 벌로 묶었다 — 프로젝트·Setup·Workflow Studio·Monitor·Analyze·
   Model Registry·운영.
+- **프로젝트와 재설계 회차** — 원본 이름이 *Redesign* 인데 재설계 반복이 화면에 없었다.
+  API·DB·색인은 이미 있었고 쓰이지 않았을 뿐이다. 머리말 선택기 하나가 대시보드·실행 감시·
+  결과 분석의 조회 범위를 정하고, 실행은 고른 회차에 기록된다.
+  `?project=…` 로 링크를 걸 수 있다.
 - **DAG 편집기** — 노드를 끌어 놓고 간선을 이어 흐름을 설계한다.
   조건 분기는 나가는 간선에 참·거짓을 지정한다. 저장하면 서버가 그래프를 검증하고
   실행 층 구조와 미등록 모델을 돌려준다.
@@ -127,13 +131,20 @@
 **DAG 간선이 노드 안으로 말려 들어갔다.** 흐름은 왼쪽에서 오른쪽인데 ReactFlow 연결점이
 상하 기본값이었다. `sourcePosition`·`targetPosition` 을 좌우로 지정해 고쳤다.
 
+**프로젝트로 거르면 워크플로가 전부 사라졌다.** 공용 템플릿은 `project_id` 가 없어서
+`{"project_id": 고른 값}` 에 걸리지 않는다. 「자기 것 + 공용」으로 바꿨다 —
+템플릿이 안 보이는 스튜디오는 고장난 것으로 읽힌다.
+
+**머리말의 「프로젝트」와 「알림」이 아무 동작도 없는 장식이었다.** 프로젝트는 실제 선택기로
+바꿨다. 알림은 아직 장식이다.
+
 ## 통합과 실행 검증
 
 - CLI 를 넣었다 — `seed` · `demo` · `worker` · `migrate` · `status`.
 - **결합 예측 워크플로**를 기본 템플릿으로 넣었다. 용해도 통과율이 낮으면
   도킹을 건너뛰는 조건 분기를 둬서 계산 자원을 아끼는 실제 운영 방식을 담았다.
 - 실제 서버·MongoDB 로 **실행 6건 · 작업 39건**을 돌렸다.
-- 화면 캡처 8종을 `docs/shots/` 에 남겼다.
+- 화면 캡처 9종을 `docs/shots/` 에 남겼다.
 - 기능별 동작 상태를 정리했다.
   `tools/verify_matrix.py` 로 다시 뽑는다.
 
@@ -153,11 +164,11 @@
 
 ```bash
 docker compose -f platform/docker-compose.yml up -d    # MongoDB
-uv run pytest platform/tests -q                        # 258건
-cd web && npm test                                     # 64건
+uv run pytest platform/tests -q                        # 262건
+cd web && npm test                                     # 79건
 ```
 
-현재 **322건 통과**(백엔드 258 · 화면 64). 백엔드 시험은 실제 MongoDB 에 붙어 돈다.
+현재 **341건 통과**(백엔드 262 · 화면 79). 백엔드 시험은 실제 MongoDB 에 붙어 돈다.
 
 ## 남은 일
 

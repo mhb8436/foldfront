@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Field, Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { useIdentity } from '@/lib/identity'
+import { roundLabel, useProject } from '@/lib/project'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 /** Choose a workflow, attach inputs, start a run. */
@@ -24,6 +25,13 @@ export function Setup() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const { canRun } = useIdentity()
+  const { current, rounds } = useProject()
+  const [roundId, setRoundId] = useState('')
+
+  //  The latest round, because a redesign loop runs in the one just opened.
+  //  Explicit still wins: once a round is picked here, it stays picked.
+  const latest = rounds.length ? rounds[rounds.length - 1].round_id : ''
+  const round = roundId || latest
 
   const selected = workflowId || workflows.data?.items[0]?.workflow_id || ''
 
@@ -46,6 +54,10 @@ export function Setup() {
     try {
       const run = await api.startRun({
         workflow_id: selected,
+        //  Without these the run belongs to nothing and never appears in a
+        //  project's view of its own work.
+        project_id: current?.project_id,
+        round_id: current && round ? round : undefined,
         request: {
           target_fasta: targetFasta,
           target_pdb: targetPdb,
@@ -55,7 +67,13 @@ export function Setup() {
             .filter(Boolean),
         },
       })
-      setMessage(`실행을 시작했습니다 — ${run.run_id}`)
+      setMessage(
+        current
+          ? `실행을 시작했습니다 — ${run.run_id} · ${current.name}${
+              round ? ` · ${rounds.find((r) => r.round_id === round)?.index ?? '?'}차` : ''
+            }`
+          : `실행을 시작했습니다 — ${run.run_id}`,
+      )
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -104,6 +122,37 @@ export function Setup() {
           ) : (
             <Empty>등록된 워크플로가 없습니다. 기본 템플릿을 먼저 등록하십시오.</Empty>
           )}
+
+          {/*  Where the result will be filed. Said here rather than found out
+              afterwards on a screen that does not list the run. */}
+          <div className="mt-3.5">
+            {current ? (
+              rounds.length ? (
+                <Field>
+                  <Label htmlFor="round">기록할 회차</Label>
+                  <Select id="round" value={round} onChange={(e) => setRoundId(e.target.value)}>
+                    <option value="">— 회차 없이 {current.name}에 기록 —</option>
+                    {rounds.map((r) => (
+                      <option key={r.round_id} value={r.round_id}>
+                        {roundLabel(r)}
+                        {r.objective ? ` — ${r.objective}` : ''}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              ) : (
+                <p className="text-muted-foreground text-[12.5px]">
+                  <span className="text-foreground font-medium">{current.name}</span>에 기록합니다.
+                  회차는 「프로젝트」 화면에서 엽니다.
+                </p>
+              )
+            ) : (
+              <p className="text-muted-foreground text-[12.5px]">
+                프로젝트를 고르지 않아 어느 프로젝트에도 기록되지 않습니다. 머리말의 프로젝트
+                선택기에서 고르십시오.
+              </p>
+            )}
+          </div>
         </Panel>
 
         <Panel title="입력">
