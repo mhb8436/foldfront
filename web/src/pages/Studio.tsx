@@ -313,6 +313,22 @@ export function Studio() {
           </Field>
         </div>
 
+        {/*  Drawing an edge is not discoverable from the canvas alone. */}
+        <div className="text-muted-foreground mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px]">
+          <span>
+            <span className="text-foreground font-medium">연결</span> — 노드 오른쪽 점을 끌어
+            다음 노드 왼쪽 점에 놓습니다
+          </span>
+          <span>
+            <span className="text-foreground font-medium">삭제</span> — 간선이나 노드를 누르고
+            Delete
+          </span>
+          <span>
+            <span className="text-foreground font-medium">이동</span> — 노드를 끌거나 빈 곳을
+            끌어 화면을 옮깁니다
+          </span>
+        </div>
+
         <div className="h-[460px] overflow-hidden rounded-md border">
           <ReactFlow
             nodes={nodes}
