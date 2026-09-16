@@ -27,6 +27,7 @@ import { Select } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ContextMenu, type MenuItem, type MenuState } from './studio/ContextMenu'
 import { useIdentity } from '@/lib/identity'
+import { cn } from '@/lib/utils'
 
 /**
  * DAG Workflow Studio.
@@ -142,6 +143,7 @@ export function Studio() {
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [flow, setFlow] = useState<ReactFlowInstance | null>(null)
   const { canRun } = useIdentity()
+  const [selected, setSelected] = useState<string | null>(null)
 
   const registry = useAsync(() => api.listModels({ active_only: true }), [])
   const modelIds = useMemo(
@@ -263,6 +265,17 @@ export function Studio() {
           : n,
       ),
     )
+  }
+
+  /** Selecting a node takes the eye to its row, rather than replacing the
+      table with that one row. The table is an overview - ten nodes at once -
+      and narrowing it to the selection would cost exactly what it is for. */
+  function revealFor(nodeId: string) {
+    const kind = kinds[nodeId] ?? 'model'
+    const el = document.getElementById(
+      kind === 'branch' ? `cond-${nodeId}` : `node-row-${nodeId}`,
+    )
+    el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   }
 
   /** Send the eye to the condition field rather than editing it in a menu. */
@@ -524,6 +537,11 @@ export function Studio() {
               pointer.current = atPointer(e as unknown as React.MouseEvent)
               openMenu('pane', e as unknown as React.MouseEvent)
             }}
+            onNodeClick={(_, node) => {
+              setSelected(node.id)
+              revealFor(node.id)
+            }}
+            onPaneClick={() => setSelected(null)}
             onNodeContextMenu={(e, node) => openMenu('node', e, node.id)}
             onNodeDoubleClick={(e, node) => {
               if ((kinds[node.id] ?? 'model') !== 'model') return
@@ -576,7 +594,11 @@ export function Studio() {
               </TableHeader>
               <TableBody>
                 {modelNodes.map((n) => (
-                  <TableRow key={n.id}>
+                  <TableRow
+                    key={n.id}
+                    id={`node-row-${n.id}`}
+                    data-state={selected === n.id ? 'selected' : undefined}
+                  >
                     <TableCell className="font-mono text-[12.5px]">{n.id}</TableCell>
                     <TableCell>
                       <Select
@@ -608,7 +630,13 @@ export function Studio() {
                 <code className="font-mono">soluprot.pass_rate &gt; 0.3</code>
               </p>
               {branchNodes.map((n) => (
-                <Field key={n.id}>
+                <Field
+                  key={n.id}
+                  className={cn(
+                    'rounded-md',
+                    selected === n.id && 'bg-accent -mx-2 px-2 py-2',
+                  )}
+                >
                   <Label htmlFor={`cond-${n.id}`}>{n.id}</Label>
                   <Input
                     id={`cond-${n.id}`}

@@ -83,7 +83,7 @@ class LeaseBody(BaseModel):
 
 
 @router.post("/runs", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["Runs"], summary="Start a run from a workflow")
-async def start_run(body: StartRunBody) -> dict[str, Any]:
+async def start_run(body: StartRunBody, identity: CurrentIdentity) -> dict[str, Any]:
     r = repos()
     wf = await r.workflows.get(body.workflow_id, body.workflow_version)
     if wf is None:
@@ -95,7 +95,7 @@ async def start_run(body: StartRunBody) -> dict[str, Any]:
             request=body.request,
             project_id=body.project_id,
             round_id=body.round_id,
-            owner_id=body.owner_id,
+            owner_id=identity.user_id or body.owner_id,
         )
     except GraphError as exc:
         raise ApiError(E.WORKFLOW_GRAPH_INVALID, reason=str(exc)) from exc
@@ -184,19 +184,32 @@ async def complete_node(run_id: str, node_id: str, body: CompleteNodeBody) -> di
 
 
 @router.post("/runs/{run_id}/fork", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["Runs"], summary="Fork a run")
-async def fork_run(run_id: str, from_stage: str | None = None) -> dict[str, Any]:
+async def fork_run(
+    run_id: str, identity: CurrentIdentity, from_stage: str | None = None,
+) -> dict[str, Any]:
     """Forking never writes to the run it came from."""
-    child = await repos().runs.fork(run_id, from_stage=from_stage)
+    r = repos()
+    child = await r.runs.fork(run_id, from_stage=from_stage)
     if child is None:
         raise ApiError(E.RUN_NOT_FOUND, run_id=run_id)
+    await r.audit.record(
+        "run.fork", actor_id=identity.user_id, target_type="run", target_id=child.run_id,
+        detail={"from_run": run_id, "from_stage": from_stage},
+    )
     return child.model_dump()
 
 
 @router.post("/runs/{run_id}/cancel", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["Runs"], summary="Cancel a run")
-async def cancel_run(run_id: str, reason: str = "사용자 취소") -> dict[str, Any]:
+async def cancel_run(
+    run_id: str, identity: CurrentIdentity, reason: str = "사용자 취소",
+) -> dict[str, Any]:
     run = await service().cancel(run_id, reason=reason)
     if run is None:
         raise ApiError(E.RUN_NOT_FOUND, run_id=run_id)
+    await repos().audit.record(
+        "run.cancel", actor_id=identity.user_id, target_type="run", target_id=run_id,
+        detail={"reason": reason},
+    )
     return run.model_dump()
 
 
@@ -266,10 +279,16 @@ async def preflight(workflow_id: str, version: int | None = None,
 
 @router.post("/workflows/builtin", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["Workflows"],
              summary="Register the original fixed chain as a template")
-async def seed_builtin(stages: list[str] | None = Body(default=None)) -> dict[str, Any]:
+async def seed_builtin(
+    identity: CurrentIdentity, stages: list[str] | None = Body(default=None),
+) -> dict[str, Any]:
     r = repos()
     wf = builtin_pipeline_workflow(stages=stages)
     saved = await r.workflows.save(wf)
+    await r.audit.record(
+        "workflow.seed", actor_id=identity.user_id, target_type="workflow",
+        target_id=f"{saved.workflow_id}:{saved.version}",
+    )
     return saved.model_dump()
 
 
@@ -285,12 +304,12 @@ async def list_models(
 
 
 @router.post("/models", dependencies=[Depends(require(Role.ADMIN))], tags=["Models"], summary="Register a model version")
-async def register_model(mv: ModelVersion, actor_id: str | None = None) -> dict[str, Any]:
+async def register_model(mv: ModelVersion, identity: CurrentIdentity) -> dict[str, Any]:
     """Register by id, so no URL has to be edited to add a model."""
     r = repos()
     saved = await r.models.register(mv)
     await r.audit.record(
-        "model.register", actor_id=actor_id, target_type="model",
+        "model.register", actor_id=identity.user_id, target_type="model",
         target_id=f"{mv.model_id}:{mv.version}",
         detail={"kind": str(mv.kind), "active": mv.active},
     )
@@ -314,14 +333,14 @@ async def resolve_model(
 
 @router.post("/models/{model_id}/{version}/active", dependencies=[Depends(require(Role.ADMIN))], tags=["Models"], summary="Activate or deactivate a version")
 async def set_model_active(
-    model_id: str, version: str, active: bool, actor_id: str | None = None
+    model_id: str, version: str, active: bool, identity: CurrentIdentity
 ) -> dict[str, Any]:
     r = repos()
     mv = await r.models.set_active(model_id, version, active)
     if mv is None:
         raise ApiError(E.MODEL_NOT_FOUND, model_id=f"{model_id}:{version}")
     await r.audit.record(
-        "model.set_active", actor_id=actor_id, target_type="model",
+        "model.set_active", actor_id=identity.user_id, target_type="model",
         target_id=f"{model_id}:{version}", detail={"active": active},
     )
     return mv.model_dump()
@@ -330,16 +349,18 @@ async def set_model_active(
 @router.post("/models/{model_id}/{version}/approve", dependencies=[Depends(require(Role.ADMIN))], tags=["Models"],
              summary="Approve or reject a registered model")
 async def approve_model(
-    model_id: str, version: str, approved_by: str,
+    model_id: str, version: str, identity: CurrentIdentity,
     decision: Literal["approved", "rejected"] = "approved",
 ) -> dict[str, Any]:
     """Approve, reject or roll back a registered version."""
     r = repos()
-    mv = await r.models.approve(model_id, version, approved_by=approved_by, decision=decision)
+    mv = await r.models.approve(
+        model_id, version, approved_by=identity.user_id, decision=decision
+    )
     if mv is None:
         raise ApiError(E.MODEL_NOT_FOUND, model_id=f"{model_id}:{version}")
     await r.audit.record(
-        "model.approve", actor_id=approved_by, target_type="model",
+        "model.approve", actor_id=identity.user_id, target_type="model",
         target_id=f"{model_id}:{version}", detail={"decision": decision},
     )
     return mv.model_dump()
@@ -369,9 +390,15 @@ async def job_stats() -> dict[str, Any]:
 
 
 @router.post("/jobs/reclaim", dependencies=[Depends(require(Role.SERVICE, Role.ADMIN))], tags=["Jobs"], summary="Reclaim expired leases")
-async def reclaim_jobs() -> dict[str, Any]:
+async def reclaim_jobs(identity: CurrentIdentity) -> dict[str, Any]:
     """Return jobs whose worker died, so nothing stays locked."""
-    return {"reclaimed": await repos().jobs.reclaim_expired()}
+    r = repos()
+    n = await r.jobs.reclaim_expired()
+    #  Worth a record even at zero: it says an operator looked, and when.
+    await r.audit.record(
+        "jobs.reclaim", actor_id=identity.user_id, target_type="job", detail={"reclaimed": n},
+    )
+    return {"reclaimed": n}
 
 
 # ---------------------------------------------------------------- projects
@@ -384,10 +411,16 @@ async def list_projects(include_archived: bool = False) -> dict[str, Any]:
 
 
 @router.post("/projects", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["Projects"], summary="Create a project")
-async def create_project(project: Project) -> dict[str, Any]:
+async def create_project(project: Project, identity: CurrentIdentity) -> dict[str, Any]:
     if not project.project_id:
         project.project_id = new_id("proj")
-    return (await repos().projects.create(project)).model_dump()
+    r = repos()
+    saved = await r.projects.create(project)
+    await r.audit.record(
+        "project.create", actor_id=identity.user_id, target_type="project",
+        target_id=saved.project_id,
+    )
+    return saved.model_dump()
 
 
 @router.get("/projects/{project_id}/rounds", tags=["Projects"], summary="List rounds")
@@ -397,10 +430,16 @@ async def list_rounds(project_id: str) -> dict[str, Any]:
 
 
 @router.post("/rounds", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["Projects"], summary="Create a round")
-async def create_round(round_: Round) -> dict[str, Any]:
+async def create_round(round_: Round, identity: CurrentIdentity) -> dict[str, Any]:
     if not round_.round_id:
         round_.round_id = new_id("round")
-    return (await repos().rounds.create(round_)).model_dump()
+    r = repos()
+    saved = await r.rounds.create(round_)
+    await r.audit.record(
+        "round.create", actor_id=identity.user_id, target_type="round",
+        target_id=saved.round_id, detail={"project_id": saved.project_id},
+    )
+    return saved.model_dump()
 
 
 # ---------------------------------------------------------------- identity
