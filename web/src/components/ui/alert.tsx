@@ -3,7 +3,7 @@ import { AlertTriangle } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 
-/** 오류 고지. 상태색 가운데 실패색만 쓰고 나머지는 무채색으로 둔다. */
+/** An error notice. Uses the failure colour and nothing else. */
 function Alert({ className, children, ...props }: React.ComponentProps<'div'>) {
   return (
     <div

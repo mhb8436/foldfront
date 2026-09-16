@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * 콘솔 화면 캡처.
+ * Console screenshots.
  *
- * 문서가 docs/shots/ 의 캡처를 인용한다. 손으로 찍지 않고
- * 스크립트로 다시 뜰 수 있게 둔다 — 화면이 바뀌면 이 명령 한 줄로 갱신한다.
+ * Documentation cites the images in docs/shots, so they are taken by script
+ * rather than by hand: when a screen changes, this one command refreshes them.
  *
- * 준비
+ * Prerequisites
  *   docker compose -f platform/docker-compose.yml up -d
  *   uv run python -m foldfront.cli seed
  *   uv run python -m foldfront.cli demo 6
@@ -13,9 +13,9 @@
  *   cd web && npm run dev
  *   node tools/capture_shots.mjs
  *
- * ★ CDP(Page.captureScreenshot)를 쓰지 않는다. Chrome 153 headless 에서
- *   합성 프레임이 올라오지 않아 응답이 돌아오지 않았다(--disable-gpu 제거·
- *   fromSurface:false·swiftshader 모두 동일). Chrome 내장 --screenshot 은 정상이다.
+ * Not CDP. Page.captureScreenshot never returns on Chrome 153 headless here -
+ * removing --disable-gpu, fromSurface:false and swiftshader all behave the
+ * same way. Chrome's own --screenshot flag works.
  */
 
 import { spawn } from 'node:child_process'
@@ -28,7 +28,7 @@ const OUT = process.env.SHOT_OUT ?? 'docs/shots'
 const CHROME =
   process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 
-//  지면이 본체다. 인쇄에서 뭉개지지 않게 2배로 찍는다
+//  These are read on paper, so capture at 2x rather than let print blur them
 const WIDTH = 1440
 const HEIGHT = 900
 const SCALE = 2
@@ -37,7 +37,7 @@ const SHOTS = [
   { file: 'setup.png', path: '/setup', budget: 5000 },
   { file: 'studio.png', path: '/studio', budget: 9000 },
   { file: 'monitor.png', path: '/monitor', budget: 6000 },
-  //  구조 2종을 소프트웨어로 그린다. 다른 화면보다 여유를 준다
+  //  Two structures, rendered in software. Slower than the other screens.
   { file: 'analyze.png', path: '/analyze', budget: 14000 },
   { file: 'models.png', path: '/models', budget: 6000 },
   { file: 'operations.png', path: '/operations', budget: 6000 },
@@ -53,8 +53,9 @@ async function capture(shot) {
     CHROME,
     [
       '--headless',
-      //  ★ --disable-gpu 를 쓰면 WebGL 컨텍스트가 없어 3Dmol 이 빈 화면으로 찍힌다.
-      //  범례까지 나오므로 성공한 것처럼 보인다 — 소프트웨어 렌더러를 명시해야 구조가 그려진다.
+      //  Do not add --disable-gpu. Without a WebGL context 3Dmol draws
+      //  nothing, while the spinner still clears and the legend still
+      //  renders - the failure looks exactly like success.
       '--use-gl=angle',
       '--use-angle=swiftshader',
       '--enable-unsafe-swiftshader',
@@ -83,7 +84,7 @@ async function capture(shot) {
 }
 
 async function main() {
-  //  서버가 떠 있는지 먼저 본다. 빈 화면을 찍고 성공했다고 말하지 않는다
+  //  Check the servers first, rather than capture blank screens and report success
   const probe = await fetch(BASE).catch(() => null)
   if (!probe?.ok) throw new Error(`콘솔에 닿지 못했다 — ${BASE}`)
   const health = await fetch(`${BASE}/healthz`).then((r) => r.json()).catch(() => null)
@@ -93,7 +94,7 @@ async function main() {
 
   await mkdir(OUT, { recursive: true })
 
-  //  인자를 주면 그 화면만 다시 찍는다 — 한 장 고치자고 여섯 장을 돌리지 않는다
+  //  An argument narrows it to one screen; re-running all six to fix one is waste
   const only = process.argv.slice(2)
   const targets = only.length
     ? SHOTS.filter((s) => only.some((o) => s.file.startsWith(o) || s.path === `/${o}`))

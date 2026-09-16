@@ -7,7 +7,7 @@ import { Empty, ErrorBox, Panel, Stat, formatTime } from '../components/Common'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
-/** 운영 — 큐·감사 로그. */
+/** Operations: the job queue and the audit trail. */
 export function Operations() {
   const jobs = usePolling(() => api.jobStats(), 5000, [])
   const audit = useAsync(() => api.listAudit({ limit: 100 }), [])

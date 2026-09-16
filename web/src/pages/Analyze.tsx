@@ -10,7 +10,7 @@ import { Field, Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
-/** Analyze — run 간 비교와 후보군 순위. */
+/** Comparison between runs, and ranking of the candidates they produced. */
 export function Analyze() {
   const runs = useAsync(() => api.listRuns({ limit: 100 }), [])
   const [left, setLeft] = useState('')
@@ -18,8 +18,9 @@ export function Analyze() {
 
   const items = runs.data?.items ?? []
 
-  //  빈 비교 화면으로 들어오면 매번 두 번 고르게 된다.
-  //  가장 최근에 끝난 실행 둘을 미리 잡아 둔다 — 대개 방금 돌린 것과 그 직전을 본다
+  //  Arriving at two empty selectors means choosing twice, every visit.
+  //  Preselect the two most recent finished runs, which is usually what
+  //  someone comparing a fresh run against its predecessor wants.
   useEffect(() => {
     if (left || right || items.length === 0) return
     const done = items.filter((r) => r.status === 'succeeded')
@@ -153,7 +154,8 @@ function Cell({ metrics, status }: { metrics?: Record<string, unknown>; status?:
 }
 
 function MetricTable({ runs }: { runs: Run[] }) {
-  //  실행마다 단계 구성이 다를 수 있으므로 등장한 지표 이름을 모아 열로 만든다
+  //  Runs may have different stages, so the columns are gathered from the
+  //  metric names that actually appear rather than fixed in advance
   const keys = Array.from(
     new Set(
       runs.flatMap((r) =>
@@ -207,12 +209,12 @@ function MetricTable({ runs }: { runs: Run[] }) {
   )
 }
 
-/** 설계 결과 구조를 나란히 놓는다. */
+/** Designed structures, placed side by side. */
 function Structures({ a, b }: { a: Run; b: Run }) {
   const left = useAsync(() => api.listArtifacts(a.run_id), [a.run_id])
   const right = useAsync(() => api.listArtifacts(b.run_id), [b.run_id])
 
-  //  구조가 여러 개면 첫 것을 연다. 나머지는 실행 감시 화면에서 고른다
+  //  The first structure opens; the rest are chosen from run monitoring
   const pick = (items?: Artifact[]) => items?.find((x) => x.kind === 'pdb')
   const pa = pick(left.data?.items)
   const pb = pick(right.data?.items)

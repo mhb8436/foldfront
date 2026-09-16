@@ -28,11 +28,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 /**
  * DAG Workflow Studio.
  *
- * 현행 RAPID 는 단계 순서가 코드에 고정되어 있다. 여기서 연구자가 노드를 조합하고
- * 병렬 분기·조건 분기를 직접 설계한다. 정형 단계형 실행과 같은 용어·조작 방식을 쓴다.
+ * The original fixes the stage order in code. Here a researcher composes the
+ * nodes, with parallel and conditional branches, using the same vocabulary as
+ * the fixed-chain run.
  *
- * ★ 노드 종류를 색이 아니라 **형태**로 가른다 — 채움·테두리·모서리·점선.
- *   콘솔 전체가 무채색이고, 흑백 인쇄에서도 종류가 구분되어야 한다.
+ * Node kinds are told apart by shape rather than colour - fill, border, corner
+ * radius, dashes. The console is greyscale, and the kinds have to remain
+ * distinguishable when a screenshot is printed in black and white.
  */
 
 const KIND_LABEL: Record<NodeKind, string> = {
@@ -43,7 +45,7 @@ const KIND_LABEL: Record<NodeKind, string> = {
   join: '합류',
 }
 
-/** 종류별 형태. 값은 CSS 변수라 밝은 화면과 어두운 화면 모두에서 따라간다. */
+/** Shape per kind. CSS variables, so it follows the light and dark themes. */
 function nodeStyle(kind: NodeKind): React.CSSProperties {
   const base: React.CSSProperties = {
     padding: '8px 14px',
@@ -75,7 +77,7 @@ function label(n: { node_id: string; kind: NodeKind; label?: string | null; mode
       <div style={{ fontSize: 10, opacity: 0.75 }}>
         {n.kind === 'model' ? (n.model_id ?? '모델 미지정') : KIND_LABEL[n.kind]}
       </div>
-      {/*  기술 식별자는 로그·산출물 경로와 맞춰 봐야 하므로 지우지 않고 병기한다 */}
+      {/*  The identifier stays: logs and artifact paths use it */}
       {n.kind === 'model' && stageTerm(n.model_id) && (
         <div style={{ fontSize: 9.5, opacity: 0.6 }}>{stageTerm(n.model_id)!.label}</div>
       )}
@@ -92,7 +94,8 @@ function toFlowNodes(wf: Workflow): Node[] {
   return wf.nodes.map((n, i) => ({
     id: n.node_id,
     position: { x: n.position?.x ?? i * 180, y: n.position?.y ?? 0 },
-    //  흐름이 왼쪽에서 오른쪽으로 간다. 연결점을 좌우로 두지 않으면 간선이 말린다.
+    //  Flow runs left to right. Handles anywhere but the sides make the
+    //  edges curl back on themselves.
     sourcePosition: Position.Right,
     targetPosition: Position.Left,
     data: { label: label(n) },
@@ -104,7 +107,7 @@ function edgeStyle(branch: 'true' | 'false' | null | undefined): React.CSSProper
   return {
     stroke: 'var(--foreground)',
     strokeWidth: branch ? 1.8 : 1.4,
-    //  거짓 가지는 점선으로 가른다. 색을 쓰지 않는다
+    //  The false branch is dashed rather than coloured
     strokeDasharray: branch === 'false' ? '6 4' : undefined,
   }
 }
@@ -156,14 +159,14 @@ export function Studio() {
     [setNodes, setEdges],
   )
 
-  //  들어오면 첫 워크플로를 펼쳐 둔다. 빈 화면보다 실제 흐름을 보여주는 편이 낫다.
+  //  Open a workflow on arrival. A real graph says more than an empty canvas.
   const autoLoaded = useRef(false)
   useEffect(() => {
     if (autoLoaded.current) return
     const items = workflows.data?.items ?? []
     if (items.length === 0) return
     autoLoaded.current = true
-    //  노드가 가장 많은 것을 고른다 — 분기가 있는 흐름이 먼저 보인다
+    //  The largest one, since that is the one likely to have branches
     load([...items].sort((a, b) => b.nodes.length - a.nodes.length)[0])
   }, [workflows.data, load])
 
@@ -223,7 +226,7 @@ export function Studio() {
       setMessage(`저장했습니다 — v${result.workflow.version} · 실행 층 ${result.levels.length}개${warn}`)
       workflows.reload()
     } catch (e) {
-      // 그래프 결함은 저장 시점에 잡힌다 — 실행할 때 알면 늦다
+      //  Defects surface on save. Finding one at run time costs GPU hours.
       setError((e as Error).message)
     }
   }

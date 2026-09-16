@@ -11,7 +11,7 @@ import { Field, Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
-/** Setup — 워크플로를 고르고 입력을 붙여 실행을 띄운다. */
+/** Choose a workflow, attach inputs, start a run. */
 export function Setup() {
   const workflows = useAsync(() => api.listWorkflows(), [])
   const [workflowId, setWorkflowId] = useState('')

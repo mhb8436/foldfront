@@ -4,9 +4,11 @@ import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 /**
- * 원생 select 를 shadcn 양식으로 감싼다.
- * Radix 팝오버를 쓰지 않는 이유 — 선택지가 서버에서 오는 단순 목록뿐이라
- * 접근성·모바일 동작을 브라우저에 맡기는 편이 낫다.
+ * A native select in shadcn clothing.
+ *
+ * Not a Radix popover: the options are a plain list from the server, and
+ * leaving keyboard, screen-reader and mobile behaviour to the browser is
+ * better than reimplementing it.
  */
 function Select({ className, children, ...props }: React.ComponentProps<'select'>) {
   return (

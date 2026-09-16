@@ -1,8 +1,9 @@
 /**
- * 플랫폼 API 클라이언트.
+ * The platform API client.
  *
- * 현행 프론트엔드는 fetch 를 화면 코드에 흩어 두었다(app.js 안 18곳).
- * 호출 표면을 여기 한 곳에 모아 화면이 경로와 응답 형태를 직접 알지 않게 한다.
+ * The original console scatters fetch across its screens - eighteen call sites
+ * in app.js. Gathering them here means a screen never states a path or knows
+ * the shape of a response, so changing either is one file.
  */
 
 export type RunStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled'
@@ -176,7 +177,7 @@ interface Listed<T> {
 }
 
 export const api = {
-  // ------------------------------------------------------------ 실행
+  // ------------------------------------------------------------ runs
   listRuns: (params: { status?: RunStatus; project_id?: string; limit?: number } = {}) =>
     request<Listed<Run>>(`/runs${query(params)}`),
 
@@ -185,7 +186,7 @@ export const api = {
   listEvents: (runId: string, limit = 200) =>
     request<Listed<RunEvent>>(`/runs/${encodeURIComponent(runId)}/events${query({ limit })}`),
 
-  /** 산출물 실체를 내려받는 주소. 구조 뷰어가 이 주소를 그대로 문다 */
+  /** Where an artifact is served. The structure viewer reads this directly. */
   artifactUrl: (runId: string, path: string) =>
     `${BASE}/runs/${encodeURIComponent(runId)}/artifacts/content${query({ path })}`,
 
@@ -219,7 +220,7 @@ export const api = {
       method: 'POST',
     }),
 
-  // ------------------------------------------------------------ 워크플로
+  // ------------------------------------------------------------ workflows
   listWorkflows: (params: { templates_only?: boolean; project_id?: string } = {}) =>
     request<Listed<Workflow>>(`/workflows${query(params)}`),
 
@@ -248,7 +249,7 @@ export const api = {
       body: JSON.stringify(stages ?? null),
     }),
 
-  // ------------------------------------------------------------ 모델
+  // ------------------------------------------------------------ models
   listModels: (params: { model_id?: string; kind?: string; active_only?: boolean } = {}) =>
     request<Listed<ModelVersion>>(`/models${query(params)}`),
 
@@ -275,12 +276,12 @@ export const api = {
       { method: 'POST' },
     ),
 
-  // ------------------------------------------------------------ 작업
+  // ------------------------------------------------------------ jobs
   jobStats: () => request<{ by_status: Record<string, number>; total: number }>('/jobs/stats'),
 
   reclaimJobs: () => request<{ reclaimed: number }>('/jobs/reclaim', { method: 'POST' }),
 
-  // ------------------------------------------------------------ 운영
+  // ------------------------------------------------------------ operations
   listAudit: (params: { actor_id?: string; action?: string; limit?: number } = {}) =>
     request<Listed<Record<string, unknown>>>(`/audit${query(params)}`),
 

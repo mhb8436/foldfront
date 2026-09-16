@@ -42,7 +42,7 @@ function CardDescription({ className, ...props }: React.ComponentProps<'div'>) {
   )
 }
 
-/** 머리글 우측에 붙는 조치 영역. 단추를 여기 둔다. */
+/** The action slot at the right of a header. Buttons go here. */
 function CardAction({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
