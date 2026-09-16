@@ -53,7 +53,7 @@ app.include_router(router)
 app.include_router(mcp_router)
 
 
-@app.get("/healthz", tags=["운영"])
+@app.get("/healthz", tags=["Operations"])
 async def healthz() -> dict[str, object]:
     """Health check. The path matches the original so existing deployment
     scripts keep working."""

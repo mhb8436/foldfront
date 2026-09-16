@@ -43,7 +43,7 @@ const NAV: Array<{ section: string; items: Item[] }> = [
   {
     section: '설계',
     items: [
-      { label: '대시보드', icon: LayoutGrid, badge: '예정' },
+      { to: '/dashboard', label: '대시보드', icon: LayoutGrid },
       {
         label: '설계 실행',
         icon: Play,

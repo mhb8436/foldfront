@@ -108,6 +108,44 @@ export interface Job {
   attempts: number
 }
 
+export interface Summary {
+  runs: {
+    total: number
+    by_status: Record<string, number>
+    recent: Array<{
+      run_id: string
+      status: RunStatus
+      workflow_id: string | null
+      stages_done: number
+      stages_total: number
+      started_at: string | null
+      finished_at: string | null
+    }>
+  }
+  jobs: { by_status: Record<string, number>; total: number; gpu_in_use: number }
+  models: {
+    total: number
+    active: number
+    pending_approval: Array<{ model_id: string; version: string; kind: string }>
+  }
+  workflows: {
+    total: number
+    items: Array<{
+      workflow_id: string
+      name: string
+      version: number
+      nodes: number
+      is_builtin: boolean
+    }>
+  }
+  audit: Array<{
+    action: string
+    actor_id: string | null
+    target_id: string | null
+    created_at: string | null
+  }>
+}
+
 export interface Preflight {
   ok: boolean
   graph_error: string | null
@@ -280,6 +318,9 @@ export const api = {
   jobStats: () => request<{ by_status: Record<string, number>; total: number }>('/jobs/stats'),
 
   reclaimJobs: () => request<{ reclaimed: number }>('/jobs/reclaim', { method: 'POST' }),
+
+  // ------------------------------------------------------------ dashboard
+  summary: (recent = 5) => request<Summary>(`/summary${query({ recent })}`),
 
   // ------------------------------------------------------------ operations
   listAudit: (params: { actor_id?: string; action?: string; limit?: number } = {}) =>

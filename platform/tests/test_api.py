@@ -445,3 +445,48 @@ async def test_실체_파일이_없으면_404_를_낸다(client, tmp_path, monke
                          params={"path": "run-shot/af2/사라짐.pdb"})
 
     assert r.status_code == 404
+
+
+#  ---------------------------------------------------------------- dashboard
+
+
+async def test_요약은_한_번에_모든_현황을_낸다(client):
+    """The dashboard draws from this alone; six round trips would be worse."""
+    r = await client.get("/api/v1/summary")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert {"runs", "jobs", "models", "workflows", "audit"} <= set(body)
+    assert {"total", "by_status", "recent"} <= set(body["runs"])
+    assert {"total", "active", "pending_approval"} <= set(body["models"])
+    assert "gpu_in_use" in body["jobs"]
+
+
+async def test_요약의_최근_실행_개수를_지정한다(client):
+    from foldfront.db.models import Run
+    from foldfront.db.repositories import Repos
+
+    for i in range(4):
+        await Repos().runs.create(Run(run_id=f"run-sum-{i}", workflow_id="wf"))
+
+    r = await client.get("/api/v1/summary", params={"recent": 2})
+
+    assert len(r.json()["runs"]["recent"]) == 2
+    assert r.json()["runs"]["total"] == 4
+
+
+async def test_요약은_승인_대기_모델을_가려낸다(client):
+    from foldfront.db.models import ModelVersion
+    from foldfront.db.repositories import Repos
+
+    await Repos().models.register(
+        ModelVersion(model_id="ok", version="v1", endpoint_id="ep", approval_status="approved")
+    )
+    await Repos().models.register(
+        ModelVersion(model_id="waiting", version="v1", endpoint_id="ep", approval_status="pending")
+    )
+
+    body = (await client.get("/api/v1/summary")).json()
+
+    assert body["models"]["total"] == 2
+    assert [m["model_id"] for m in body["models"]["pending_approval"]] == ["waiting"]

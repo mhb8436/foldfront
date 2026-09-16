@@ -187,7 +187,7 @@ def _call_upstream(name: str, args: dict[str, Any]) -> Any:
 
 # ---------------------------------------------------------------- JSON-RPC
 
-@router.post("/mcp", summary="MCP JSON-RPC (원본 도구 + 신규 계층 도구)",
+@router.post("/mcp", summary="MCP JSON-RPC: the original tools and the ones added here",
              dependencies=[Depends(require(Role.RESEARCHER, Role.SERVICE, Role.ADMIN))])
 async def mcp_rpc(identity: CurrentIdentity, message: dict[str, Any] = Body(...)) -> dict[str, Any]:
     msg_id = message.get("id")
