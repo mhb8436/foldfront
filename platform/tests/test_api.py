@@ -118,7 +118,7 @@ async def test_없는_모델은_404(client: AsyncClient):
     r = await client.get("/api/v1/models/없는모델/resolve")
 
     assert r.status_code == 404
-    assert "찾지 못했다" in r.json()["detail"]
+    assert "찾지 못했다" in r.json()["error"]["message"]
 
 
 async def test_승인과_비활성_전환(client: AsyncClient):
@@ -166,7 +166,7 @@ async def test_워크플로_저장은_그래프를_검증한다(client: AsyncCli
     r = await client.post("/api/v1/workflows", json=bad)
 
     assert r.status_code == 400
-    assert "순환" in r.json()["detail"]
+    assert "순환" in r.json()["error"]["message"]
 
 
 async def test_저장하면_층_구조와_미등록_모델을_알려준다(client: AsyncClient):

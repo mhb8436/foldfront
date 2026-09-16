@@ -18,12 +18,13 @@ from typing import Any, Literal
 
 from pathlib import Path
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from foldfront.core.auth import require
 from foldfront.core.config import get_settings
+from foldfront.core.errors import ApiError, E
 from foldfront.db.models import (
     ModelVersion,
     Project,
@@ -85,7 +86,7 @@ async def start_run(body: StartRunBody) -> dict[str, Any]:
     r = repos()
     wf = await r.workflows.get(body.workflow_id, body.workflow_version)
     if wf is None:
-        raise HTTPException(404, f"워크플로를 찾지 못했다: {body.workflow_id}")
+        raise ApiError(E.WORKFLOW_NOT_FOUND, workflow_id=body.workflow_id)
 
     try:
         run = await ExecutionService(r).start(
@@ -96,7 +97,7 @@ async def start_run(body: StartRunBody) -> dict[str, Any]:
             owner_id=body.owner_id,
         )
     except GraphError as exc:
-        raise HTTPException(400, f"그래프 결함: {exc}") from exc
+        raise ApiError(E.WORKFLOW_GRAPH_INVALID, reason=str(exc)) from exc
 
     return run.model_dump()
 
@@ -120,7 +121,7 @@ async def list_runs(
 async def get_run(run_id: str) -> dict[str, Any]:
     run = await repos().runs.get(run_id)
     if run is None:
-        raise HTTPException(404, f"실행을 찾지 못했다: {run_id}")
+        raise ApiError(E.RUN_NOT_FOUND, run_id=run_id)
     return run.model_dump()
 
 
@@ -153,14 +154,14 @@ async def artifact_content(run_id: str, path: str) -> FileResponse:
     """
     art = await repos().artifacts.get(run_id, path)
     if art is None:
-        raise HTTPException(status_code=404, detail="등록되지 않은 산출물이다")
+        raise ApiError(E.ARTIFACT_NOT_REGISTERED)
 
     root = Path(get_settings().output_root).resolve()
     target = (root / art.path).resolve()
     if not target.is_relative_to(root):
-        raise HTTPException(status_code=400, detail="저장 루트를 벗어나는 경로다")
+        raise ApiError(E.ARTIFACT_OUTSIDE_ROOT)
     if not target.is_file():
-        raise HTTPException(status_code=404, detail="실체 파일이 없다")
+        raise ApiError(E.ARTIFACT_FILE_MISSING)
 
     return FileResponse(
         target,
@@ -176,7 +177,7 @@ async def complete_node(run_id: str, node_id: str, body: CompleteNodeBody) -> di
         run_id, node_id, succeeded=body.succeeded, result=body.result, error=body.error
     )
     if not result.get("ok"):
-        raise HTTPException(400, result.get("error", "처리하지 못했다"))
+        raise ApiError(E.RUN_NODE_FAILED, reason=result.get("error", ""))
     return result
 
 
@@ -185,7 +186,7 @@ async def fork_run(run_id: str, from_stage: str | None = None) -> dict[str, Any]
     """덮어쓰지 않는 것이 기본이다."""
     child = await repos().runs.fork(run_id, from_stage=from_stage)
     if child is None:
-        raise HTTPException(404, f"실행을 찾지 못했다: {run_id}")
+        raise ApiError(E.RUN_NOT_FOUND, run_id=run_id)
     return child.model_dump()
 
 
@@ -193,7 +194,7 @@ async def fork_run(run_id: str, from_stage: str | None = None) -> dict[str, Any]
 async def cancel_run(run_id: str, reason: str = "사용자 취소") -> dict[str, Any]:
     run = await service().cancel(run_id, reason=reason)
     if run is None:
-        raise HTTPException(404, f"실행을 찾지 못했다: {run_id}")
+        raise ApiError(E.RUN_NOT_FOUND, run_id=run_id)
     return run.model_dump()
 
 
@@ -212,7 +213,7 @@ async def list_workflows(
 async def get_workflow(workflow_id: str, version: int | None = None) -> dict[str, Any]:
     wf = await repos().workflows.get(workflow_id, version)
     if wf is None:
-        raise HTTPException(404, f"워크플로를 찾지 못했다: {workflow_id}")
+        raise ApiError(E.WORKFLOW_NOT_FOUND, workflow_id=workflow_id)
     return wf.model_dump()
 
 
@@ -220,7 +221,7 @@ async def get_workflow(workflow_id: str, version: int | None = None) -> dict[str
 async def workflow_versions(workflow_id: str) -> dict[str, Any]:
     versions = await repos().workflows.versions(workflow_id)
     if not versions:
-        raise HTTPException(404, f"워크플로를 찾지 못했다: {workflow_id}")
+        raise ApiError(E.WORKFLOW_NOT_FOUND, workflow_id=workflow_id)
     return {"workflow_id": workflow_id, "versions": versions}
 
 
@@ -230,7 +231,7 @@ async def save_workflow(workflow: Workflow) -> dict[str, Any]:
     try:
         graph = build_graph(workflow)
     except GraphError as exc:
-        raise HTTPException(400, f"그래프 결함: {exc}") from exc
+        raise ApiError(E.WORKFLOW_GRAPH_INVALID, reason=str(exc)) from exc
 
     r = repos()
     known = {m.model_id for m in await r.models.list(active_only=False)}
@@ -256,7 +257,7 @@ async def preflight(workflow_id: str, version: int | None = None,
     r = repos()
     wf = await r.workflows.get(workflow_id, version)
     if wf is None:
-        raise HTTPException(404, f"워크플로를 찾지 못했다: {workflow_id}")
+        raise ApiError(E.WORKFLOW_NOT_FOUND, workflow_id=workflow_id)
     return await ExecutionService(r).preflight(wf, max_gpu=max_gpu)
 
 
@@ -304,7 +305,7 @@ async def resolve_model(
     try:
         route = await ModelRouter(repos().models).route(model_id, version, max_gpu=max_gpu)
     except RoutingError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise ApiError(E.MODEL_UNRESOLVABLE, reason=str(exc)) from exc
     return route.as_dict()
 
 
@@ -315,7 +316,7 @@ async def set_model_active(
     r = repos()
     mv = await r.models.set_active(model_id, version, active)
     if mv is None:
-        raise HTTPException(404, f"모델을 찾지 못했다: {model_id}:{version}")
+        raise ApiError(E.MODEL_NOT_FOUND, model_id=f"{model_id}:{version}")
     await r.audit.record(
         "model.set_active", actor_id=actor_id, target_type="model",
         target_id=f"{model_id}:{version}", detail={"active": active},
@@ -333,7 +334,7 @@ async def approve_model(
     r = repos()
     mv = await r.models.approve(model_id, version, approved_by=approved_by, decision=decision)
     if mv is None:
-        raise HTTPException(404, f"모델을 찾지 못했다: {model_id}:{version}")
+        raise ApiError(E.MODEL_NOT_FOUND, model_id=f"{model_id}:{version}")
     await r.audit.record(
         "model.approve", actor_id=approved_by, target_type="model",
         target_id=f"{model_id}:{version}", detail={"decision": decision},

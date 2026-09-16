@@ -1,0 +1,171 @@
+"""API error codes and their messages.
+
+An error travels as a **code**, not as a sentence. The code is what a caller
+branches on and what stays stable across releases; the sentence is chosen from
+the catalogue below according to the request's Accept-Language.
+
+    raise ApiError(E.WORKFLOW_NOT_FOUND, workflow_id="wf-binding")
+
+    HTTP 404
+    {"error": {"code": "workflow.not_found",
+               "message": "워크플로를 찾지 못했습니다: wf-binding",
+               "params": {"workflow_id": "wf-binding"}}}
+
+Three things follow from keeping them apart. A console can react to a code
+without matching on text. Adding a language is one entry per message rather
+than a change at every raise site. And a message can be reworded without
+breaking anyone who depends on the code.
+
+Messages are written for the person reading the screen, so they are polite
+Korean; comments and codes are for whoever reads the source, so they are
+English. The two audiences are different.
+"""
+
+from __future__ import annotations
+
+from enum import StrEnum
+from typing import Any
+
+
+class E(StrEnum):
+    """Error codes. The value is part of the API surface - do not rename."""
+
+    # -------------------------------------------------- authentication
+    AUTH_NOT_CONFIGURED = "auth.not_configured"
+    AUTH_TOKEN_REQUIRED = "auth.token_required"
+    AUTH_TOKEN_INVALID = "auth.token_invalid"
+    AUTH_FORBIDDEN = "auth.forbidden"
+
+    # -------------------------------------------------- run
+    RUN_NOT_FOUND = "run.not_found"
+    RUN_NODE_FAILED = "run.node_failed"
+
+    # -------------------------------------------------- workflow
+    WORKFLOW_NOT_FOUND = "workflow.not_found"
+    WORKFLOW_GRAPH_INVALID = "workflow.graph_invalid"
+
+    # -------------------------------------------------- artifact
+    ARTIFACT_NOT_REGISTERED = "artifact.not_registered"
+    ARTIFACT_OUTSIDE_ROOT = "artifact.outside_root"
+    ARTIFACT_FILE_MISSING = "artifact.file_missing"
+
+    # -------------------------------------------------- model registry
+    MODEL_NOT_FOUND = "model.not_found"
+    MODEL_UNRESOLVABLE = "model.unresolvable"
+
+
+#  HTTP status per code. Kept beside the codes so a new code cannot be added
+#  without deciding what it answers.
+STATUS: dict[E, int] = {
+    E.AUTH_NOT_CONFIGURED: 503,
+    E.AUTH_TOKEN_REQUIRED: 401,
+    E.AUTH_TOKEN_INVALID: 401,
+    E.AUTH_FORBIDDEN: 403,
+    E.RUN_NOT_FOUND: 404,
+    E.RUN_NODE_FAILED: 400,
+    E.WORKFLOW_NOT_FOUND: 404,
+    E.WORKFLOW_GRAPH_INVALID: 400,
+    E.ARTIFACT_NOT_REGISTERED: 404,
+    E.ARTIFACT_OUTSIDE_ROOT: 400,
+    E.ARTIFACT_FILE_MISSING: 404,
+    E.MODEL_NOT_FOUND: 404,
+    E.MODEL_UNRESOLVABLE: 404,
+}
+
+DEFAULT_LANGUAGE = "ko"
+
+#  Placeholders are named so a translation may reorder them.
+MESSAGES: dict[str, dict[E, str]] = {
+    "ko": {
+        E.AUTH_NOT_CONFIGURED: "인증 공급자가 설정되어 있지 않습니다.",
+        E.AUTH_TOKEN_REQUIRED: "로그인이 필요합니다.",
+        E.AUTH_TOKEN_INVALID: "로그인 정보를 확인하지 못했습니다. 다시 로그인하십시오.",
+        E.AUTH_FORBIDDEN: "이 작업을 수행할 권한이 없습니다.",
+        E.RUN_NOT_FOUND: "실행을 찾지 못했습니다: {run_id}",
+        E.RUN_NODE_FAILED: "노드를 처리하지 못했습니다: {reason}",
+        E.WORKFLOW_NOT_FOUND: "워크플로를 찾지 못했습니다: {workflow_id}",
+        E.WORKFLOW_GRAPH_INVALID: "그래프에 결함이 있습니다: {reason}",
+        E.ARTIFACT_NOT_REGISTERED: "등록되지 않은 산출물입니다.",
+        E.ARTIFACT_OUTSIDE_ROOT: "저장 위치를 벗어나는 경로입니다.",
+        E.ARTIFACT_FILE_MISSING: "산출물 파일이 저장소에 없습니다.",
+        E.MODEL_NOT_FOUND: "모델을 찾지 못했습니다: {model_id}",
+        E.MODEL_UNRESOLVABLE: "모델의 실행 위치를 해석하지 못했습니다: {reason}",
+    },
+    "en": {
+        E.AUTH_NOT_CONFIGURED: "No authentication provider is configured.",
+        E.AUTH_TOKEN_REQUIRED: "Sign-in is required.",
+        E.AUTH_TOKEN_INVALID: "Your sign-in could not be verified. Please sign in again.",
+        E.AUTH_FORBIDDEN: "You do not have permission to do this.",
+        E.RUN_NOT_FOUND: "No such run: {run_id}",
+        E.RUN_NODE_FAILED: "The node could not be processed: {reason}",
+        E.WORKFLOW_NOT_FOUND: "No such workflow: {workflow_id}",
+        E.WORKFLOW_GRAPH_INVALID: "The graph is not valid: {reason}",
+        E.ARTIFACT_NOT_REGISTERED: "That artifact is not registered.",
+        E.ARTIFACT_OUTSIDE_ROOT: "That path lies outside the storage root.",
+        E.ARTIFACT_FILE_MISSING: "The artifact file is not in storage.",
+        E.MODEL_NOT_FOUND: "No such model: {model_id}",
+        E.MODEL_UNRESOLVABLE: "The model could not be resolved to an endpoint: {reason}",
+    },
+}
+
+
+class ApiError(Exception):
+    """An error the caller is meant to see. Carries a code, not a sentence."""
+
+    def __init__(self, code: E, *, status: int | None = None, **params: Any) -> None:
+        self.code = code
+        self.status = status if status is not None else STATUS.get(code, 400)
+        self.params = params
+        super().__init__(f"{code}: {params}" if params else str(code))
+
+    def body(self, language: str = DEFAULT_LANGUAGE) -> dict[str, Any]:
+        return {
+            "error": {
+                "code": str(self.code),
+                "message": render(self.code, language, **self.params),
+                "params": self.params,
+            }
+        }
+
+
+def negotiate(accept_language: str | None) -> str:
+    """Pick a catalogue from an Accept-Language header.
+
+    Quality values are ignored; the first understood tag wins, which is enough
+    while there are two languages. An unknown tag falls back rather than fails.
+    """
+    if not accept_language:
+        return DEFAULT_LANGUAGE
+    for part in accept_language.split(","):
+        tag = part.split(";")[0].strip().lower()
+        if not tag:
+            continue
+        if tag in MESSAGES:
+            return tag
+        base = tag.split("-")[0]
+        if base in MESSAGES:
+            return base
+    return DEFAULT_LANGUAGE
+
+
+def render(code: E, language: str = DEFAULT_LANGUAGE, **params: Any) -> str:
+    """Look the message up and fill in its placeholders.
+
+    A missing placeholder must not turn an error into a different error, so the
+    unformatted message is returned instead of raising.
+    """
+    catalogue = MESSAGES.get(language) or MESSAGES[DEFAULT_LANGUAGE]
+    template = catalogue.get(code) or MESSAGES[DEFAULT_LANGUAGE].get(code) or str(code)
+    try:
+        return template.format(**params)
+    except (KeyError, IndexError):
+        return template
+
+
+def missing_translations() -> dict[str, list[str]]:
+    """Codes a catalogue does not cover. A test asserts this is empty."""
+    return {
+        lang: sorted(str(c) for c in E if c not in catalogue)
+        for lang, catalogue in MESSAGES.items()
+        if any(c not in catalogue for c in E)
+    }
