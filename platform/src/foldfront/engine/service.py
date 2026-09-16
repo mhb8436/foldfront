@@ -99,7 +99,7 @@ class ExecutionService:
             await self.repos.rounds.link_runs(round_id, [run.run_id])
 
         plan = ExecutionPlan.start(graph)
-        await self._enqueue_ready(run.run_id, graph, plan)
+        await self._enqueue_ready(run.run_id, graph, plan, request=dict(run.request or {}))
 
         #  When the first node cannot be routed the run is already over. Close
         #  it rather than leave it sitting in RUNNING with nothing to do.
@@ -204,9 +204,19 @@ class ExecutionService:
         }
 
     async def _enqueue_ready(
-        self, run_id: str, graph: Graph, plan: ExecutionPlan
+        self, run_id: str, graph: Graph, plan: ExecutionPlan,
+        request: dict[str, Any] | None = None,
     ) -> list[str]:
-        """Enqueue the nodes that are ready, skipping any already queued."""
+        """Enqueue the nodes that are ready, skipping any already queued.
+
+        `request` is what the run was asked for. A node builds its input from
+        that, from what it declares itself, and from what earlier stages
+        produced, so it has to travel with the job rather than be looked up.
+        """
+        if request is None:
+            stored = await self.repos.runs.get(run_id)
+            request = dict(stored.request) if stored else {}
+
         existing = {
             j.node_id for j in await self.repos.jobs.list_for_run(run_id) if j.node_id
         }
@@ -241,13 +251,22 @@ class ExecutionService:
 
                 handled.add(node_id)
 
+                #  A node needs three things to build its input: what the node
+                #  itself declares, what the run was asked for, and what earlier
+                #  stages produced. Sending only the first is why this worked
+                #  under the mock adapter, which reads none of them, and failed
+                #  the moment a real endpoint wanted a sequence.
                 job = Job(
                     job_id=new_id("job"),
                     run_id=run_id,
                     node_id=node_id,
                     model_id=node.model_id,
                     model_version=node.model_version,
-                    payload={"params": dict(node.params), "kind": str(node.kind)},
+                    payload={
+                        "params": {**request, **dict(node.params)},
+                        "upstream": plan.context_for(node_id),
+                        "kind": str(node.kind),
+                    },
                 )
 
                 #  Resource requirements come from the registry and drive scheduling

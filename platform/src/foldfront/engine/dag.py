@@ -320,6 +320,31 @@ class ExecutionPlan:
             counts[s.outcome] += 1
         return dict(counts)
 
+    def context_for(self, node_id: str) -> dict[str, Any]:
+        """What earlier stages produced, flattened for the node about to run.
+
+        A builder asks for a value by name - `designed_fasta`, `backbone_pdb` -
+        without knowing which stage produced it, so the results of every
+        ancestor are merged in topological order. Later stages win, which is
+        what a redesign loop needs: the second pass over a stage should be the
+        one a downstream node sees.
+        """
+        ancestors: set[str] = set()
+        frontier = [node_id]
+        while frontier:
+            current = frontier.pop()
+            for edge in self.graph.incoming.get(current, ()):
+                if edge.source in ancestors:
+                    continue
+                ancestors.add(edge.source)
+                frontier.append(edge.source)
+
+        merged: dict[str, Any] = {}
+        for name in self.graph.order:
+            if name in ancestors and isinstance(self.context.get(name), dict):
+                merged.update(self.context[name])
+        return merged
+
     # ------------------------------------------------------------ updates
 
     def mark_running(self, node_id: str) -> None:
