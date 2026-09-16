@@ -1,0 +1,6 @@
+run_id,target,sequence_length,wt_soluprot,wt_soluprot_passed,wt_plddt,wt_rmsd_ca,provider,source
+paper_surrogate_pooled9999_strict_20260520_cath_train_1a6jA00,1a6jA00,150,0.6416807751993795,True,94.45639999999999,,colabfold,run_artifact
+paper_surrogate_pooled9999_strict_20260520_cath_train_1a8rG01,1a8rG01,221,0.639963014210248,True,96.3680995475113,,colabfold,run_artifact
+paper_surrogate_pooled9999_strict_20260520_cath_val_1a19A00,1a19A00,89,0.629247226369266,True,97.67191011235954,,colabfold,run_artifact
+paper_surrogate_pooled9999_strict_20260520_cath_val_1advA02,1advA02,287,0.5285751005231191,True,90.3665156794425,,colabfold,run_artifact
+paper_surrogate_pooled9999_strict_20260520_cath_val_1h6wA03,1h6wA03,151,0.59281847338368,True,81.5358940397351,,colabfold,run_artifact

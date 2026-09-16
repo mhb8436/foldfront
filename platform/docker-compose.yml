@@ -1,0 +1,13 @@
+#  개발용 MongoDB. 운영 구성은 기관 정책()에 따라 별도로 정한다.
+services:
+  mongo:
+    image: mongo:8
+    container_name: foldfront-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    command: ["--bind_ip_all"]
+
+volumes:
+  mongo-data:

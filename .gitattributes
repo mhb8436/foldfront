@@ -1,0 +1,7 @@
+# Keep the manuscript and supplementary out of the Zenodo software/data archive.
+# These are the *paper*, versioned by the journal/preprint DOI, not the software
+# release. Excluding them from `git archive` means editing the manuscript no
+# longer changes the software archive, so the Zenodo software DOI only needs to
+# be re-minted on real code/data releases. The files remain in the Git repo.
+docs/manuscript.md export-ignore
+docs/supplementary.md export-ignore

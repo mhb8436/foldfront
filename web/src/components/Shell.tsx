@@ -1,0 +1,313 @@
+import { useEffect, useState, type ComponentType, type ReactNode } from 'react'
+import { NavLink, useLocation } from 'react-router-dom'
+import {
+  BarChart3,
+  Bell,
+  ChevronDown,
+  Dna,
+  LayoutGrid,
+  Layers,
+  MessageSquare,
+  Moon,
+  PanelLeft,
+  Play,
+  Settings2,
+  Sun,
+  Workflow,
+} from 'lucide-react'
+
+import { api } from '../api/client'
+import { branding } from '@/lib/branding'
+import { cn } from '@/lib/utils'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
+import { StatusDot } from './Common'
+
+/**
+ * 통합 콘솔 골격.
+ *
+ * 헤더 · 좌측 내비게이션 · 본문 · 푸터 4분할을 전 화면이 공유한다.
+ * 화면마다 골격이 달라지지 않으므로 이용자는 조작 규칙을 한 번만 익힌다.
+ */
+
+type Item = {
+  to?: string
+  label: string
+  icon?: ComponentType<{ className?: string }>
+  badge?: string
+  children?: Item[]
+}
+
+const NAV: Array<{ section: string; items: Item[] }> = [
+  {
+    section: '설계',
+    items: [
+      { label: '대시보드', icon: LayoutGrid, badge: '예정' },
+      {
+        label: '설계 실행',
+        icon: Play,
+        children: [
+          { to: '/setup', label: '실행 준비' },
+          { to: '/monitor', label: '실행 감시' },
+        ],
+      },
+      { to: '/studio', label: '워크플로 스튜디오', icon: Workflow },
+      { to: '/analyze', label: '결과 분석', icon: BarChart3 },
+    ],
+  },
+  {
+    section: '관리',
+    items: [
+      { to: '/models', label: '모델 관리', icon: Layers },
+      { to: '/operations', label: '운영', icon: Settings2 },
+      { label: '설계 Copilot', icon: MessageSquare, badge: '예정' },
+    ],
+  },
+]
+
+function useDarkMode() {
+  const [dark, setDark] = useState(() => {
+    try {
+      return localStorage.getItem('console-theme') === 'dark'
+    } catch {
+      return false
+    }
+  })
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', dark)
+    try {
+      localStorage.setItem('console-theme', dark ? 'dark' : 'light')
+    } catch {
+      //  사생활 보호 모드에서는 저장이 막힌다. 화면 동작에는 지장이 없다
+    }
+  }, [dark])
+  return [dark, setDark] as const
+}
+
+/** 저장소 연결 상태. 표시등이 장식이 되지 않게 실제 /healthz 를 본다. */
+function useHealth() {
+  const [ok, setOk] = useState<boolean | null>(null)
+  useEffect(() => {
+    let alive = true
+    const check = () =>
+      api
+        .health()
+        .then((h: { status?: string }) => alive && setOk(h?.status === 'ok'))
+        .catch(() => alive && setOk(false))
+    check()
+    const timer = setInterval(check, 30_000)
+    return () => {
+      alive = false
+      clearInterval(timer)
+    }
+  }, [])
+  return ok
+}
+
+function NavItem({ item, collapsed }: { item: Item; collapsed: boolean }) {
+  const Icon = item.icon
+  const base =
+    'flex h-9 items-center gap-2.5 rounded-md px-2.5 text-[13.5px] transition-colors'
+
+  if (!item.to) {
+    return (
+      <div
+        className={cn(base, 'text-muted-foreground/70 cursor-default')}
+        title={collapsed ? item.label : undefined}
+      >
+        {Icon && <Icon className="size-4 shrink-0" />}
+        {!collapsed && (
+          <>
+            <span className="truncate">{item.label}</span>
+            {item.badge && (
+              <Badge variant="muted" className="ml-auto">
+                {item.badge}
+              </Badge>
+            )}
+          </>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <NavLink
+      to={item.to}
+      title={collapsed ? item.label : undefined}
+      className={({ isActive }) =>
+        cn(
+          base,
+          isActive
+            ? 'bg-accent text-accent-foreground font-semibold'
+            : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
+        )
+      }
+    >
+      {Icon && <Icon className="size-4 shrink-0" />}
+      {!collapsed && <span className="truncate">{item.label}</span>}
+    </NavLink>
+  )
+}
+
+export function Shell({ children }: { children: ReactNode }) {
+  const [collapsed, setCollapsed] = useState(false)
+  const [dark, setDark] = useDarkMode()
+  const health = useHealth()
+  const { pathname } = useLocation()
+
+  return (
+    <div className="flex min-h-screen flex-col">
+      {/* ───────── 헤더 ───────── */}
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          aria-label="내비게이션 접기"
+          onClick={() => setCollapsed((v) => !v)}
+        >
+          <PanelLeft className="size-4" />
+        </Button>
+
+        <div className="bg-primary text-primary-foreground flex size-7 items-center justify-center rounded-md">
+          <Dna className="size-4" />
+        </div>
+        <span className="text-[14.5px] font-semibold tracking-tight">{branding.title}</span>
+        {branding.organization && (
+          <>
+            <Separator orientation="vertical" className="h-4" />
+            <span className="text-muted-foreground hidden text-[12.5px] lg:inline">
+              {branding.organization}
+            </span>
+          </>
+        )}
+
+        <div className="flex-1" />
+
+        <Button variant="outline" size="sm" className="hidden font-normal md:inline-flex">
+          <span className="text-muted-foreground">프로젝트</span>
+          <span className="font-medium">전체</span>
+          <ChevronDown className="text-muted-foreground size-3.5" />
+        </Button>
+
+        <div className="text-muted-foreground flex items-center gap-1.5 text-[12.5px]">
+          <StatusDot status={health === null ? 'pending' : health ? 'succeeded' : 'failed'} />
+          <span className="hidden sm:inline">
+            {health === null ? '확인 중' : health ? '정상' : '점검'}
+          </span>
+        </div>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          aria-label={dark ? '밝은 화면으로' : '어두운 화면으로'}
+          onClick={() => setDark(!dark)}
+        >
+          {dark ? <Sun className="size-4" /> : <Moon className="size-4" />}
+        </Button>
+        <Button variant="ghost" size="icon" className="size-8" aria-label="알림">
+          <Bell className="size-4" />
+        </Button>
+        <div className="bg-primary text-primary-foreground flex size-7 items-center justify-center rounded-full text-[12px] font-semibold">
+          K
+        </div>
+      </header>
+
+      <div className="flex min-h-0 flex-1">
+        {/* ───────── 좌측 내비게이션 ───────── */}
+        <nav
+          className={cn(
+            'bg-muted/40 hidden shrink-0 flex-col border-r px-2.5 py-3 transition-[width] md:flex',
+            collapsed ? 'w-[60px]' : 'w-[236px]',
+          )}
+        >
+          {NAV.map((group) => (
+            <div key={group.section} className="mb-1">
+              {!collapsed && (
+                <div className="text-muted-foreground/70 px-2.5 pt-3 pb-1.5 text-[10.5px] font-semibold tracking-[0.1em] uppercase">
+                  {group.section}
+                </div>
+              )}
+              {collapsed && <Separator className="my-2" />}
+              <div className="flex flex-col gap-0.5">
+                {group.items.map((item) =>
+                  item.children ? (
+                    <div key={item.label} className="flex flex-col gap-0.5">
+                      <NavItem item={{ ...item, to: undefined, badge: undefined }} collapsed={collapsed} />
+                      {!collapsed &&
+                        item.children.map((child) => (
+                          <NavLink
+                            key={child.to}
+                            to={child.to!}
+                            className={({ isActive }) =>
+                              cn(
+                                'flex h-8 items-center rounded-md pr-2.5 pl-9 text-[13px] transition-colors',
+                                isActive
+                                  ? 'bg-accent text-accent-foreground font-semibold'
+                                  : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
+                              )
+                            }
+                          >
+                            {child.label}
+                          </NavLink>
+                        ))}
+                      {collapsed &&
+                        item.children.map((child) => (
+                          <NavItem
+                            key={child.to}
+                            item={{ ...child, icon: item.icon }}
+                            collapsed={collapsed}
+                          />
+                        ))}
+                    </div>
+                  ) : (
+                    <NavItem key={item.label} item={item} collapsed={collapsed} />
+                  ),
+                )}
+              </div>
+            </div>
+          ))}
+        </nav>
+
+        {/* ───────── 본문 ───────── */}
+        <main key={pathname} className="min-w-0 flex-1 px-6 py-6 lg:px-7">
+          <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-5">{children}</div>
+        </main>
+      </div>
+
+      {/* ───────── 푸터 ───────── */}
+      <footer className="text-muted-foreground flex h-11 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t px-6 text-[11.5px]">
+        <span>{branding.copyright || `© ${new Date().getFullYear()} ${branding.product}`}</span>
+        <span className="hidden sm:inline">·</span>
+        <span className="hidden sm:inline">승계 {branding.upstream}</span>
+        <span className="flex-1" />
+        <span className="font-mono">
+          {__APP_VERSION__} · {__APP_COMMIT__}
+        </span>
+      </footer>
+    </div>
+  )
+}
+
+/** 화면 제목 줄. 제목·설명·조치를 한 자리에 모은다. */
+export function PageHeader({
+  title,
+  description,
+  actions,
+}: {
+  title: string
+  description?: ReactNode
+  actions?: ReactNode
+}) {
+  return (
+    <div className="flex flex-wrap items-end gap-4">
+      <div className="flex flex-col gap-1.5">
+        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+        {description && <p className="text-muted-foreground text-[13.5px]">{description}</p>}
+      </div>
+      {actions && <div className="ml-auto flex items-center gap-2">{actions}</div>}
+    </div>
+  )
+}

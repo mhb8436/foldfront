@@ -1,0 +1,116 @@
+/*  통합 콘솔 공통 양식.
+
+    shadcn/ui + Tailwind CSS v4 기준. 무채색 한 벌로 간다 —
+    화면에서 색을 갖는 것은 실행 상태(진행·완료·실패·대기·취소)뿐이다.
+    서류평가용 흑백 인쇄에서 손실이 없고, 유일한 색이 상태이므로 시선이 이상 징후로 곧장 간다. */
+
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /*  상태색 — 이 다섯 개가 화면의 색 전부다 */
+  --color-status-pending: var(--status-pending);
+  --color-status-running: var(--status-running);
+  --color-status-succeeded: var(--status-succeeded);
+  --color-status-failed: var(--status-failed);
+  --color-status-cancelled: var(--status-cancelled);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans: 'IBM Plex Sans KR', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+:root {
+  --radius: 0.5rem;
+
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+
+  --status-pending: oklch(0.708 0 0);
+  --status-running: oklch(0.546 0.245 262.881);
+  --status-succeeded: oklch(0.596 0.145 163.225);
+  --status-failed: oklch(0.577 0.245 27.325);
+  --status-cancelled: oklch(0.87 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+
+  --status-pending: oklch(0.708 0 0);
+  --status-running: oklch(0.707 0.165 254.624);
+  --status-succeeded: oklch(0.696 0.17 162.48);
+  --status-failed: oklch(0.704 0.191 22.216);
+  --status-cancelled: oklch(0.371 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: 'tnum' 1;
+  }
+  /*  식별자·시각·지표는 자릿수가 어긋나면 대조가 어렵다. 등폭으로 고정한다 */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}

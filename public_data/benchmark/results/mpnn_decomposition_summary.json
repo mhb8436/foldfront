@@ -1,0 +1,24 @@
+{
+  "plddt": {
+    "n_total": 2737,
+    "n_groups": 23,
+    "grand_mean": 91.90593174759871,
+    "grand_var": 88.6025426779397,
+    "between_target_var": 86.80922304555116,
+    "mean_within_target_var": 1.1093356124923424,
+    "ms_between": 10884.741825360512,
+    "ms_within": 1.1204271008068205,
+    "icc1": 0.9878976669505235
+  },
+  "soluprot": {
+    "n_total": 2737,
+    "n_groups": 23,
+    "grand_mean": 0.6153020073693645,
+    "grand_var": 0.02337400258888121,
+    "between_target_var": 0.02251000365084985,
+    "mean_within_target_var": 0.000774441025232209,
+    "ms_between": 2.8111437417049854,
+    "ms_within": 0.0007846288755557036,
+    "icc1": 0.9678445179715756
+  }
+}

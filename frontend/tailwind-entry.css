@@ -1,0 +1,12 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Instrument Sans", "Space Grotesk", system-ui, sans-serif;
+  --color-kbf-teal: #0f7a77;
+  --color-kbf-ink: #182129;
+  --color-kbf-paper: #fffdf8;
+  --color-platform-slate: oklch(27.9% 0.041 260.031);
+  --color-platform-teal: oklch(51.1% 0.096 186.391);
+  --color-platform-emerald: oklch(50.8% 0.118 165.612);
+  --color-platform-amber: oklch(66.6% 0.179 58.318);
+}

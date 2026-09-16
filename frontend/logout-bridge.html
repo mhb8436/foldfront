@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>KBF Logout Bridge</title>
+  </head>
+  <body>
+    <script>
+      (async function () {
+        function resolveTargetOrigin(value) {
+          try {
+            return new URL(String(value || '')).origin
+          } catch (_err) {
+            return '*'
+          }
+        }
+
+        function notify(ok) {
+          var params = new URLSearchParams(window.location.search)
+          var payload = {
+            type: 'kbf:logout-bridge:complete',
+            requestId: String(params.get('request_id') || ''),
+            ok: ok !== false,
+            origin: window.location.origin,
+          }
+          var targetOrigin = resolveTargetOrigin(params.get('parent_origin'))
+          try {
+            if (window.parent && window.parent !== window) {
+              window.parent.postMessage(payload, targetOrigin)
+            }
+          } catch (_err) {
+            // Ignore parent messaging failures.
+          }
+          try {
+            if (window.opener && window.opener !== window) {
+              window.opener.postMessage(payload, targetOrigin)
+            }
+          } catch (_err) {
+            // Ignore opener messaging failures.
+          }
+        }
+
+        try {
+          await fetch('/auth/logout', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}',
+          })
+        } catch (_err) {
+          // Ignore logout endpoint failures and continue local cleanup.
+        }
+
+        try {
+          window.localStorage.removeItem('kbf.user')
+          window.localStorage.removeItem('kbf.token')
+          window.localStorage.removeItem('kbf.idToken')
+          window.localStorage.setItem('kbf.globalLogoutAt', String(Date.now()))
+        } catch (_err) {
+          // Ignore localStorage failures.
+        }
+
+        try {
+          window.sessionStorage.removeItem('kbf.oidc.state')
+          window.sessionStorage.removeItem('kbf.oidc.verifier')
+        } catch (_err) {
+          // Ignore sessionStorage failures.
+        }
+
+        notify(true)
+        document.body.textContent = 'logout-bridge:ok'
+      })()
+    </script>
+  </body>
+</html>

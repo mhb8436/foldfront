@@ -1,0 +1,23 @@
+{
+  "input_rows": 4392,
+  "usable_units": 107,
+  "usable_targets": 38,
+  "train_n": 30,
+  "min_eval_n": 5,
+  "top_k": 3,
+  "pool_sizes": [
+    0,
+    5,
+    10,
+    20,
+    30
+  ],
+  "model": "ridge_residual_centered",
+  "ridge_alpha": 10.0,
+  "cath_root": "/opt/protein_pipeline/cath_outputs",
+  "labels_out": "data/benchmark/results/pooled_surrogate_cath_labels_esm.csv",
+  "metrics_out": "data/benchmark/results/pooled_surrogate_scaling_metrics_esm.csv",
+  "summary_out": "data/benchmark/results/pooled_surrogate_scaling_summary_esm.csv",
+  "feature_count": 354,
+  "feature_source": "esm2_8m_mean_plus_composition_mpnn_metadata"
+}

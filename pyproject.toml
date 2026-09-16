@@ -1,0 +1,10 @@
+#  uv 워크스페이스 루트 ( — Backend Python/uv)
+#
+#  pipeline-mcp 는 현행 RAPID v1.0.29 의 도메인 로직이다. 복사하지 않고 워크스페이스
+#  구성원으로 두어 그대로 승계한다 — 원본 파일을 고치지 않으므로 upstream 변경분을
+#  언제든 병합할 수 있고, git diff upstream-v1.0.29 에 잡히지도 않는다.
+[tool.uv.workspace]
+members = ["platform", "pipeline-mcp"]
+
+[tool.uv.sources]
+pipeline-mcp = { workspace = true }

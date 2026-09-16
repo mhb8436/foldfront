@@ -1,0 +1,30 @@
+repo: protein_pipeline
+source_branch: dev
+environments:
+  dev:
+    trigger: branch
+    ref: dev
+    local_health: http://127.0.0.1:18087/healthz
+    external_url: https://dev-pipeline.example.duckdns.org   # confirm exact host
+    external_health: /api/healthz
+    service: pipeline-mcp-dev.service
+  staging:
+    trigger: branch
+    ref: staging
+    local_health: http://127.0.0.1:18085/healthz
+    external_url: https://STAGING-HOST-PLACEHOLDER          # FILL IN
+    external_health: /api/healthz
+    service: pipeline-mcp-staging.service
+  prod:
+    trigger: tag
+    ref: main
+    source: staging   # ladder: prod promotes the staging-verified commit, not dev
+    bump_version: CITATION.cff
+    local_health: http://127.0.0.1:18080/healthz
+    external_url: https://PROD-HOST-PLACEHOLDER             # FILL IN
+    external_health: /api/healthz
+    service: pipeline-mcp.service
+    require_approval: true
+ci_excludes:
+  - pipeline.test.js
+sso_session: ~/.claude/promote/protein_pipeline.storageState.json

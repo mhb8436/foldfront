@@ -1,0 +1,6 @@
+run_id,target,tiers,requested_policy,selected_policy,surrogate_models,comparator_models,selection_strategy,initial_samples,top_k,candidate_count_before_triage,af2_records,af2_reduction_fraction,af2_reduction_percent,bootstrap_labels,top_k_acquisitions,status_state
+paper_surrogate_pooled9999_strict_20260520_cath_train_1a6jA00,1a6jA00,"30,50,70",auto,ridge,"rf,ridge,lightgbm,xgboost","rf,ridge,lightgbm,xgboost",auto_cv,30,20,9954,50,0.9949768937110709,99.49768937110709,30,20,completed
+paper_surrogate_pooled9999_strict_20260520_cath_train_1a8rG01,1a8rG01,"30,50,70",auto,ridge,"rf,ridge,lightgbm,xgboost","rf,ridge,lightgbm,xgboost",auto_cv,30,20,9999,50,0.994999499949995,99.4999499949995,30,20,completed
+paper_surrogate_pooled9999_strict_20260520_cath_val_1a19A00,1a19A00,"30,50,70",auto,rf,"rf,ridge,lightgbm,xgboost","rf,ridge,lightgbm,xgboost",auto_cv,30,20,9999,50,0.994999499949995,99.4999499949995,30,20,completed
+paper_surrogate_pooled9999_strict_20260520_cath_val_1advA02,1advA02,"30,50,70",auto,rf,"rf,ridge,lightgbm,xgboost","rf,ridge,lightgbm,xgboost",auto_cv,30,20,9999,50,0.994999499949995,99.4999499949995,30,20,completed
+paper_surrogate_pooled9999_strict_20260520_cath_val_1h6wA03,1h6wA03,"30,50,70",auto,ridge,"rf,ridge,lightgbm,xgboost","rf,ridge,lightgbm,xgboost",auto_cv,30,20,9995,50,0.9949974987493747,99.49974987493746,30,20,completed

@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RunPod Control Room | protein_pipeline</title>
+    <link rel="stylesheet" href="./styles.css?v=20260311_runpod_admin10" />
+  </head>
+  <body>
+    <div class="ambient ambient-a" aria-hidden="true"></div>
+    <div class="ambient ambient-b" aria-hidden="true"></div>
+    <div class="mesh" aria-hidden="true"></div>
+
+    <header class="dashboard-topbar panel">
+      <div class="topbar-main">
+        <div class="topbar-copy">
+          <p class="eyebrow">protein_pipeline / RunPod Serverless</p>
+          <h1 class="app-title">RunPod Ops</h1>
+        </div>
+        <div class="topbar-meta">
+          <span id="sessionBadge" class="session-badge">Anonymous</span>
+          <span id="lastRefreshValue" class="mono">Never refreshed</span>
+          <button id="refreshBtn" class="primary" type="button">Refresh</button>
+        </div>
+      </div>
+      <details id="settingsPanel" class="settings-panel">
+        <summary class="accordion-summary">
+          <span>Settings</span>
+          <span class="muted">API base, health checks, and auth controls stay tucked away until needed.</span>
+        </summary>
+        <div class="settings-panel-body">
+          <label class="field compact settings-field">
+            <span>Pipeline API Base</span>
+            <input id="apiBaseInput" type="text" placeholder="http://127.0.0.1:18080" />
+          </label>
+          <div class="hero-action-row settings-actions">
+            <button id="homeBtn" class="ghost" type="button">Main Console</button>
+            <button id="saveApiBaseBtn" class="ghost" type="button">Save API</button>
+            <button id="pingApiBtn" class="ghost" type="button">Health</button>
+            <button id="logoutBtn" class="ghost hidden" type="button">Logout</button>
+          </div>
+        </div>
+      </details>
+    </header>
+
+    <main class="shell">
+      <section id="banner" class="banner hidden"></section>
+
+      <section id="loginCard" class="login-card panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Admin Access</p>
+            <h2>RunPod operator login</h2>
+          </div>
+          <p class="muted">
+            This console uses the same auth gateway as the main pipeline API. If auth is disabled, the dashboard
+            opens directly.
+          </p>
+        </div>
+        <div class="login-grid">
+          <label class="field">
+            <span>Username</span>
+            <input id="loginUsername" type="text" autocomplete="username" />
+          </label>
+          <label class="field">
+            <span>Password</span>
+            <input id="loginPassword" type="password" autocomplete="current-password" />
+          </label>
+        </div>
+        <div class="hero-action-row">
+          <button id="loginBtn" class="primary" type="button">Sign in</button>
+          <button id="loginBypassBtn" class="ghost" type="button">Try without auth</button>
+        </div>
+      </section>
+
+      <section id="appShell" class="dashboard hidden">
+        <div class="summary-grid">
+          <article class="summary-card">
+            <span class="summary-label">Endpoints</span>
+            <strong id="summaryEndpoints" class="summary-value">0</strong>
+            <span class="summary-note">Visible / managed</span>
+          </article>
+          <article class="summary-card">
+            <span class="summary-label">Capacity</span>
+            <strong id="summaryWorkers" class="summary-value">0 / 0</strong>
+            <span class="summary-note">workersMin / workersMax</span>
+          </article>
+          <article class="summary-card">
+            <span class="summary-label">Live Workers</span>
+            <strong id="summaryLiveWorkers" class="summary-value">0</strong>
+            <span class="summary-note">Workers reported by RunPod</span>
+          </article>
+          <article class="summary-card">
+            <span class="summary-label">Running / Queued</span>
+            <strong id="summaryLoad" class="summary-value">0 / 0</strong>
+            <span class="summary-note">Current jobs in progress / queue</span>
+          </article>
+          <article class="summary-card summary-card-cost">
+            <span class="summary-label">Period Spend</span>
+            <strong id="summaryCost" class="summary-value">$0.00</strong>
+            <span class="summary-note">Calendar-aligned fleet billing</span>
+          </article>
+        </div>
+
+        <div class="overview-grid">
+          <section class="panel service-board">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Fleet Overview</p>
+                <h2>Calendar monitoring deck</h2>
+              </div>
+              <p class="muted">Aggregate spend and usage for the visible endpoint fleet, with calendar-aligned periods and direct exports.</p>
+            </div>
+            <div class="overview-toolbar">
+              <button id="periodNavPrevBtn" class="ghost" type="button">Previous</button>
+              <label class="field compact">
+                <span>Monitoring period</span>
+                <select id="periodPresetSelect">
+                  <option value="week" selected>This week (Mon-Sun)</option>
+                  <option value="month">This month</option>
+                  <option value="months_6">Last 6 months</option>
+                </select>
+              </label>
+              <span id="periodLabel" class="period-label mono">Current period</span>
+              <button id="periodNavNextBtn" class="ghost" type="button">Next</button>
+            </div>
+            <div id="serviceBoard" class="overview-board"></div>
+
+            <div class="service-focus-shell">
+              <div class="panel-head service-focus-head">
+                <div>
+                  <p class="eyebrow">Endpoint Selector</p>
+                  <h3>All or one endpoint</h3>
+                </div>
+                <p class="muted">Start in All for fleet scanning. Pick one endpoint when you need charts, downloads, worker state, or patch controls.</p>
+              </div>
+              <div id="endpointScopeSelector" class="service-map-strip"></div>
+            </div>
+
+            <div class="endpoint-stage">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Endpoint View</p>
+                  <h2 id="endpointStageTitle">All endpoints</h2>
+                </div>
+                <div class="filters endpoint-stage-filters">
+                  <label class="toggle">
+                    <input id="managedOnlyToggle" type="checkbox" checked />
+                    <span>Managed only</span>
+                  </label>
+                  <label class="toggle">
+                    <input id="includeWorkersToggle" type="checkbox" />
+                    <span>Include workers in refresh</span>
+                  </label>
+                </div>
+              </div>
+              <p id="endpointStageDescription" class="muted stage-copy">
+                Compact fleet cards in All. Single-endpoint detail appears here after selection.
+              </p>
+
+              <div id="missingEndpoints" class="stack"></div>
+
+              <div id="endpointWorkspace" class="endpoint-workspace">
+                <div id="endpointList" class="endpoint-list endpoint-fleet-view"></div>
+
+                <section class="panel detail-panel hidden">
+                  <div class="panel-head">
+                    <div>
+                      <p class="eyebrow">Endpoint</p>
+                      <h2 id="detailTitle">Selected endpoint</h2>
+                    </div>
+                    <div class="hero-action-row">
+                      <button id="quickWarmBtn" class="ghost" type="button" disabled>Warm x1</button>
+                      <button id="quickBurstBtn" class="ghost" type="button" disabled>Burst x4</button>
+                      <button id="quickPauseBtn" class="ghost" type="button" disabled>Pause</button>
+                    </div>
+                  </div>
+
+                  <div id="detailHero" class="detail-hero"></div>
+                  <div id="detailMeta" class="detail-meta"></div>
+                  <div id="detailDownloads" class="download-row"></div>
+                  <div id="detailCharts" class="analytics-grid detail-analytics"></div>
+
+                  <div class="detail-grid">
+                    <section class="section-card">
+                      <div class="section-head">
+                        <h3>Workers</h3>
+                        <p>Inspect worker states after choosing one endpoint from the selector or fleet cards.</p>
+                      </div>
+                      <div id="workerSummary" class="stack"></div>
+                      <div class="table-shell">
+                        <table class="table">
+                          <thead>
+                            <tr>
+                              <th>ID</th>
+                              <th>Status</th>
+                              <th>GPU</th>
+                              <th>Cost / hr</th>
+                            </tr>
+                          </thead>
+                          <tbody id="workerRows"></tbody>
+                        </table>
+                      </div>
+                    </section>
+
+                    <details id="configAccordion" class="section-card config-accordion">
+                      <summary class="accordion-summary">
+                        <span>Patch configuration</span>
+                        <span class="muted">Collapsed by default so monitoring stays in focus.</span>
+                      </summary>
+                      <div class="config-accordion-body">
+                        <div class="section-head">
+                          <h3>Configuration</h3>
+                          <p>Patch the selected serverless endpoint without leaving the pipeline workspace.</p>
+                        </div>
+                        <form id="configForm" class="config-grid">
+                          <label class="field">
+                            <span>Name</span>
+                            <input id="fieldName" type="text" />
+                          </label>
+                          <label class="field">
+                            <span>GPU Types</span>
+                            <input id="fieldGpuTypeIds" type="text" placeholder="GPU-A, GPU-B" />
+                          </label>
+                          <label class="field">
+                            <span>Data Centers</span>
+                            <input id="fieldDataCenterIds" type="text" placeholder="US-KS-2, EU-CZ-1" />
+                          </label>
+                          <label class="field">
+                            <span>Template ID</span>
+                            <input id="fieldTemplateId" type="text" />
+                          </label>
+                          <label class="field">
+                            <span>Network Volume ID</span>
+                            <input id="fieldNetworkVolumeId" type="text" />
+                          </label>
+                          <label class="field">
+                            <span>Scaler Type</span>
+                            <select id="fieldScalerType">
+                              <option value="REQUEST_COUNT">REQUEST_COUNT</option>
+                              <option value="QUEUE_DELAY">QUEUE_DELAY</option>
+                              <option value="NONE">NONE</option>
+                            </select>
+                          </label>
+                          <label class="field">
+                            <span>Scaler Value</span>
+                            <input id="fieldScalerValue" type="number" min="0" />
+                          </label>
+                          <label class="field">
+                            <span>Workers Min</span>
+                            <input id="fieldWorkersMin" type="number" min="0" />
+                          </label>
+                          <label class="field">
+                            <span>Workers Max</span>
+                            <input id="fieldWorkersMax" type="number" min="0" />
+                          </label>
+                          <label class="field">
+                            <span>Idle Timeout (s)</span>
+                            <input id="fieldIdleTimeout" type="number" min="0" />
+                          </label>
+                          <label class="field">
+                            <span>Execution Timeout (ms)</span>
+                            <input id="fieldExecutionTimeoutMs" type="number" min="0" />
+                          </label>
+                          <label class="toggle toggle-card">
+                            <input id="fieldFlashBoot" type="checkbox" />
+                            <span>Flash boot enabled</span>
+                          </label>
+                        </form>
+                        <div class="hero-action-row">
+                          <button id="saveConfigBtn" class="primary" type="button" disabled>Apply patch</button>
+                          <button id="resetConfigBtn" class="ghost" type="button" disabled>Reset form</button>
+                        </div>
+                      </div>
+                    </details>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <details class="panel billing-panel billing-accordion">
+          <summary class="accordion-summary">
+            <span>Spend ledger</span>
+            <span class="muted">Open for calendar-aligned endpoint spend buckets and totals.</span>
+          </summary>
+          <div class="billing-panel-body">
+            <div id="billingSummaryCards" class="billing-summary-grid"></div>
+            <div class="table-shell">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Endpoint</th>
+                    <th>Endpoint name</th>
+                    <th>Cost</th>
+                    <th>Records</th>
+                  </tr>
+                </thead>
+                <tbody id="billingRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js?v=20260311_runpod_admin10"></script>
+  </body>
+</html>

@@ -1,0 +1,21 @@
+run_id,target,policy,status,selection_score,spearman,kendall,mae,rmse,top_quartile_precision,top_quartile_enrichment,n_labels,cv_folds,error
+paper_surrogate_pooled9999_strict_20260520_cath_train_1a6jA00,1a6jA00,rf,fitted,-0.034037819799777526,-0.034037819799777526,-0.020689655172413793,0.446289333333336,0.5475091179179192,0.375,1.40625,30,5,
+paper_surrogate_pooled9999_strict_20260520_cath_train_1a6jA00,1a6jA00,ridge,fitted,0.11368186874304784,0.11368186874304784,0.07126436781609195,0.5078300842285084,0.6659873775473787,0.25,0.9375,30,5,
+paper_surrogate_pooled9999_strict_20260520_cath_train_1a6jA00,1a6jA00,lightgbm,failed,,,,,,,,30,5,lightgbm is not installed but evolution_surrogate_model='lightgbm'
+paper_surrogate_pooled9999_strict_20260520_cath_train_1a6jA00,1a6jA00,xgboost,failed,,,,,,,,30,5,xgboost is not installed but evolution_surrogate_model='xgboost'
+paper_surrogate_pooled9999_strict_20260520_cath_train_1a8rG01,1a8rG01,rf,fitted,0.47897664071190205,0.47897664071190205,0.32413793103448274,0.2394252187028594,0.33564244785459585,0.375,1.40625,30,5,
+paper_surrogate_pooled9999_strict_20260520_cath_train_1a8rG01,1a8rG01,ridge,fitted,0.5804226918798664,0.5804226918798664,0.4114942528735632,0.2819046712331594,0.3545354635080945,0.375,1.40625,30,5,
+paper_surrogate_pooled9999_strict_20260520_cath_train_1a8rG01,1a8rG01,lightgbm,failed,,,,,,,,30,5,lightgbm is not installed but evolution_surrogate_model='lightgbm'
+paper_surrogate_pooled9999_strict_20260520_cath_train_1a8rG01,1a8rG01,xgboost,failed,,,,,,,,30,5,xgboost is not installed but evolution_surrogate_model='xgboost'
+paper_surrogate_pooled9999_strict_20260520_cath_val_1a19A00,1a19A00,rf,fitted,0.8451612903225806,0.8451612903225806,0.6505747126436782,0.7510250561797742,0.9185290773211173,0.75,2.8125,30,5,
+paper_surrogate_pooled9999_strict_20260520_cath_val_1a19A00,1a19A00,ridge,fitted,0.7739710789766406,0.7739710789766406,0.5862068965517241,0.8627554341862814,1.1867958756312087,0.625,2.34375,30,5,
+paper_surrogate_pooled9999_strict_20260520_cath_val_1a19A00,1a19A00,lightgbm,failed,,,,,,,,30,5,lightgbm is not installed but evolution_surrogate_model='lightgbm'
+paper_surrogate_pooled9999_strict_20260520_cath_val_1a19A00,1a19A00,xgboost,failed,,,,,,,,30,5,xgboost is not installed but evolution_surrogate_model='xgboost'
+paper_surrogate_pooled9999_strict_20260520_cath_val_1advA02,1advA02,rf,fitted,-0.01757508342602892,-0.01757508342602892,-0.0022988505747126436,0.5897904065040697,0.7532130095422321,0.125,0.46875,30,5,
+paper_surrogate_pooled9999_strict_20260520_cath_val_1advA02,1advA02,ridge,fitted,-0.15906562847608455,-0.15906562847608455,-0.11724137931034483,0.804834267752508,0.9819159982915534,0.125,0.46875,30,5,
+paper_surrogate_pooled9999_strict_20260520_cath_val_1advA02,1advA02,lightgbm,failed,,,,,,,,30,5,lightgbm is not installed but evolution_surrogate_model='lightgbm'
+paper_surrogate_pooled9999_strict_20260520_cath_val_1advA02,1advA02,xgboost,failed,,,,,,,,30,5,xgboost is not installed but evolution_surrogate_model='xgboost'
+paper_surrogate_pooled9999_strict_20260520_cath_val_1h6wA03,1h6wA03,rf,fitted,0.6938820912124583,0.6938820912124583,0.46206896551724136,1.566712317880794,1.9264708976385896,0.5,1.875,30,5,
+paper_surrogate_pooled9999_strict_20260520_cath_val_1h6wA03,1h6wA03,ridge,fitted,0.796662958843159,0.796662958843159,0.5954022988505747,1.6367441148231654,1.9801563937606677,0.625,2.34375,30,5,
+paper_surrogate_pooled9999_strict_20260520_cath_val_1h6wA03,1h6wA03,lightgbm,failed,,,,,,,,30,5,lightgbm is not installed but evolution_surrogate_model='lightgbm'
+paper_surrogate_pooled9999_strict_20260520_cath_val_1h6wA03,1h6wA03,xgboost,failed,,,,,,,,30,5,xgboost is not installed but evolution_surrogate_model='xgboost'
