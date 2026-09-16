@@ -15,6 +15,7 @@ under either surface.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from typing import Any, Literal
 
 from pathlib import Path
@@ -33,6 +34,7 @@ from foldfront.db.models import (
     Round,
     RunStatus,
     Workflow,
+    utcnow,
 )
 from foldfront.db.repositories import Repos, new_id
 from foldfront.engine.dag import (
@@ -461,6 +463,114 @@ async def me(identity: CurrentIdentity) -> dict[str, Any]:
         "authenticated": identity.authenticated,
         "auth_mode": auth_mode(),
     }
+
+
+# ---------------------------------------------------------------- notices
+
+
+#  A run whose state has not moved in this long has almost certainly stopped,
+#  whatever it still says. Long enough that a slow stage does not raise it,
+#  short enough that nobody discovers it the next morning.
+STALLED_AFTER = timedelta(minutes=30)
+
+#  Older than this is history, and history belongs on the monitor screen.
+NOTICE_WINDOW = timedelta(days=2)
+
+
+def _notice(
+    kind: str,
+    key: str,
+    *,
+    severity: Literal["action", "warning"],
+    title: str,
+    detail: str,
+    href: str | None = None,
+    at: datetime | None = None,
+) -> dict[str, Any]:
+    #  The identifier has to be stable across polls: the console marks a
+    #  notice read by remembering it, and an id that changed every few
+    #  seconds would make everything unread forever.
+    return {
+        "id": f"{kind}:{key}" if key else kind,
+        "kind": kind,
+        "severity": severity,
+        "title": title,
+        "detail": detail,
+        "href": href,
+        "at": at,
+    }
+
+
+@router.get("/notices", tags=["Operations"], summary="What is waiting for a person")
+async def notices(identity: CurrentIdentity) -> dict[str, Any]:
+    """Things someone has to do something about.
+
+    Not an activity feed. The audit trail already records what happened, and a
+    bell that rings for everything is one people learn to ignore - so a notice
+    earns its place only if there is an action behind it.
+
+    What the caller cannot act on, the caller is not told: approvals and the
+    state of the installation are for an operator, and offering them to a
+    reader would be a row that does nothing when clicked.
+
+    Two severities, and the difference is who the next move belongs to.
+    `action` waits on a person's decision - nothing proceeds until they make
+    it. `warning` is a state that is already wrong, which someone should look
+    at but which no decision is pending on.
+    """
+    r = repos()
+    now = utcnow()
+    admin = Role.ADMIN in identity.roles
+    items: list[dict[str, Any]] = []
+
+    if admin:
+        for m in await r.models.list():
+            if str(m.approval_status) == "approved":
+                continue
+            items.append(_notice(
+                "model.approval", f"{m.model_id}:{m.version}",
+                severity="action",
+                title="모델 승인 대기",
+                detail=f"{m.model_id}:{m.version}",
+                href="/models",
+                at=m.updated_at,
+            ))
+
+        #  Not a defect in itself - it is how the development stack runs - but
+        #  an installation serving real work this way should be visible.
+        if auth_mode() == "disabled":
+            items.append(_notice(
+                "auth.disabled", "",
+                severity="warning",
+                title="인증이 꺼져 있습니다",
+                detail="누구나 쓰기 권한으로 접근합니다. 운영 환경이면 즉시 켜십시오.",
+            ))
+
+    for run in await r.runs.list(limit=200):
+        if str(run.status) == "failed" and run.finished_at and now - run.finished_at < NOTICE_WINDOW:
+            failed = next((s for s in run.stages if str(s.status) == "failed"), None)
+            items.append(_notice(
+                "run.failed", run.run_id,
+                severity="warning",
+                title="실행이 실패했습니다",
+                detail=f"{run.run_id} — {failed.error if failed and failed.error else '사유 미기록'}",
+                href="/monitor",
+                at=run.finished_at,
+            ))
+        elif str(run.status) == "running" and now - run.updated_at > STALLED_AFTER:
+            items.append(_notice(
+                "run.stalled", run.run_id,
+                severity="warning",
+                title="실행이 멈춘 듯합니다",
+                detail=f"{run.run_id} — {int((now - run.updated_at).total_seconds() // 60)}분째 변화 없음",
+                href="/monitor",
+                at=run.updated_at,
+            ))
+
+    #  Newest first, and a notice with no time of its own last: the auth
+    #  warning is a standing condition, not something that just happened.
+    items.sort(key=lambda i: (i["at"] is not None, i["at"] or now), reverse=True)
+    return {"items": items, "count": len(items)}
 
 
 # ---------------------------------------------------------------- dashboard

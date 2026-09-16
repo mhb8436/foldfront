@@ -447,6 +447,154 @@ async def test_실체_파일이_없으면_404_를_낸다(client, tmp_path, monke
     assert r.status_code == 404
 
 
+#  ---------------------------------------------------------------- notices
+
+
+async def test_알림은_승인_대기_모델을_짚는다(client):
+    from foldfront.db.models import ModelVersion
+    from foldfront.db.repositories import Repos
+
+    await Repos().models.register(
+        ModelVersion(model_id="esmfold", version="v1", endpoint_id="ep",
+                     approval_status="pending")
+    )
+
+    items = (await client.get("/api/v1/notices")).json()["items"]
+
+    approval = [i for i in items if i["kind"] == "model.approval"]
+    assert len(approval) == 1
+    assert approval[0]["severity"] == "action"
+    assert approval[0]["detail"] == "esmfold:v1"
+    assert approval[0]["href"] == "/models"
+
+
+async def test_승인된_모델은_알리지_않는다(client):
+    """A bell that rings for the normal case is one people stop reading."""
+    from foldfront.db.models import ModelVersion
+    from foldfront.db.repositories import Repos
+
+    await Repos().models.register(
+        ModelVersion(model_id="af2", version="v1", endpoint_id="ep",
+                     approval_status="approved")
+    )
+
+    items = (await client.get("/api/v1/notices")).json()["items"]
+
+    assert [i for i in items if i["kind"] == "model.approval"] == []
+
+
+async def test_알림은_최근_실패한_실행을_짚는다(client):
+    from datetime import timedelta
+
+    from foldfront.db.models import Run, RunStatus, StageState, utcnow
+    from foldfront.db.repositories import Repos
+
+    await Repos().runs.create(Run(
+        run_id="run-bad", workflow_id="wf", status=RunStatus.FAILED,
+        finished_at=utcnow() - timedelta(minutes=5),
+        stages=[StageState(name="af2", status=RunStatus.FAILED, error="GPU 없음")],
+    ))
+
+    items = (await client.get("/api/v1/notices")).json()["items"]
+
+    failed = [i for i in items if i["kind"] == "run.failed"]
+    assert len(failed) == 1
+    assert "GPU 없음" in failed[0]["detail"]
+
+
+async def test_오래된_실패는_알리지_않는다(client):
+    """Past the window it is history, and history lives on the monitor."""
+    from datetime import timedelta
+
+    from foldfront.db.models import Run, RunStatus, utcnow
+    from foldfront.db.repositories import Repos
+
+    await Repos().runs.create(Run(
+        run_id="run-old", workflow_id="wf", status=RunStatus.FAILED,
+        finished_at=utcnow() - timedelta(days=5),
+    ))
+
+    items = (await client.get("/api/v1/notices")).json()["items"]
+
+    assert [i for i in items if i["kind"] == "run.failed"] == []
+
+
+async def test_알림은_멈춘_실행을_짚는다(client):
+    from datetime import timedelta
+
+    from foldfront.db.models import Run, RunStatus, utcnow
+    from foldfront.db.repositories import Repos
+
+    stale = utcnow() - timedelta(hours=2)
+    await Repos().runs.create(Run(
+        run_id="run-stuck", workflow_id="wf", status=RunStatus.RUNNING,
+        started_at=stale, updated_at=stale,
+    ))
+
+    stuck = [i for i in (await client.get("/api/v1/notices")).json()["items"]
+             if i["kind"] == "run.stalled"]
+
+    assert len(stuck) == 1
+    assert stuck[0]["severity"] == "warning"
+    assert "분째 변화 없음" in stuck[0]["detail"]
+
+
+async def test_방금_시작한_실행은_멈춘_것이_아니다(client):
+    from foldfront.db.models import Run, RunStatus
+    from foldfront.db.repositories import Repos
+
+    await Repos().runs.create(Run(run_id="run-fresh", workflow_id="wf",
+                                  status=RunStatus.RUNNING))
+
+    items = (await client.get("/api/v1/notices")).json()["items"]
+
+    assert [i for i in items if i["kind"] == "run.stalled"] == []
+
+
+async def test_조회자에게는_처리할_수_없는_알림을_내지_않는다(client, monkeypatch):
+    """A row that does nothing when clicked is worse than no row."""
+    from foldfront.core.config import get_settings
+    from foldfront.db.models import ModelVersion
+    from foldfront.db.repositories import Repos
+
+    await Repos().models.register(
+        ModelVersion(model_id="esmfold", version="v1", endpoint_id="ep",
+                     approval_status="pending")
+    )
+    monkeypatch.setenv("DEV_ROLE", "viewer")
+    get_settings.cache_clear()
+
+    kinds = {i["kind"] for i in (await client.get("/api/v1/notices")).json()["items"]}
+
+    assert "model.approval" not in kinds
+    assert "auth.disabled" not in kinds
+
+
+async def test_운영자는_인증이_꺼진_것을_듣는다(client):
+    """An installation serving real work without authentication should say so
+    somewhere a person looks, not only in /healthz."""
+    kinds = {i["kind"] for i in (await client.get("/api/v1/notices")).json()["items"]}
+
+    assert "auth.disabled" in kinds
+
+
+async def test_알림_식별자는_되풀이해도_같다(client):
+    """The console remembers what has been read by id. An id that changed
+    between polls would leave everything unread for ever."""
+    from foldfront.db.models import ModelVersion
+    from foldfront.db.repositories import Repos
+
+    await Repos().models.register(
+        ModelVersion(model_id="esmfold", version="v1", endpoint_id="ep",
+                     approval_status="pending")
+    )
+
+    first = {i["id"] for i in (await client.get("/api/v1/notices")).json()["items"]}
+    second = {i["id"] for i in (await client.get("/api/v1/notices")).json()["items"]}
+
+    assert first == second
+
+
 #  ---------------------------------------------------------------- dashboard
 
 

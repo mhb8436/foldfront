@@ -2,7 +2,6 @@ import { useEffect, useState, type ComponentType, type ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import {
   BarChart3,
-  Bell,
   Dna,
   FolderOpen,
   LayoutGrid,
@@ -24,6 +23,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { StatusDot } from './Common'
+import { Notices } from './Notices'
 import { ProjectPicker } from './ProjectPicker'
 
 /**
@@ -210,9 +210,7 @@ export function Shell({ children }: { children: ReactNode }) {
         >
           {dark ? <Sun className="size-4" /> : <Moon className="size-4" />}
         </Button>
-        <Button variant="ghost" size="icon" className="size-8" aria-label="알림">
-          <Bell className="size-4" />
-        </Button>
+        <Notices />
         {/*  Who is signed in, and as what. Previously a fixed letter and a
             fixed label, which said nothing and could be wrong. */}
         <div className="flex items-center gap-2">
