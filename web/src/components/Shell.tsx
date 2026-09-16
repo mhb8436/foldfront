@@ -12,6 +12,7 @@ import {
   Play,
   Settings2,
   Sun,
+  UsersRound,
   Workflow,
 } from 'lucide-react'
 
@@ -66,6 +67,7 @@ const NAV: Array<{ section: string; items: Item[] }> = [
     items: [
       { to: '/models', label: '모델 관리', icon: Layers },
       { to: '/operations', label: '운영', icon: Settings2, roles: ['admin'] },
+      { to: '/users', label: '이용자', icon: UsersRound, roles: ['admin'] },
       { label: '설계 Copilot', icon: MessageSquare, badge: '예정' },
     ],
   },

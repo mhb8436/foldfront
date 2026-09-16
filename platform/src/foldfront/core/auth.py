@@ -20,7 +20,7 @@ deployment that reaches production in that state says so.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Annotated, Any, Iterable
 
 from fastapi import Depends, Header
@@ -106,17 +106,36 @@ def identity_from_token(token: str) -> Identity:
     )
 
 
+async def apply_local(identity: Identity) -> Identity:
+    """What an operator decided about this account, over what the provider said.
+
+    The provider's token carries admin or user and nothing finer. The users
+    collection carries the rest - that this person is a viewer here, that this
+    account is a service account, that it was switched off. A first sign-in
+    creates the record with the provider's roles, so the operator's screen
+    lists everyone who has been here; from then on the record is the word.
+    """
+    from foldfront.db.repositories import Repos
+
+    record = await Repos().users.seen(
+        identity.user_id, subject=identity.subject, email=identity.email, roles=list(identity.roles),
+    )
+    if not record.active:
+        raise ApiError(E.AUTH_FORBIDDEN)
+    return replace(identity, roles=tuple(record.roles))
+
+
 async def current_identity(
     authorization: Annotated[str | None, Header()] = None,
 ) -> Identity:
     """The identity behind a request, or the development stand-in."""
     if not oidc_enabled():
-        return dev_identity()
+        return await apply_local(dev_identity())
 
     if not authorization or not authorization.lower().startswith("bearer "):
         raise ApiError(E.AUTH_TOKEN_REQUIRED)
 
-    return identity_from_token(authorization.split(" ", 1)[1].strip())
+    return await apply_local(identity_from_token(authorization.split(" ", 1)[1].strip()))
 
 
 CurrentIdentity = Annotated[Identity, Depends(current_identity)]
