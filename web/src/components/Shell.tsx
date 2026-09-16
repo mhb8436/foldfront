@@ -25,10 +25,10 @@ import { Separator } from '@/components/ui/separator'
 import { StatusDot } from './Common'
 
 /**
- * 통합 콘솔 골격.
+ * The console shell.
  *
- * 헤더 · 좌측 내비게이션 · 본문 · 푸터 4분할을 전 화면이 공유한다.
- * 화면마다 골격이 달라지지 않으므로 이용자는 조작 규칙을 한 번만 익힌다.
+ * Header, left navigation, content and footer, shared by every screen. The
+ * frame does not change from one screen to the next, so it is learned once.
  */
 
 type Item = {
@@ -79,13 +79,13 @@ function useDarkMode() {
     try {
       localStorage.setItem('console-theme', dark ? 'dark' : 'light')
     } catch {
-      //  사생활 보호 모드에서는 저장이 막힌다. 화면 동작에는 지장이 없다
+      //  Private browsing blocks the write. Nothing on screen depends on it.
     }
   }, [dark])
   return [dark, setDark] as const
 }
 
-/** 저장소 연결 상태. 표시등이 장식이 되지 않게 실제 /healthz 를 본다. */
+/** Backend health. Polls /healthz so the indicator means something. */
 function useHealth() {
   const [ok, setOk] = useState<boolean | null>(null)
   useEffect(() => {
@@ -158,7 +158,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen flex-col">
-      {/* ───────── 헤더 ───────── */}
+      {/* ───────── header ───────── */}
       <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4">
         <Button
           variant="ghost"
@@ -216,7 +216,7 @@ export function Shell({ children }: { children: ReactNode }) {
       </header>
 
       <div className="flex min-h-0 flex-1">
-        {/* ───────── 좌측 내비게이션 ───────── */}
+        {/* ───────── left navigation ───────── */}
         <nav
           className={cn(
             'bg-muted/40 hidden shrink-0 flex-col border-r px-2.5 py-3 transition-[width] md:flex',
@@ -271,13 +271,13 @@ export function Shell({ children }: { children: ReactNode }) {
           ))}
         </nav>
 
-        {/* ───────── 본문 ───────── */}
+        {/* ───────── content ───────── */}
         <main key={pathname} className="min-w-0 flex-1 px-6 py-6 lg:px-7">
           <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-5">{children}</div>
         </main>
       </div>
 
-      {/* ───────── 푸터 ───────── */}
+      {/* ───────── footer ───────── */}
       <footer className="text-muted-foreground flex h-11 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t px-6 text-[11.5px]">
         <span>{branding.copyright || `© ${new Date().getFullYear()} ${branding.product}`}</span>
         <span className="hidden sm:inline">·</span>
@@ -291,7 +291,7 @@ export function Shell({ children }: { children: ReactNode }) {
   )
 }
 
-/** 화면 제목 줄. 제목·설명·조치를 한 자리에 모은다. */
+/** A page heading: title, description and actions in one row. */
 export function PageHeader({
   title,
   description,

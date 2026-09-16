@@ -1,16 +1,17 @@
 /**
- * 단계·모델 식별자의 우리말 이름.
+ * Korean names for the stage and model identifiers.
  *
- * 화면에서 기술 식별자를 지우지 않는다 — 로그·산출물 경로·API 응답이 그 이름을 쓰므로
- * 지우면 화면과 기록을 맞춰 볼 수 없다. **병기**한다.
+ * The identifier itself is never replaced on screen. Logs, artifact paths and
+ * API responses all use it, so a screen that showed only the Korean could not
+ * be reconciled with the record. Both are shown.
  *
- * 뜻풀이는 `docs/용어집.md` 와 같은 내용이다. 둘이 어긋나면 그쪽이 기준이다.
+ * The wording matches docs/용어집.md; that file is the reference if they drift.
  */
 
 export interface Term {
-  /** 우리말 이름. 화면에 병기한다 */
+  /** Korean name, shown beside the identifier. */
   label: string
-  /** 한 줄 설명. 도움말로 띄운다 */
+  /** One line of explanation, shown as a tooltip. */
   hint: string
 }
 
@@ -29,7 +30,7 @@ export const STAGE_TERMS: Record<string, Term> = {
   esm: { label: '서열 임베딩', hint: '서열을 수치 벡터로 바꾼다. 유사도 비교에 쓴다' },
 }
 
-/** 지표 이름 → 뜻. 값이 무엇인지 모른 채 표를 읽지 않게 한다. */
+/** What a metric means, so a column of numbers is not read blind. */
 export const METRIC_TERMS: Record<string, Term> = {
   depth: { label: '정렬 깊이', hint: '모은 유사 서열 수. 많을수록 근거가 두텁다' },
   coverage: { label: '정렬 범위', hint: '대상 서열 중 정렬된 비율' },
@@ -47,7 +48,7 @@ export function stageTerm(id: string | null | undefined): Term | undefined {
   return id ? STAGE_TERMS[id] : undefined
 }
 
-/** `soluprot.pass_rate` 처럼 단계가 앞에 붙은 이름도 받는다. */
+/** Accepts a stage-qualified name such as `soluprot.pass_rate`. */
 export function metricTerm(key: string): Term | undefined {
   const bare = key.includes('.') ? key.slice(key.lastIndexOf('.') + 1) : key
   return METRIC_TERMS[bare]

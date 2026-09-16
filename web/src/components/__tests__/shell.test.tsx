@@ -1,8 +1,8 @@
 /**
- * 콘솔 골격 시험.
+ * The console shell.
  *
- * 헤더 · 좌측 내비게이션 · 본문 · 푸터 4분할이 전 화면에서 유지되는지 본다.
- * 화면 내용이 아니라 골격만 본다 — 내용은 화면별 시험이 맡는다.
+ * That the four regions - header, navigation, content, footer - hold across
+ * screens. Contents belong to the per-screen tests; this is about the frame.
  */
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -15,8 +15,8 @@ import { Shell, PageHeader } from '../Shell'
 beforeEach(() => {
   vi.restoreAllMocks()
   document.documentElement.classList.remove('dark')
-  //  기본은 응답하지 않게 둔다 — 상태를 보는 시험에서만 값을 준다.
-  //  그러지 않으면 시험이 끝난 뒤에 상태가 갱신되어 act 경고가 난다
+  //  Never resolves by default; only the health test supplies a value.
+  //  Otherwise the state lands after the test ends and React warns about it.
   vi.spyOn(api, 'health').mockReturnValue(new Promise(() => {}) as never)
 })
 

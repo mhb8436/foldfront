@@ -16,7 +16,7 @@ const STATUS_LABEL: Record<string, string> = {
   leased: '배정',
 }
 
-/*  화면에서 색을 갖는 것은 여기뿐이다. 나머지는 전부 무채색으로 둔다. */
+/*  The only colour on any screen. Everything else is greyscale. */
 const STATUS_DOT: Record<string, string> = {
   pending: 'bg-status-pending',
   queued: 'bg-status-pending',
@@ -46,9 +46,11 @@ export function StatusBadge({ status }: { status: RunStatus | string }) {
 }
 
 /**
- * 단계 진척을 칸으로 나눈다.
- * 백분율 막대를 쓰지 않는 이유 — 파이프라인 단계 수가 워크플로마다 정해져 있어
- * 「7칸 중 4칸」이 「57%」보다 실제 구조에 가깝고, 흑백 인쇄에서도 칸 수로 읽힌다.
+ * Stage progress as segments rather than a percentage bar.
+ *
+ * A workflow has a known number of stages, so "four of seven" describes what
+ * happened and "57%" only approximates it. Segments also survive being printed
+ * in black and white, where a filled bar does not.
  */
 export function StageProgress({
   stages,
@@ -121,7 +123,7 @@ export function Empty({ children }: { children: ReactNode }) {
   return <p className="empty text-muted-foreground py-8 text-center text-[13px]">{children}</p>
 }
 
-/** 완료 고지. 오류와 같은 자리에 같은 크기로 나와야 시선이 흔들리지 않는다. */
+/** A success notice. Same place and size as an error, so nothing jumps. */
 export function Notice({ message }: { message: string | null }) {
   if (!message) return null
   return (
@@ -129,7 +131,7 @@ export function Notice({ message }: { message: string | null }) {
   )
 }
 
-/** 수치 요약 한 칸. */
+/** One number worth reading at a glance. */
 export function Stat({
   label,
   value,
@@ -153,7 +155,7 @@ export function Stat({
   )
 }
 
-/** 바이트를 사람이 읽는 단위로. 산출물 목록에서 쓴다. */
+/** Bytes in units a person reads. Used in artifact listings. */
 export function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`
   if (n < 1024 ** 2) return `${(n / 1024).toFixed(1)} KB`
@@ -161,7 +163,7 @@ export function formatBytes(n: number): string {
   return `${(n / 1024 ** 3).toFixed(2)} GB`
 }
 
-/** 시각을 짧게. 목록에서 줄바꿈이 나지 않게 한다. */
+/** A short timestamp, short enough not to wrap inside a table cell. */
 export function formatTime(iso: string | null): string {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -174,7 +176,7 @@ export function formatTime(iso: string | null): string {
   })
 }
 
-/** 걸린 시간. 시작만 있고 끝이 없으면 지금까지로 잰다. */
+/** Elapsed time. With a start but no end, measured to now. */
 export function duration(start: string | null, end: string | null): string {
   if (!start) return '—'
   const from = new Date(start).getTime()

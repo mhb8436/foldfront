@@ -1,4 +1,4 @@
-/*  통합 콘솔 공통 양식.
+/*  Shared styling for the console.
 
     shadcn/ui + Tailwind CSS v4 기준. 무채색 한 벌로 간다 —
     화면에서 색을 갖는 것은 실행 상태(진행·완료·실패·대기·취소)뿐이다.
@@ -29,7 +29,7 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
-  /*  상태색 — 이 다섯 개가 화면의 색 전부다 */
+  /*  Status colours. These five are the only colour on any screen. */
   --color-status-pending: var(--status-pending);
   --color-status-running: var(--status-running);
   --color-status-succeeded: var(--status-succeeded);
@@ -109,7 +109,8 @@
     @apply bg-background text-foreground;
     font-feature-settings: 'tnum' 1;
   }
-  /*  식별자·시각·지표는 자릿수가 어긋나면 대조가 어렵다. 등폭으로 고정한다 */
+  /*  Identifiers, times and metrics are compared column to column, so their
+      digits have to line up. */
   .tabular {
     font-variant-numeric: tabular-nums;
   }

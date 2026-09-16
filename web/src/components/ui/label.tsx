@@ -16,7 +16,7 @@ function Label({ className, ...props }: React.ComponentProps<'label'>) {
   )
 }
 
-/** 이름표와 입력칸을 세로로 묶는다. 화면마다 간격이 달라지지 않게 한다. */
+/** Stacks a label over its input so the spacing is the same everywhere. */
 function Field({ className, ...props }: React.ComponentProps<'div'>) {
   return <div className={cn('flex flex-col gap-1.5', className)} {...props} />
 }

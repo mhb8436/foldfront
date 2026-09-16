@@ -23,7 +23,7 @@ const KINDS = [
   'other',
 ]
 
-/** Model Registry — 고유 ID 로 등록하고 버전·활성·승인을 관리한다. */
+/** The model registry: register by id, manage versions, activation, approval. */
 export function Models() {
   const models = useAsync(() => api.listModels(), [])
   const [error, setError] = useState<string | null>(null)

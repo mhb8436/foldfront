@@ -1,7 +1,8 @@
 /**
- * 콘솔 화면 시험.
+ * The console screens.
  *
- * API 는 가짜로 세우고 화면이 응답을 바르게 그리는지만 본다.
+ * The API is stubbed. What is under test is whether a screen renders a
+ * response correctly, not whether the backend produces one.
  */
 
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
@@ -92,9 +93,9 @@ describe('Monitor', () => {
 
     expect(await screen.findByText('run-0001')).toBeInTheDocument()
     expect(screen.getByText('builtin-pipeline')).toBeInTheDocument()
-    //  단계 2개 중 1개 성공
+    //  One of two stages succeeded
     expect(screen.getByText('1/2')).toBeInTheDocument()
-    //  큐 합계
+    //  Queue total
     expect(screen.getByText('7')).toBeInTheDocument()
   })
 
@@ -157,11 +158,11 @@ describe('Model Registry', () => {
     expect(screen.getByText('ep-rfd3')).toBeInTheDocument()
     expect(screen.getByText('기본')).toBeInTheDocument()
 
-    //  「비활성」은 배지와 단추 양쪽에 나오므로 행 안에서 찾는다
+    //  "비활성" appears on both the badge and the button, so search the row
     const customRow = screen.getByText('custom').closest('tr')!
     expect(within(customRow).getByText('비활성', { selector: '.badge' })).toBeInTheDocument()
     expect(within(customRow).getByText('대기')).toBeInTheDocument()
-    //  승인 대기인 것에만 승인 단추가 보인다
+    //  Only something awaiting approval offers the approve button
     expect(within(customRow).getByRole('button', { name: '승인' })).toBeInTheDocument()
 
     const rfd3Row = screen.getByText('rfd3').closest('tr')!
@@ -193,7 +194,7 @@ describe('Analyze', () => {
 
     render(<MemoryRouter><Analyze /></MemoryRouter>)
 
-    //  msa.depth 가 열로 잡히고 값 120 이 들어간다. 내부 표기(_mock)는 제외한다
+    //  msa.depth becomes a column holding 120; internal keys (_mock) do not
     await waitFor(() => expect(screen.getByText('msa.depth')).toBeInTheDocument())
     expect(screen.getByText('120')).toBeInTheDocument()
     expect(screen.queryByText('msa._mock')).not.toBeInTheDocument()
@@ -208,8 +209,9 @@ describe('Analyze', () => {
   })
 })
 
-//  ---------------------------------------------------------------- 구조 열람
-//  WebGL 은 jsdom 에서 돌지 않는다. 뷰어 자체가 아니라 「어떤 산출물을 뷰어에 넘기는가」를 본다.
+//  ---------------------------------------------------------------- structures
+//  WebGL does not run under jsdom, so what is tested is which artifact reaches
+//  the viewer, not the viewer itself.
 
 describe('구조 산출물', () => {
   it('산출물 주소에 경로를 실어 만든다', () => {

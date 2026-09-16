@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 
-/** 비동기 조회 상태를 한 곳에서 다룬다. 화면마다 로딩·오류 처리를 되풀이하지 않는다. */
+/** Loading and error state for one fetch, so no screen repeats it. */
 export function useAsync<T>(fn: () => Promise<T>, deps: unknown[] = []) {
   const [data, setData] = useState<T | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -23,7 +23,7 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[] = []) {
   return { data, error, loading, reload: run }
 }
 
-/** 일정 간격으로 다시 조회한다. Monitor 화면이 진행 상태를 따라간다. */
+/** Refetch on an interval. This is how run monitoring keeps up. */
 export function usePolling<T>(fn: () => Promise<T>, intervalMs: number, deps: unknown[] = []) {
   const [tick, setTick] = useState(0)
   useEffect(() => {

@@ -20,7 +20,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
-/** Monitor — 상태·산출물·이벤트. */
+/** Run status, artifacts and the event log. */
 export function Monitor() {
   const [selected, setSelected] = useState<string | null>(null)
   const runs = usePolling(() => api.listRuns({ limit: 50 }), 4000, [])
