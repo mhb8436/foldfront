@@ -57,6 +57,7 @@ class E(StrEnum):
     INPUT_LENGTH_REQUIRED = "input.length_required"
     INPUT_INLINE_TOO_LARGE = "input.inline_too_large"
     INPUT_OUTSIDE_ROOT = "input.outside_root"
+    INPUT_QUOTA_EXCEEDED = "input.quota_exceeded"
     ROUND_NOT_IN_PROJECT = "round.not_in_project"
     PROJECT_NOT_FOUND = "project.not_found"
     MODEL_NOT_FOUND = "model.not_found"
@@ -84,6 +85,7 @@ STATUS: dict[E, int] = {
     E.INPUT_LENGTH_REQUIRED: 411,
     E.INPUT_INLINE_TOO_LARGE: 413,
     E.INPUT_OUTSIDE_ROOT: 400,
+    E.INPUT_QUOTA_EXCEEDED: 413,
     E.ROUND_NOT_IN_PROJECT: 400,
     E.PROJECT_NOT_FOUND: 404,
     E.MODEL_NOT_FOUND: 404,
@@ -113,6 +115,7 @@ MESSAGES: dict[str, dict[E, str]] = {
         E.INPUT_LENGTH_REQUIRED: "파일 크기를 먼저 알려야 합니다. Content-Length 없는 전송은 받지 않습니다.",
         E.INPUT_INLINE_TOO_LARGE: "붙여넣은 내용이 너무 큽니다({field}). {limit_mb}MB 를 넘으면 파일로 올리십시오.",
         E.INPUT_OUTSIDE_ROOT: "저장 위치 밖의 파일은 읽지 않습니다.",
+        E.INPUT_QUOTA_EXCEEDED: "올린 파일이 한도를 넘습니다. {used_mb}MB 보관 중, 한도 {quota_mb}MB. 실행에 쓰이지 않은 파일은 {days}일 뒤 자동으로 지워집니다.",
         E.ROUND_NOT_IN_PROJECT: "회차 {round_id} 는 프로젝트 {project_id} 의 것이 아닙니다.",
         E.PROJECT_NOT_FOUND: "프로젝트를 찾지 못했습니다: {project_id}",
         E.MODEL_NOT_FOUND: "모델을 찾지 못했습니다: {model_id}",
@@ -137,6 +140,7 @@ MESSAGES: dict[str, dict[E, str]] = {
         E.INPUT_LENGTH_REQUIRED: "The upload must declare its size. Requests without Content-Length are refused.",
         E.INPUT_INLINE_TOO_LARGE: "Pasted content is too large ({field}). Above {limit_mb}MB, upload it as a file.",
         E.INPUT_OUTSIDE_ROOT: "Files outside the storage root are not read.",
+        E.INPUT_QUOTA_EXCEEDED: "Your uploads exceed the limit: {used_mb}MB stored of {quota_mb}MB. Files no run has read are removed after {days} days.",
         E.ROUND_NOT_IN_PROJECT: "Round {round_id} does not belong to project {project_id}.",
         E.PROJECT_NOT_FOUND: "No such project: {project_id}",
         E.MODEL_NOT_FOUND: "No such model: {model_id}",

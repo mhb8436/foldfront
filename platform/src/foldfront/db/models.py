@@ -338,6 +338,28 @@ class Job(Doc):
     result: dict[str, Any] | None = None
 
 
+# ---------------------------------------------------------------- inputs
+
+
+class InputFile(Doc):
+    """A file someone uploaded for a run to read.
+
+    Recorded so that two things are answerable that a bare directory of files
+    is not: how much one person has stored, and which files a run depends on.
+    The first is what a quota needs; the second is what retention needs, since
+    a file a run read is that run's provenance and stays as long as it does.
+    """
+
+    input_id: str
+    owner_id: str | None = None
+    name: str
+    kind: str
+    path: str
+    size_bytes: int = 0
+    #  Runs that named this file in their request. Empty means nothing did.
+    run_ids: list[str] = Field(default_factory=list)
+
+
 # ---------------------------------------------------------------- projects
 
 

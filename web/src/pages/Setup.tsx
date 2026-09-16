@@ -4,7 +4,7 @@ import { CheckCircle2, Play } from 'lucide-react'
 import { api } from '../api/client'
 import { useAsync } from '../hooks/useAsync'
 import { PageHeader } from '../components/Shell'
-import { Empty, ErrorBox, Notice, Panel } from '../components/Common'
+import { Empty, ErrorBox, Notice, Panel, formatBytes } from '../components/Common'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Field, Label } from '@/components/ui/label'
@@ -21,6 +21,7 @@ export function Setup() {
   //  Scoped the way the dashboard is: a workflow another project owns must
   //  not be offered here, where it would be started under this one.
   const workflows = useAsync(() => api.listWorkflows({ project_id: filter }), [filter])
+  const usage = useAsync(() => api.inputUsage(), [])
   const [workflowId, setWorkflowId] = useState('')
   const [targetFasta, setTargetFasta] = useState('')
   const [targetPdb, setTargetPdb] = useState('')
@@ -199,6 +200,12 @@ export function Setup() {
               placeholder="/data/targets/lysozyme.pdb 또는 PDB 내용"
               disabled={!canRun}
             />
+            {usage.data && (
+              <p className="text-muted-foreground text-[11.5px]">
+                올린 파일 {formatBytes(usage.data.used_bytes)} / {formatBytes(usage.data.quota_bytes)}.
+                실행에 쓰이지 않은 파일은 {usage.data.retention_days}일 뒤 지워집니다.
+              </p>
+            )}
             <Field>
               <Label htmlFor="chains">설계 체인 (쉼표로 구분)</Label>
               <Input

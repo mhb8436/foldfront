@@ -36,12 +36,19 @@ class C:
     REPORTS = "reports"
     AUDIT = "audit_logs"
     USERS = "users"
+    INPUTS = "inputs"
 
 
 #  Indexes follow the paths the console actually queries by.
 #  Every list view has to hit an index: the console polls them continuously,
 #  and a collection scan under that load is what takes a cluster down.
 INDEXES: dict[str, list[IndexModel]] = {
+    C.INPUTS: [
+        IndexModel([("input_id", ASCENDING)], unique=True, name="uq_input_id"),
+        #  Usage per owner, and what to prune: oldest first
+        IndexModel([("owner_id", ASCENDING), ("created_at", ASCENDING)], name="ix_owner_created"),
+        IndexModel([("path", ASCENDING)], unique=True, name="uq_path"),
+    ],
     C.RUNS: [
         IndexModel([("run_id", ASCENDING)], unique=True, name="uq_run_id"),
         IndexModel([("status", ASCENDING), ("created_at", DESCENDING)], name="ix_status_created"),
