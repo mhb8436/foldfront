@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { CheckCircle2, Play } from 'lucide-react'
 
 import { api } from '../api/client'
@@ -17,7 +17,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 /** Choose a workflow, attach inputs, start a run. */
 export function Setup() {
-  const workflows = useAsync(() => api.listWorkflows(), [])
+  const { current, rounds, filter } = useProject()
+  //  Scoped the way the dashboard is: a workflow another project owns must
+  //  not be offered here, where it would be started under this one.
+  const workflows = useAsync(() => api.listWorkflows({ project_id: filter }), [filter])
   const [workflowId, setWorkflowId] = useState('')
   const [targetFasta, setTargetFasta] = useState('')
   const [targetPdb, setTargetPdb] = useState('')
@@ -27,13 +30,22 @@ export function Setup() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const { canRun } = useIdentity()
-  const { current, rounds } = useProject()
-  const [roundId, setRoundId] = useState('')
+  //  null: nothing chosen yet, so the latest round. '': chosen to be none.
+  //  Two different things, and `roundId || latest` could not tell them apart -
+  //  「회차 없이」 snapped straight back to the latest round.
+  const [roundId, setRoundId] = useState<string | null>(null)
+  //  Once the chains were edited by hand, a dropped structure stops
+  //  overwriting them. The autofill is a default, not a rule.
+  const [chainsTouched, setChainsTouched] = useState(false)
 
-  //  The latest round, because a redesign loop runs in the one just opened.
-  //  Explicit still wins: once a round is picked here, it stays picked.
+  //  A round belongs to its project. Switching projects with a round chosen
+  //  would otherwise file the run under a round of the project just left.
+  useEffect(() => {
+    setRoundId(null)
+  }, [current?.project_id])
+
   const latest = rounds.length ? rounds[rounds.length - 1].round_id : ''
-  const round = roundId || latest
+  const round = roundId === null ? latest : roundId
 
   const selected = workflowId || workflows.data?.items[0]?.workflow_id || ''
 
@@ -61,8 +73,9 @@ export function Setup() {
         project_id: current?.project_id,
         round_id: current && round ? round : undefined,
         request: {
-          target_fasta: targetFasta,
-          target_pdb: targetPdb,
+          //  Trimmed, so a path with Enter after it is the path.
+          target_fasta: targetFasta.trim(),
+          target_pdb: targetPdb.trim(),
           design_chains: chains
             .split(',')
             .map((c) => c.trim())
@@ -179,7 +192,9 @@ export function Setup() {
                 //  saves typing and, more to the point, saves typing a chain
                 //  the file does not contain.
                 const p = s as PdbSummary | null
-                if (p?.ok && p.chains.length) setChains(p.chains.join(', '))
+                if (!chainsTouched && p?.ok && !p.cif && p.chains.length) {
+                  setChains(p.chains.join(', '))
+                }
               }}
               placeholder="/data/targets/lysozyme.pdb 또는 PDB 내용"
               disabled={!canRun}
@@ -189,7 +204,10 @@ export function Setup() {
               <Input
                 id="chains"
                 value={chains}
-                onChange={(e) => setChains(e.target.value)}
+                onChange={(e) => {
+                  setChains(e.target.value)
+                  setChainsTouched(true)
+                }}
                 disabled={!canRun}
               />
             </Field>

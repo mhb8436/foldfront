@@ -11,6 +11,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { api, type Notice } from '../../api/client'
+import { IdentityProvider } from '@/lib/identity'
 import { Notices } from '../Notices'
 
 function notice(over: Partial<Notice> = {}): Notice {
@@ -27,11 +28,16 @@ function notice(over: Partial<Notice> = {}): Notice {
   }
 }
 
-function show(items: Notice[]) {
+function show(items: Notice[], role: 'admin' | 'viewer' = 'admin') {
   vi.spyOn(api, 'notices').mockResolvedValue({ items, count: items.length } as never)
+  vi.spyOn(api, 'me').mockResolvedValue({
+    user_id: 't', email: '', roles: [role], authenticated: true, auth_mode: 'disabled',
+  } as never)
   render(
     <MemoryRouter>
-      <Notices />
+      <IdentityProvider>
+        <Notices />
+      </IdentityProvider>
     </MemoryRouter>,
   )
 }
@@ -72,18 +78,42 @@ describe('알림', () => {
   })
 
   it('다음에 새로 생긴 것만 다시 센다', async () => {
-    window.localStorage.setItem(
-      'foldfront.notices.read',
-      JSON.stringify(['run.failed:run-1']),
-    )
+    window.localStorage.setItem('foldfront.notices.read', JSON.stringify(['run.failed:run-1']))
     show([notice(), notice({ id: 'run.failed:run-2' })])
 
     expect(await screen.findByRole('button', { name: '알림 1건' })).toBeInTheDocument()
   })
 
+  it('첫 응답 전에 열어도 기억한 읽음을 지우지 않는다', async () => {
+    //  Found in review: opening before the first poll wrote [] over the
+    //  remembered set, and everything rang again when the poll arrived.
+    window.localStorage.setItem('foldfront.notices.read', JSON.stringify(['run.failed:run-1']))
+    let resolve!: (v: unknown) => void
+    vi.spyOn(api, 'notices').mockReturnValue(new Promise((r) => (resolve = r)) as never)
+    vi.spyOn(api, 'me').mockResolvedValue({
+      user_id: 't', email: '', roles: ['admin'], authenticated: true, auth_mode: 'disabled',
+    } as never)
+    render(
+      <MemoryRouter>
+        <IdentityProvider>
+          <Notices />
+        </IdentityProvider>
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '알림' }))
+    resolve({ items: [notice()], count: 1 })
+
+    await waitFor(() => expect(screen.getByText('실행이 실패했습니다')).toBeInTheDocument())
+    expect(JSON.parse(window.localStorage.getItem('foldfront.notices.read')!)).toEqual([
+      'run.failed:run-1',
+    ])
+  })
+
   it('열 것이 없으면 없다고 말한다', async () => {
     show([])
-    fireEvent.click(await screen.findByRole('button', { name: '알림' }))
+    await waitFor(() => expect(api.notices).toHaveBeenCalled())
+    fireEvent.click(screen.getByRole('button', { name: '알림' }))
 
     expect(screen.getByText('손을 기다리는 일이 없습니다.')).toBeInTheDocument()
   })
@@ -130,7 +160,18 @@ describe('멈춘 실행 되살리기', () => {
     fireEvent.click(await screen.findByRole('button', { name: /알림/ }))
 
     //  A failed run is over; there is nothing to bring back.
-    expect(screen.getAllByRole('button', { name: '되살리기' })).toHaveLength(1)
+    expect(await screen.findAllByRole('button', { name: '되살리기' })).toHaveLength(1)
+  })
+
+  it('고칠 권한이 없으면 단추를 내지 않는다', async () => {
+    //  Found in review: a reader got the button, the request answered 403,
+    //  and the failure was swallowed - a button that did nothing.
+    show([stalled()], 'viewer')
+    fireEvent.click(await screen.findByRole('button', { name: /알림/ }))
+    await waitFor(() => expect(api.me).toHaveBeenCalled())
+
+    expect(screen.getByText('실행이 멈춘 듯합니다')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '되살리기' })).not.toBeInTheDocument()
   })
 
   it('누르면 그 실행을 점검한다', async () => {
@@ -139,19 +180,18 @@ describe('멈춘 실행 되살리기', () => {
       .mockResolvedValue({ ok: true, status: 'running', repaired: [] } as never)
     show([stalled()])
     fireEvent.click(await screen.findByRole('button', { name: /알림/ }))
-    fireEvent.click(screen.getByRole('button', { name: '되살리기' }))
+    fireEvent.click(await screen.findByRole('button', { name: '되살리기' }))
 
     await waitFor(() => expect(reconcile).toHaveBeenCalledWith('run-9'))
   })
 
-  it('점검이 실패해도 알림은 남는다', async () => {
-    //  The run is still stuck, which is what the row is for.
+  it('점검이 실패하면 사유를 보이고 알림은 남긴다', async () => {
     vi.spyOn(api, 'reconcileRun').mockRejectedValue(new Error('끊김'))
     show([stalled()])
     fireEvent.click(await screen.findByRole('button', { name: /알림/ }))
-    fireEvent.click(screen.getByRole('button', { name: '되살리기' }))
+    fireEvent.click(await screen.findByRole('button', { name: '되살리기' }))
 
-    await waitFor(() => expect(api.reconcileRun).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByText('끊김')).toBeInTheDocument())
     expect(screen.getByText('실행이 멈춘 듯합니다')).toBeInTheDocument()
   })
 })

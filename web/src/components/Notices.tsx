@@ -5,6 +5,7 @@ import { Bell } from 'lucide-react'
 import { api, type Notice } from '../api/client'
 import { usePolling } from '../hooks/useAsync'
 import { Button } from '@/components/ui/button'
+import { useIdentity } from '@/lib/identity'
 import { StatusDot, formatTime } from './Common'
 import { cn } from '@/lib/utils'
 
@@ -61,6 +62,7 @@ export function Notices() {
   const [open, setOpen] = useState(false)
   const [read, setRead] = useState<Set<string>>(() => readIds())
   const ref = useRef<HTMLDivElement>(null)
+  const { canRun } = useIdentity()
 
   const items = notices.data?.items ?? []
   const unread = items.filter((n) => !read.has(n.id))
@@ -83,6 +85,9 @@ export function Notices() {
   //  Opening the list is reading it. Marking each one separately would mean
   //  clearing a badge by hand, which is work the bell exists to save.
   function markRead() {
+    //  Not before the first answer: marking an empty list read would wipe
+    //  what was remembered, and everything would ring again when it arrived.
+    if (!notices.data) return
     const next = new Set(items.map((n) => n.id))
     setRead(next)
     rememberRead(next)
@@ -90,17 +95,20 @@ export function Notices() {
 
   const navigate = useNavigate()
   const [repairing, setRepairing] = useState<string | null>(null)
+  const [repairError, setRepairError] = useState<string | null>(null)
 
   async function repair(runId: string) {
     setRepairing(runId)
+    setRepairError(null)
     try {
       await api.reconcileRun(runId)
       //  Straight away rather than on the next poll: pressing a button and
       //  watching nothing change reads as the button not working.
       notices.reload()
-    } catch {
-      //  The notice stays. Whatever went wrong, the run is still stuck, and
-      //  that is the thing this row is for.
+    } catch (e) {
+      //  Said, not swallowed. A button that fails silently is one that
+      //  appears not to work, which is the thing this row exists to avoid.
+      setRepairError((e as Error).message)
     } finally {
       setRepairing(null)
     }
@@ -180,7 +188,10 @@ export function Notices() {
 
                   {/*  Only where there is a repair to run. Saying a run has
                       stopped and leaving nothing to press is half a message. */}
-                  {n.kind === 'run.stalled' && n.target_id && (
+                  {/*  Only for someone who may repair it: the request would
+                      answer 403, and a button that does nothing is worse
+                      than no button. */}
+                  {n.kind === 'run.stalled' && n.target_id && canRun && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -194,6 +205,9 @@ export function Notices() {
                 </div>
               ))}
             </div>
+          )}
+          {repairError && (
+            <p className="text-destructive border-t px-3.5 py-2 text-[11.5px]">{repairError}</p>
           )}
         </div>
       )}

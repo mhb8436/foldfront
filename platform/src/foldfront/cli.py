@@ -31,7 +31,7 @@ from foldfront.db.repositories import Repos
 from foldfront.engine.adapters import AdapterRegistry
 from foldfront.engine.dag import BUILTIN_STAGE_CHAIN, builtin_pipeline_workflow
 from foldfront.engine.service import ExecutionService
-from foldfront.engine.worker import Worker
+from foldfront.engine.worker import Worker, reclaim_loop
 
 #  The models the original reads from the environment, as registry entries.
 SEED_MODELS = [
@@ -184,7 +184,11 @@ async def cmd_worker(mock: bool = False) -> None:
     repos = Repos()
     worker = Worker(repos=repos, adapters=AdapterRegistry(mock=mock))
     print(f"워커 시작 {worker.worker_id} (모의={mock}) — Ctrl+C 로 멈춘다")
-    await worker.run_forever()
+    #  Two loops, not one. run_forever only takes work; reclaim_loop is what
+    #  returns a dead worker's job to the queue and brings a stalled run back
+    #  in step with its jobs. It was defined and never started - so nothing
+    #  was ever repaired on a timer, whatever the docstrings said.
+    await asyncio.gather(worker.run_forever(), reclaim_loop(repos))
 
 
 async def cmd_migrate(path: str) -> None:

@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from typing import Any, Sequence
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.errors import DuplicateKeyError
 from pymongo import ASCENDING, DESCENDING, ReturnDocument
 
 from foldfront.db.client import C, get_db
@@ -177,14 +178,40 @@ class RunEventRepo(BaseRepo):
         self, run_id: str, message: str, *, stage: str | None = None,
         level: str = "info", payload: dict[str, Any] | None = None,
     ) -> RunEvent:
-        last = await self.col.find_one({"run_id": run_id}, sort=[("seq", DESCENDING)])
-        seq = (last["seq"] + 1) if last else 1
-        ev = RunEvent(
-            run_id=run_id, seq=seq, level=level, stage=stage,
-            message=message, payload=payload or {},
+        #  The number comes from an atomic $inc on the run document, so two
+        #  workers finishing parallel nodes of one run can never draw the same
+        #  one. It used to be read-max-then-insert, which collided under the
+        #  unique index about once in thirty and left the run unclosed.
+        counter = await self.db[C.RUNS].find_one_and_update(
+            {"run_id": run_id},
+            {"$inc": {"event_seq": 1}},
+            projection={"event_seq": 1},
+            return_document=ReturnDocument.AFTER,
         )
-        await self.col.insert_one(ev.model_dump())
-        return ev
+        if counter is not None:
+            ev = RunEvent(
+                run_id=run_id, seq=int(counter["event_seq"]), level=level, stage=stage,
+                message=message, payload=payload or {},
+            )
+            await self.col.insert_one(ev.model_dump())
+            return ev
+
+        #  No run document to count on - events written on their own, as some
+        #  tests do. Read-then-insert with a bounded retry is enough there,
+        #  because nothing else is writing.
+        for _ in range(16):
+            last = await self.col.find_one({"run_id": run_id}, sort=[("seq", DESCENDING)])
+            seq = (last["seq"] + 1) if last else 1
+            ev = RunEvent(
+                run_id=run_id, seq=seq, level=level, stage=stage,
+                message=message, payload=payload or {},
+            )
+            try:
+                await self.col.insert_one(ev.model_dump())
+                return ev
+            except DuplicateKeyError:
+                continue
+        raise RuntimeError(f"run_events: seq contention on {run_id} did not settle")
 
     async def list(self, run_id: str, *, limit: int = 200) -> list[RunEvent]:
         cur = self.col.find({"run_id": run_id}).sort("seq", ASCENDING).limit(limit)
@@ -384,8 +411,18 @@ class JobRepo(BaseRepo):
     def col(self):
         return self.db[C.JOBS]
 
-    async def enqueue(self, job: Job) -> Job:
-        await self.col.insert_one(job.model_dump())
+    async def enqueue(self, job: Job) -> Job | None:
+        """Queue a job, or return None if this node already has a live one.
+
+        The partial unique index on (run_id, node_id) for active jobs is what
+        makes this safe with several writers: a worker finishing a node and a
+        reconcile pass on the same run can both decide the next node is ready,
+        and only one insert can win.
+        """
+        try:
+            await self.col.insert_one(job.model_dump())
+        except DuplicateKeyError:
+            return None
         return job
 
     async def lease(
@@ -428,7 +465,10 @@ class JobRepo(BaseRepo):
         doc = await self.col.find_one_and_update(
             {"job_id": job_id},
             {"$set": {
-                "status": status, "error": error, "result": dict(result or {}),
+                "status": status, "error": error,
+                #  None when nothing was given, so a reply that was genuinely
+                #  {} can be told apart from a result that was never recorded.
+                "result": dict(result) if result is not None else None,
                 "finished_at": utcnow(), "updated_at": utcnow(),
             }},
             return_document=ReturnDocument.AFTER,

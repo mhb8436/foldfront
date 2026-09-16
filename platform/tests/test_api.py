@@ -857,3 +857,235 @@ async def test_요약은_감사_기록을_함께_낸다(client):
     assert entry["actor_id"] == "someone"
     assert entry["target_id"] == "run-1"
     assert entry["created_at"]
+
+
+#  ---------------------------------------------------------------- 검증에서 드러난 것
+
+
+async def test_길이를_밝히지_않은_업로드는_받지_않는다(client, tmp_path, monkeypatch):
+    """Without Content-Length the whole body would be spooled to disk before
+    the cap could refuse it. A browser always sends the length for a form."""
+    from foldfront.core.config import get_settings
+
+    monkeypatch.setenv("PIPELINE_OUTPUT_ROOT", str(tmp_path))
+    get_settings.cache_clear()
+
+    async def chunks():
+        yield b"--zz\r\nContent-Disposition: form-data; name=\"file\"; filename=\"x.fasta\"\r\n\r\n"
+        yield b">a\nMK\n"
+        yield b"\r\n--zz--\r\n"
+
+    r = await client.post(
+        "/api/v1/inputs", content=chunks(),
+        headers={"content-type": "multipart/form-data; boundary=zz"},
+    )
+
+    assert r.status_code == 411
+    assert not list(tmp_path.rglob("*.fasta"))
+
+
+async def test_밝힌_길이가_상한을_넘으면_읽기_전에_거절한다(client, tmp_path, monkeypatch):
+    from foldfront.api import routes
+    from foldfront.core.config import get_settings
+
+    monkeypatch.setenv("PIPELINE_OUTPUT_ROOT", str(tmp_path))
+    monkeypatch.setattr(routes, "MAX_INPUT_BYTES", 16)
+    monkeypatch.setattr(routes, "MULTIPART_OVERHEAD", 0)
+    get_settings.cache_clear()
+
+    r = await client.post("/api/v1/inputs", files={"file": ("x.fasta", b"A" * 64, "text/plain")})
+
+    assert r.status_code == 413
+
+
+async def test_붙여넣은_내용이_너무_크면_실행을_거절한다(client):
+    """Pasted content had no cap at all, and the engine copied it into every
+    job - eight copies of a 10MB paste for a seven-node workflow."""
+    from foldfront.api import routes
+    from foldfront.db.models import Workflow
+    from foldfront.db.repositories import Repos
+
+    await Repos().workflows.save(Workflow(workflow_id="wf-x", name="x"))
+    monkeypatch_limit = 1024
+    old = routes.MAX_INLINE_INPUT_BYTES
+    routes.MAX_INLINE_INPUT_BYTES = monkeypatch_limit
+    try:
+        r = await client.post("/api/v1/runs", json={
+            "workflow_id": "wf-x", "request": {"target_fasta": ">a\n" + "M" * 4096},
+        })
+    finally:
+        routes.MAX_INLINE_INPUT_BYTES = old
+
+    assert r.status_code == 413
+    assert r.json()["error"]["code"] == "input.inline_too_large"
+
+
+async def test_다른_프로젝트의_회차에는_실행을_기록하지_못한다(client):
+    from foldfront.db.models import Project, Round, Workflow
+    from foldfront.db.repositories import Repos
+
+    r_ = Repos()
+    await r_.workflows.save(Workflow(workflow_id="wf-x", name="x"))
+    await r_.projects.create(Project(project_id="proj-a", name="A"))
+    await r_.projects.create(Project(project_id="proj-b", name="B"))
+    await r_.rounds.create(Round(round_id="round-a1", project_id="proj-a", index=1))
+
+    r = await client.post("/api/v1/runs", json={
+        "workflow_id": "wf-x", "project_id": "proj-b", "round_id": "round-a1", "request": {},
+    })
+
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "round.not_in_project"
+
+
+async def test_회차_번호는_서버가_매긴다(client):
+    """Two browsers counting rounds at once would both have said 「3차」."""
+    from foldfront.db.models import Project
+    from foldfront.db.repositories import Repos
+
+    await Repos().projects.create(Project(project_id="proj-a", name="A"))
+    body = {"round_id": "", "project_id": "proj-a", "index": 99, "linked_run_ids": [], "archived": False}
+
+    first = (await client.post("/api/v1/rounds", json=body)).json()
+    second = (await client.post("/api/v1/rounds", json=body)).json()
+
+    assert (first["index"], second["index"]) == (1, 2)
+
+
+async def test_없는_프로젝트에는_회차를_열지_못한다(client):
+    r = await client.post("/api/v1/rounds", json={
+        "round_id": "", "project_id": "proj-없음", "index": 1, "linked_run_ids": [], "archived": False,
+    })
+
+    assert r.status_code == 404
+
+
+async def test_거부된_모델은_승인_대기로_울리지_않는다(client):
+    """A rejected model was decided. Ringing for it is a count that never
+    reaches zero."""
+    from foldfront.db.models import ModelVersion
+    from foldfront.db.repositories import Repos
+
+    await Repos().models.register(
+        ModelVersion(model_id="bad", version="v1", endpoint_id="ep", approval_status="rejected")
+    )
+
+    notices = (await client.get("/api/v1/notices")).json()["items"]
+    summary = (await client.get("/api/v1/summary")).json()
+
+    assert [n for n in notices if n["kind"] == "model.approval"] == []
+    assert summary["models"]["pending_approval"] == []
+
+
+#  ---------------------------------------------------------------- 검증에서 드러난 것
+
+
+async def test_길이를_밝히지_않은_업로드는_받지_않는다(client, tmp_path, monkeypatch):
+    """Without Content-Length the whole body would be spooled to disk before
+    the cap could refuse it. A browser always sends the length for a form."""
+    from foldfront.core.config import get_settings
+
+    monkeypatch.setenv("PIPELINE_OUTPUT_ROOT", str(tmp_path))
+    get_settings.cache_clear()
+
+    async def chunks():
+        yield b"--zz\r\nContent-Disposition: form-data; name=\"file\"; filename=\"x.fasta\"\r\n\r\n"
+        yield b">a\nMK\n"
+        yield b"\r\n--zz--\r\n"
+
+    r = await client.post(
+        "/api/v1/inputs", content=chunks(),
+        headers={"content-type": "multipart/form-data; boundary=zz"},
+    )
+
+    assert r.status_code == 411
+    assert not list(tmp_path.rglob("*.fasta"))
+
+
+async def test_밝힌_길이가_상한을_넘으면_읽기_전에_거절한다(client, tmp_path, monkeypatch):
+    from foldfront.api import routes
+    from foldfront.core.config import get_settings
+
+    monkeypatch.setenv("PIPELINE_OUTPUT_ROOT", str(tmp_path))
+    monkeypatch.setattr(routes, "MAX_INPUT_BYTES", 16)
+    monkeypatch.setattr(routes, "MULTIPART_OVERHEAD", 0)
+    get_settings.cache_clear()
+
+    r = await client.post("/api/v1/inputs", files={"file": ("x.fasta", b"A" * 64, "text/plain")})
+
+    assert r.status_code == 413
+
+
+async def test_붙여넣은_내용이_너무_크면_실행을_거절한다(client, monkeypatch):
+    """Pasted content had no cap at all, and the engine copied it into every
+    job - eight copies of a 10MB paste for a seven-node workflow."""
+    from foldfront.api import routes
+    from foldfront.db.models import Workflow
+    from foldfront.db.repositories import Repos
+
+    await Repos().workflows.save(Workflow(workflow_id="wf-x", name="x"))
+    monkeypatch.setattr(routes, "MAX_INLINE_INPUT_BYTES", 1024)
+
+    r = await client.post("/api/v1/runs", json={
+        "workflow_id": "wf-x", "request": {"target_fasta": ">a\n" + "M" * 4096},
+    })
+
+    assert r.status_code == 413
+    assert r.json()["error"]["code"] == "input.inline_too_large"
+
+
+async def test_다른_프로젝트의_회차에는_실행을_기록하지_못한다(client):
+    from foldfront.db.models import Project, Round, Workflow
+    from foldfront.db.repositories import Repos
+
+    r_ = Repos()
+    await r_.workflows.save(Workflow(workflow_id="wf-x", name="x"))
+    await r_.projects.create(Project(project_id="proj-a", name="A"))
+    await r_.projects.create(Project(project_id="proj-b", name="B"))
+    await r_.rounds.create(Round(round_id="round-a1", project_id="proj-a", index=1))
+
+    r = await client.post("/api/v1/runs", json={
+        "workflow_id": "wf-x", "project_id": "proj-b", "round_id": "round-a1", "request": {},
+    })
+
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "round.not_in_project"
+
+
+async def test_회차_번호는_서버가_매긴다(client):
+    """Two browsers counting rounds at once would both have said 「3차」."""
+    from foldfront.db.models import Project
+    from foldfront.db.repositories import Repos
+
+    await Repos().projects.create(Project(project_id="proj-a", name="A"))
+    body = {"round_id": "", "project_id": "proj-a", "index": 99, "linked_run_ids": [], "archived": False}
+
+    first = (await client.post("/api/v1/rounds", json=body)).json()
+    second = (await client.post("/api/v1/rounds", json=body)).json()
+
+    assert (first["index"], second["index"]) == (1, 2)
+
+
+async def test_없는_프로젝트에는_회차를_열지_못한다(client):
+    r = await client.post("/api/v1/rounds", json={
+        "round_id": "", "project_id": "proj-없음", "index": 1, "linked_run_ids": [], "archived": False,
+    })
+
+    assert r.status_code == 404
+
+
+async def test_거부된_모델은_승인_대기로_울리지_않는다(client):
+    """A rejected model was decided. Ringing for it is a count that never
+    reaches zero."""
+    from foldfront.db.models import ModelVersion
+    from foldfront.db.repositories import Repos
+
+    await Repos().models.register(
+        ModelVersion(model_id="bad", version="v1", endpoint_id="ep", approval_status="rejected")
+    )
+
+    notices = (await client.get("/api/v1/notices")).json()["items"]
+    summary = (await client.get("/api/v1/summary")).json()
+
+    assert [n for n in notices if n["kind"] == "model.approval"] == []
+    assert summary["models"]["pending_approval"] == []

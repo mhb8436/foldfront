@@ -330,7 +330,8 @@ class Job(Doc):
     #  worker records the job and the stage in two writes, and a worker that
     #  dies between them would otherwise leave the work done and the result
     #  gone. Reconciliation reads it from here.
-    result: dict[str, Any] = Field(default_factory=dict)
+    #  None until a result is recorded. An empty dict is a real reply.
+    result: dict[str, Any] | None = None
 
 
 # ---------------------------------------------------------------- projects

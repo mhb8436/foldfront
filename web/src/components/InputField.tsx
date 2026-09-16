@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import {
   formatResidues,
+  looksLikeBareSequence,
   looksLikePath,
   parseFasta,
   summarizePdb,
@@ -188,6 +189,8 @@ export function InputField({
           </>
         ) : summary ? (
           describe(kind, summary)
+        ) : kind === 'fasta' && looksLikeBareSequence(value) ? (
+          'FASTA 헤더가 없습니다. 첫 줄에 >이름 을 넣으십시오.'
         ) : isPath ? (
           '서버에 있는 파일 경로로 읽습니다.'
         ) : (
@@ -205,6 +208,7 @@ function describe(kind: InputKind, s: FastaSummary | PdbSummary): string {
     return `서열 ${f.records.length}개 · ${formatResidues(f.records)}`
   }
   const p = s as PdbSummary
+  if (p.cif) return 'mmCIF 파일입니다. 체인 요약은 PDB 형식에서만 합니다 — 설계 체인을 직접 적으십시오.'
   if (!p.ok) return 'PDB 로 읽히지 않습니다. ATOM 기록이 없습니다.'
   return `체인 ${p.chains.join(', ') || '없음'} · 원자 ${p.atoms.toLocaleString()}개`
 }

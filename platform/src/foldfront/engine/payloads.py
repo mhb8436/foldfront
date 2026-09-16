@@ -16,15 +16,27 @@ as far as that can be prepared beforehand.
 from __future__ import annotations
 
 import base64
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
 from pipeline_mcp.bio.fasta import parse_fasta, to_fasta
 
+from foldfront.core.config import get_settings
+
 
 class PayloadError(ValueError):
     """The input is missing or malformed. Caught before a job is dispatched."""
+
+
+def _records(fasta: str):
+    """parse_fasta raises ValueError on malformed input. A bad input is a
+    payload problem, and the worker knows what to do with one of those."""
+    try:
+        return parse_fasta(fasta)
+    except ValueError as exc:
+        raise PayloadError(f"FASTA 를 읽지 못했습니다: {exc}") from exc
 
 
 @dataclass(frozen=True)
@@ -47,16 +59,35 @@ class StageInput:
 
     def text(self, *keys: str) -> str | None:
         """Read a path, or take the content as it stands. Earlier stages
-        usually pass content rather than write a file."""
+        usually pass content rather than write a file.
+
+        Content or path is decided by whitespace, on the trimmed value. A
+        path has none; content - a FASTA header line, an ATOM record, an
+        alignment - always does. Deciding by newline alone got both edges
+        wrong: a path typed into a textarea arrives with a newline after it
+        and read as content, and a one-line record with the newline trimmed
+        read as a path. The console applies the same rule (web/src/lib/bio.ts).
+
+        A path is only ever read from inside the storage root. This is the one
+        place a request string becomes a file read, and without the check a
+        request naming /etc/passwd - or another user's upload - would have its
+        FASTA headers published in the run's metrics for anyone to see.
+        """
         raw = self.path(*keys)
         if raw is None:
             return None
-        if "\n" in raw or raw.lstrip().startswith(">"):
+        raw = raw.strip()
+        if not raw:
+            return None
+        if raw.startswith(">") or re.search(r"\s", raw):
             return raw
-        p = Path(raw)
-        if not p.is_file():
-            raise PayloadError(f"입력 파일이 없습니다: {raw}")
-        return p.read_text(encoding="utf-8", errors="replace")
+        root = Path(get_settings().output_root).resolve()
+        target = (root / raw).resolve()
+        if not target.is_relative_to(root):
+            raise PayloadError("저장 위치 밖의 파일은 읽지 않습니다")
+        if not target.is_file():
+            raise PayloadError(f"입력 파일이 없습니다: {target.relative_to(root)}")
+        return target.read_text(encoding="utf-8", errors="replace")
 
 
 def _b64(text: str) -> str:
@@ -75,7 +106,7 @@ def _require(value: Any, what: str) -> Any:
 def _mmseqs(si: StageInput) -> dict[str, Any]:
     """MSA. One target sequence goes in; an alignment comes back."""
     fasta = _require(si.text("target_fasta", "fasta"), "대상 서열")
-    records = parse_fasta(fasta)
+    records = _records(fasta)
     if not records:
         raise PayloadError("FASTA 에서 서열을 찾지 못했습니다")
     return {"fasta": to_fasta(records[:1]), "sequence_count": 1}
@@ -115,7 +146,7 @@ def _proteinmpnn(si: StageInput) -> dict[str, Any]:
 def _soluprot(si: StageInput) -> dict[str, Any]:
     """Solubility. Every designed sequence goes in one call."""
     fasta = _require(si.text("designed_fasta", "target_fasta", "fasta"), "설계 서열")
-    records = parse_fasta(fasta)
+    records = _records(fasta)
     if not records:
         raise PayloadError("FASTA 에서 서열을 찾지 못했다")
     return {"sequences": [{"id": r.id, "sequence": r.sequence} for r in records]}
@@ -124,7 +155,7 @@ def _soluprot(si: StageInput) -> dict[str, Any]:
 def _af2(si: StageInput) -> dict[str, Any]:
     """Structure prediction. The MSA travels with it when there is one."""
     fasta = _require(si.text("designed_fasta", "target_fasta", "fasta"), "예측 대상 서열")
-    records = parse_fasta(fasta)
+    records = _records(fasta)
     payload: dict[str, Any] = {
         "fasta": to_fasta(records),
         "num_models": int(si.request.get("af2_num_models") or 1),
