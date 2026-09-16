@@ -454,6 +454,11 @@ class JobRepo(BaseRepo):
         rows = await self.col.aggregate(pipeline).to_list(length=20)
         return {r["_id"]: r["n"] for r in rows}
 
+    async def leased(self) -> list[Job]:
+        """Jobs a worker currently holds. What is actually occupying GPUs."""
+        cur = self.col.find({"status": JobStatus.LEASED})
+        return [Job(**_clean(d)) for d in await cur.to_list(length=500)]
+
     async def list_for_run(self, run_id: str) -> list[Job]:
         cur = self.col.find({"run_id": run_id}).sort("queued_at", ASCENDING)
         return [Job(**_clean(d)) for d in await cur.to_list(length=500)]

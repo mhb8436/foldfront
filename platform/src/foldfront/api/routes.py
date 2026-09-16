@@ -82,7 +82,7 @@ class LeaseBody(BaseModel):
 # ---------------------------------------------------------------- runs
 
 
-@router.post("/runs", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["실행"], summary="워크플로로 실행을 시작한다")
+@router.post("/runs", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["Runs"], summary="Start a run from a workflow")
 async def start_run(body: StartRunBody) -> dict[str, Any]:
     r = repos()
     wf = await r.workflows.get(body.workflow_id, body.workflow_version)
@@ -103,7 +103,7 @@ async def start_run(body: StartRunBody) -> dict[str, Any]:
     return run.model_dump()
 
 
-@router.get("/runs", tags=["실행"], summary="실행 목록")
+@router.get("/runs", tags=["Runs"], summary="List runs")
 async def list_runs(
     status: RunStatus | None = None,
     project_id: str | None = None,
@@ -118,7 +118,7 @@ async def list_runs(
     return {"items": [i.model_dump() for i in items], "count": len(items)}
 
 
-@router.get("/runs/{run_id}", tags=["실행"], summary="실행 상태")
+@router.get("/runs/{run_id}", tags=["Runs"], summary="Run status")
 async def get_run(run_id: str) -> dict[str, Any]:
     run = await repos().runs.get(run_id)
     if run is None:
@@ -126,13 +126,13 @@ async def get_run(run_id: str) -> dict[str, Any]:
     return run.model_dump()
 
 
-@router.get("/runs/{run_id}/events", tags=["실행"], summary="실행 이벤트")
+@router.get("/runs/{run_id}/events", tags=["Runs"], summary="Run events")
 async def list_events(run_id: str, limit: int = Query(default=200, le=1000)) -> dict[str, Any]:
     items = await repos().events.list(run_id, limit=limit)
     return {"items": [i.model_dump() for i in items], "count": len(items)}
 
 
-@router.get("/runs/{run_id}/artifacts", tags=["실행"], summary="산출물 목록")
+@router.get("/runs/{run_id}/artifacts", tags=["Runs"], summary="List artifacts")
 async def list_artifacts(
     run_id: str, stage: str | None = None, user_visible: bool | None = None
 ) -> dict[str, Any]:
@@ -144,7 +144,7 @@ async def list_artifacts(
     }
 
 
-@router.get("/runs/{run_id}/artifacts/content", tags=["실행"], summary="산출물 내용")
+@router.get("/runs/{run_id}/artifacts/content", tags=["Runs"], summary="Fetch an artifact")
 async def artifact_content(run_id: str, path: str) -> FileResponse:
     """Serve the artifact itself, which is what the structure viewer reads.
 
@@ -172,8 +172,8 @@ async def artifact_content(run_id: str, path: str) -> FileResponse:
     )
 
 
-@router.post("/runs/{run_id}/nodes/{node_id}/complete", dependencies=[Depends(require(Role.SERVICE, Role.ADMIN))], tags=["실행"],
-             summary="노드 실행 결과를 보고한다 (워커가 호출한다)")
+@router.post("/runs/{run_id}/nodes/{node_id}/complete", dependencies=[Depends(require(Role.SERVICE, Role.ADMIN))], tags=["Runs"],
+             summary="Report a node result (called by a worker)")
 async def complete_node(run_id: str, node_id: str, body: CompleteNodeBody) -> dict[str, Any]:
     result = await service().complete_node(
         run_id, node_id, succeeded=body.succeeded, result=body.result, error=body.error
@@ -183,7 +183,7 @@ async def complete_node(run_id: str, node_id: str, body: CompleteNodeBody) -> di
     return result
 
 
-@router.post("/runs/{run_id}/fork", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["실행"], summary="실행을 갈라 새 run 을 만든다")
+@router.post("/runs/{run_id}/fork", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["Runs"], summary="Fork a run")
 async def fork_run(run_id: str, from_stage: str | None = None) -> dict[str, Any]:
     """Forking never writes to the run it came from."""
     child = await repos().runs.fork(run_id, from_stage=from_stage)
@@ -192,7 +192,7 @@ async def fork_run(run_id: str, from_stage: str | None = None) -> dict[str, Any]
     return child.model_dump()
 
 
-@router.post("/runs/{run_id}/cancel", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["실행"], summary="실행을 취소한다")
+@router.post("/runs/{run_id}/cancel", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["Runs"], summary="Cancel a run")
 async def cancel_run(run_id: str, reason: str = "사용자 취소") -> dict[str, Any]:
     run = await service().cancel(run_id, reason=reason)
     if run is None:
@@ -203,7 +203,7 @@ async def cancel_run(run_id: str, reason: str = "사용자 취소") -> dict[str,
 # ---------------------------------------------------------------- workflows
 
 
-@router.get("/workflows", tags=["워크플로"], summary="워크플로 목록 (식별자별 최신 버전)")
+@router.get("/workflows", tags=["Workflows"], summary="List workflows (latest version of each)")
 async def list_workflows(
     templates_only: bool = False, project_id: str | None = None
 ) -> dict[str, Any]:
@@ -211,7 +211,7 @@ async def list_workflows(
     return {"items": [i.model_dump() for i in items], "count": len(items)}
 
 
-@router.get("/workflows/{workflow_id}", tags=["워크플로"], summary="워크플로 조회")
+@router.get("/workflows/{workflow_id}", tags=["Workflows"], summary="Fetch a workflow")
 async def get_workflow(workflow_id: str, version: int | None = None) -> dict[str, Any]:
     wf = await repos().workflows.get(workflow_id, version)
     if wf is None:
@@ -219,7 +219,7 @@ async def get_workflow(workflow_id: str, version: int | None = None) -> dict[str
     return wf.model_dump()
 
 
-@router.get("/workflows/{workflow_id}/versions", tags=["워크플로"], summary="버전 목록")
+@router.get("/workflows/{workflow_id}/versions", tags=["Workflows"], summary="List versions")
 async def workflow_versions(workflow_id: str) -> dict[str, Any]:
     versions = await repos().workflows.versions(workflow_id)
     if not versions:
@@ -227,7 +227,7 @@ async def workflow_versions(workflow_id: str) -> dict[str, Any]:
     return {"workflow_id": workflow_id, "versions": versions}
 
 
-@router.post("/workflows", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["워크플로"], summary="워크플로를 저장한다 (새 버전으로 쌓인다)")
+@router.post("/workflows", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["Workflows"], summary="Save a workflow as a new version")
 async def save_workflow(workflow: Workflow) -> dict[str, Any]:
     """Validate on save. Finding a defect at run time costs GPU hours."""
     try:
@@ -253,8 +253,8 @@ async def save_workflow(workflow: Workflow) -> dict[str, Any]:
     }
 
 
-@router.post("/workflows/{workflow_id}/preflight", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["워크플로"],
-             summary="실행 전 점검 — 그래프와 모델 해석을 미리 확인한다")
+@router.post("/workflows/{workflow_id}/preflight", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["Workflows"],
+             summary="Preflight: validate the graph and resolve its models")
 async def preflight(workflow_id: str, version: int | None = None,
                     max_gpu: int | None = None) -> dict[str, Any]:
     r = repos()
@@ -264,8 +264,8 @@ async def preflight(workflow_id: str, version: int | None = None,
     return await ExecutionService(r).preflight(wf, max_gpu=max_gpu)
 
 
-@router.post("/workflows/builtin", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["워크플로"],
-             summary="현행 고정 단계 체인을 기본 템플릿으로 등록한다")
+@router.post("/workflows/builtin", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["Workflows"],
+             summary="Register the original fixed chain as a template")
 async def seed_builtin(stages: list[str] | None = Body(default=None)) -> dict[str, Any]:
     r = repos()
     wf = builtin_pipeline_workflow(stages=stages)
@@ -276,7 +276,7 @@ async def seed_builtin(stages: list[str] | None = Body(default=None)) -> dict[st
 # ---------------------------------------------------------------- Model Registry
 
 
-@router.get("/models", tags=["모델"], summary="Model Registry 목록")
+@router.get("/models", tags=["Models"], summary="List registered models")
 async def list_models(
     model_id: str | None = None, kind: str | None = None, active_only: bool = False
 ) -> dict[str, Any]:
@@ -284,7 +284,7 @@ async def list_models(
     return {"items": [i.model_dump() for i in items], "count": len(items)}
 
 
-@router.post("/models", dependencies=[Depends(require(Role.ADMIN))], tags=["모델"], summary="모델 버전을 등록한다")
+@router.post("/models", dependencies=[Depends(require(Role.ADMIN))], tags=["Models"], summary="Register a model version")
 async def register_model(mv: ModelVersion, actor_id: str | None = None) -> dict[str, Any]:
     """Register by id, so no URL has to be edited to add a model."""
     r = repos()
@@ -297,8 +297,8 @@ async def register_model(mv: ModelVersion, actor_id: str | None = None) -> dict[
     return saved.model_dump()
 
 
-@router.get("/models/{model_id}/resolve", tags=["모델"],
-            summary="동적 라우팅 — 실행 엔드포인트를 해석한다")
+@router.get("/models/{model_id}/resolve", tags=["Models"],
+            summary="Resolve a model to an execution endpoint")
 async def resolve_model(
     model_id: str, version: str | None = None, max_gpu: int | None = None
 ) -> dict[str, Any]:
@@ -312,7 +312,7 @@ async def resolve_model(
     return route.as_dict()
 
 
-@router.post("/models/{model_id}/{version}/active", dependencies=[Depends(require(Role.ADMIN))], tags=["모델"], summary="활성·비활성 전환")
+@router.post("/models/{model_id}/{version}/active", dependencies=[Depends(require(Role.ADMIN))], tags=["Models"], summary="Activate or deactivate a version")
 async def set_model_active(
     model_id: str, version: str, active: bool, actor_id: str | None = None
 ) -> dict[str, Any]:
@@ -327,8 +327,8 @@ async def set_model_active(
     return mv.model_dump()
 
 
-@router.post("/models/{model_id}/{version}/approve", dependencies=[Depends(require(Role.ADMIN))], tags=["모델"],
-             summary="사용자 정의 모델 승인·반려")
+@router.post("/models/{model_id}/{version}/approve", dependencies=[Depends(require(Role.ADMIN))], tags=["Models"],
+             summary="Approve or reject a registered model")
 async def approve_model(
     model_id: str, version: str, approved_by: str,
     decision: Literal["approved", "rejected"] = "approved",
@@ -348,7 +348,7 @@ async def approve_model(
 # ---------------------------------------------------------------- job queue
 
 
-@router.post("/jobs/lease", dependencies=[Depends(require(Role.SERVICE, Role.ADMIN))], tags=["작업"], summary="작업을 하나 꺼낸다 (워커가 호출한다)")
+@router.post("/jobs/lease", dependencies=[Depends(require(Role.SERVICE, Role.ADMIN))], tags=["Jobs"], summary="Lease one job (called by a worker)")
 async def lease_job(body: LeaseBody) -> dict[str, Any] | None:
     """Hand out work: highest priority, longest waiting."""
     job = await repos().jobs.lease(
@@ -360,7 +360,7 @@ async def lease_job(body: LeaseBody) -> dict[str, Any] | None:
     return job.model_dump() if job else None
 
 
-@router.get("/jobs/stats", tags=["작업"], summary="큐 적체 현황")
+@router.get("/jobs/stats", tags=["Jobs"], summary="Queue depth")
 async def job_stats() -> dict[str, Any]:
     """How much work is queued, and in what state."""
     r = repos()
@@ -368,7 +368,7 @@ async def job_stats() -> dict[str, Any]:
     return {"by_status": stats, "total": sum(stats.values())}
 
 
-@router.post("/jobs/reclaim", dependencies=[Depends(require(Role.SERVICE, Role.ADMIN))], tags=["작업"], summary="만료된 lease 를 회수한다")
+@router.post("/jobs/reclaim", dependencies=[Depends(require(Role.SERVICE, Role.ADMIN))], tags=["Jobs"], summary="Reclaim expired leases")
 async def reclaim_jobs() -> dict[str, Any]:
     """Return jobs whose worker died, so nothing stays locked."""
     return {"reclaimed": await repos().jobs.reclaim_expired()}
@@ -377,36 +377,104 @@ async def reclaim_jobs() -> dict[str, Any]:
 # ---------------------------------------------------------------- projects
 
 
-@router.get("/projects", tags=["프로젝트"], summary="프로젝트 목록")
+@router.get("/projects", tags=["Projects"], summary="List projects")
 async def list_projects(include_archived: bool = False) -> dict[str, Any]:
     items = await repos().projects.list(include_archived=include_archived)
     return {"items": [i.model_dump() for i in items], "count": len(items)}
 
 
-@router.post("/projects", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["프로젝트"], summary="프로젝트를 만든다")
+@router.post("/projects", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["Projects"], summary="Create a project")
 async def create_project(project: Project) -> dict[str, Any]:
     if not project.project_id:
         project.project_id = new_id("proj")
     return (await repos().projects.create(project)).model_dump()
 
 
-@router.get("/projects/{project_id}/rounds", tags=["프로젝트"], summary="라운드 목록")
+@router.get("/projects/{project_id}/rounds", tags=["Projects"], summary="List rounds")
 async def list_rounds(project_id: str) -> dict[str, Any]:
     items = await repos().rounds.list(project_id)
     return {"items": [i.model_dump() for i in items], "count": len(items)}
 
 
-@router.post("/rounds", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["프로젝트"], summary="라운드를 만든다")
+@router.post("/rounds", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["Projects"], summary="Create a round")
 async def create_round(round_: Round) -> dict[str, Any]:
     if not round_.round_id:
         round_.round_id = new_id("round")
     return (await repos().rounds.create(round_)).model_dump()
 
 
+# ---------------------------------------------------------------- dashboard
+
+
+@router.get("/summary", tags=["Operations"], summary="Everything the dashboard shows")
+async def summary(recent: int = Query(default=5, le=20)) -> dict[str, Any]:
+    """Everything the dashboard shows, in one call.
+
+    The same numbers are reachable through the individual endpoints, but a
+    landing screen asking for six of them would be six round trips before it
+    could draw anything.
+    """
+    r = repos()
+
+    runs = await r.runs.list(limit=200)
+    by_status: dict[str, int] = {}
+    for run in runs:
+        by_status[str(run.status)] = by_status.get(str(run.status), 0) + 1
+
+    jobs = await r.jobs.stats()
+    models = await r.models.list()
+    workflows = await r.workflows.list()
+
+    #  What is occupied right now, rather than what was registered as needed
+    gpu_in_use = sum(j.resources.gpu_count for j in await r.jobs.leased())
+
+    return {
+        "runs": {
+            "total": len(runs),
+            "by_status": by_status,
+            "recent": [
+                {
+                    "run_id": x.run_id,
+                    "status": str(x.status),
+                    "workflow_id": x.workflow_id,
+                    "stages_done": sum(1 for s in x.stages if str(s.status) == "succeeded"),
+                    "stages_total": len(x.stages),
+                    "started_at": x.started_at,
+                    "finished_at": x.finished_at,
+                }
+                for x in runs[:recent]
+            ],
+        },
+        "jobs": {"by_status": jobs, "total": sum(jobs.values()), "gpu_in_use": gpu_in_use},
+        "models": {
+            "total": len(models),
+            "active": sum(1 for m in models if m.active),
+            "pending_approval": [
+                {"model_id": m.model_id, "version": m.version, "kind": str(m.kind)}
+                for m in models
+                if str(m.approval_status) != "approved"
+            ],
+        },
+        "workflows": {
+            "total": len(workflows),
+            "items": [
+                {"workflow_id": w.workflow_id, "name": w.name, "version": w.version,
+                 "nodes": len(w.nodes), "is_builtin": w.is_builtin}
+                for w in workflows
+            ],
+        },
+        "audit": [
+            {"action": str(a.get("action")), "actor_id": a.get("actor_id"),
+             "target_id": a.get("target_id"), "created_at": a.get("created_at")}
+            for a in await r.audit.search(limit=recent)
+        ],
+    }
+
+
 # ---------------------------------------------------------------- audit
 
 
-@router.get("/audit", dependencies=[Depends(require(Role.ADMIN))], tags=["운영"], summary="감사 로그 조회")
+@router.get("/audit", dependencies=[Depends(require(Role.ADMIN))], tags=["Operations"], summary="Search the audit trail")
 async def search_audit(
     actor_id: str | None = None, action: str | None = None,
     target_type: str | None = None, target_id: str | None = None,

@@ -13,6 +13,7 @@ import { ApiError, api } from '../../api/client'
 import { Monitor } from '../Monitor'
 import { Models } from '../Models'
 import { Analyze } from '../Analyze'
+import { Dashboard } from '../Dashboard'
 import { duration, formatBytes, formatTime } from '../../components/Common'
 
 function run(overrides: Partial<Parameters<typeof Object.assign>[0]> = {}) {
@@ -292,5 +293,76 @@ describe('API 오류', () => {
     const caught = (await api.getRun('run-1').catch((e) => e)) as ApiError
 
     expect(caught.message).toBe('502 Bad Gateway')
+  })
+})
+
+//  ---------------------------------------------------------------- dashboard
+
+describe('대시보드', () => {
+  function summary(over: Record<string, unknown> = {}) {
+    return {
+      runs: {
+        total: 3,
+        by_status: { running: 1, succeeded: 1, failed: 1 },
+        recent: [
+          {
+            run_id: 'run-0001', status: 'running', workflow_id: 'builtin-pipeline',
+            stages_done: 3, stages_total: 7,
+            started_at: '2026-09-16T01:00:00Z', finished_at: null,
+          },
+        ],
+      },
+      jobs: { by_status: { queued: 2 }, total: 9, gpu_in_use: 4 },
+      models: { total: 5, active: 4, pending_approval: [{ model_id: 'custom', version: 'v1', kind: 'other' }] },
+      workflows: { total: 1, items: [{ workflow_id: 'wf', name: '정형 단계 실행', version: 2, nodes: 7, is_builtin: true }] },
+      audit: [{ action: 'run.create', actor_id: 'a', target_id: 'run-0001', created_at: '2026-09-16T01:00:00Z' }],
+      ...over,
+    }
+  }
+
+  it('현황과 최근 실행과 워크플로를 함께 그린다', async () => {
+    vi.spyOn(api, 'summary').mockResolvedValue(summary() as never)
+
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+
+    //  run-0001 은 최근 실행 표와 최근 활동 양쪽에 나온다. 표 안에서 찾는다
+    const row = (await screen.findAllByText('run-0001'))[0].closest('tr')!
+    expect(within(row).getByText('builtin-pipeline')).toBeInTheDocument()
+    expect(screen.getByText('정형 단계 실행')).toBeInTheDocument()
+    expect(screen.getByText('run.create')).toBeInTheDocument()
+    //  성공 1 · 실패 1 이므로 50%
+    expect(screen.getByText('50%')).toBeInTheDocument()
+    expect(screen.getByText('GPU 4개 점유')).toBeInTheDocument()
+  })
+
+  it('승인 대기가 있으면 먼저 알린다', async () => {
+    vi.spyOn(api, 'summary').mockResolvedValue(summary() as never)
+
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+
+    expect(await screen.findByText('승인 대기')).toBeInTheDocument()
+    expect(screen.getByText('custom:v1')).toBeInTheDocument()
+  })
+
+  it('승인 대기가 없으면 그 자리를 비운다', async () => {
+    vi.spyOn(api, 'summary').mockResolvedValue(
+      summary({ models: { total: 4, active: 4, pending_approval: [] } }) as never,
+    )
+
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+
+    await screen.findAllByText('run-0001')
+    expect(screen.queryByText('승인 대기')).not.toBeInTheDocument()
+  })
+
+  it('끝난 실행이 없으면 성공률을 숫자로 꾸미지 않는다', async () => {
+    vi.spyOn(api, 'summary').mockResolvedValue(
+      summary({ runs: { total: 1, by_status: { running: 1 }, recent: [] } }) as never,
+    )
+
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+
+    expect(await screen.findByText('실행 기록이 없습니다. 「실행 시작」으로 첫 실행을 띄우십시오.')).toBeInTheDocument()
+    expect(screen.getByText('—')).toBeInTheDocument()
   })
 })
