@@ -49,6 +49,7 @@ const NAV: Array<{ section: string; items: Item[] }> = [
     items: [
       { to: '/dashboard', label: '대시보드', icon: LayoutGrid },
       { to: '/projects', label: '프로젝트', icon: FolderOpen },
+      { to: '/studio', label: '워크플로 스튜디오', icon: Workflow },
       {
         label: '설계 실행',
         icon: Play,
@@ -57,7 +58,6 @@ const NAV: Array<{ section: string; items: Item[] }> = [
           { to: '/monitor', label: '실행 감시' },
         ],
       },
-      { to: '/studio', label: '워크플로 스튜디오', icon: Workflow },
       { to: '/analyze', label: '결과 분석', icon: BarChart3 },
     ],
   },
