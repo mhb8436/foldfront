@@ -34,6 +34,7 @@ const HEIGHT = 900
 const SCALE = 2
 
 const SHOTS = [
+  { file: 'dashboard.png', path: '/dashboard', budget: 6000 },
   { file: 'setup.png', path: '/setup', budget: 5000 },
   { file: 'studio.png', path: '/studio', budget: 9000 },
   { file: 'monitor.png', path: '/monitor', budget: 6000 },

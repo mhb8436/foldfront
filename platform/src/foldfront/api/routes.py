@@ -464,8 +464,8 @@ async def summary(recent: int = Query(default=5, le=20)) -> dict[str, Any]:
             ],
         },
         "audit": [
-            {"action": str(a.get("action")), "actor_id": a.get("actor_id"),
-             "target_id": a.get("target_id"), "created_at": a.get("created_at")}
+            {"action": a.action, "actor_id": a.actor_id,
+             "target_id": a.target_id, "result": a.result, "created_at": a.created_at}
             for a in await r.audit.search(limit=recent)
         ],
     }
