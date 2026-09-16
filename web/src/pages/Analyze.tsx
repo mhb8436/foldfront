@@ -140,6 +140,15 @@ function Compare({ a, b }: { a: Run; b: Run }) {
   )
 }
 
+/** A metric value as a person reads it. A list of per-sequence results is
+    not a number; saying how many there are is what a summary cell can do. */
+function fmt(v: unknown): string {
+  if (Array.isArray(v)) return `${v.length}개`
+  if (v !== null && typeof v === 'object') return `${Object.keys(v as object).length}항목`
+  if (typeof v === 'number') return Number.isInteger(v) ? String(v) : v.toFixed(3)
+  return String(v)
+}
+
 function Cell({ metrics, status }: { metrics?: Record<string, unknown>; status?: string }) {
   if (!status) return <span className="text-muted-foreground">—</span>
   const shown = Object.entries(metrics ?? {}).filter(([k]) => !k.startsWith('_'))
@@ -148,7 +157,7 @@ function Cell({ metrics, status }: { metrics?: Record<string, unknown>; status?:
       <StatusBadge status={status} />
       {shown.length > 0 && (
         <div className="text-muted-foreground mt-1 font-mono text-[12.5px]">
-          {shown.map(([k, v]) => `${k}=${v}`).join(' · ')}
+          {shown.map(([k, v]) => `${k}=${fmt(v)}`).join(' · ')}
         </div>
       )}
     </>
@@ -200,7 +209,7 @@ function MetricTable({ runs }: { runs: Run[] }) {
               const v = r.stages.find((s) => s.name === stage)?.metrics?.[metric]
               return (
                 <TableCell key={k} className="tabular">
-                  {v === undefined ? <span className="text-muted-foreground">—</span> : String(v)}
+                  {v === undefined ? <span className="text-muted-foreground">—</span> : fmt(v)}
                 </TableCell>
               )
             })}
