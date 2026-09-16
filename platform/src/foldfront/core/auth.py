@@ -20,9 +20,10 @@ import logging
 from dataclasses import dataclass
 from typing import Annotated, Any, Iterable
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header
 
 from foldfront.core.config import get_settings
+from foldfront.core.errors import ApiError, E
 from foldfront.db.models import Role
 
 log = logging.getLogger(__name__)
@@ -74,17 +75,17 @@ def identity_from_token(token: str) -> Identity:
 
     settings = load_oidc_settings()
     if settings is None:
-        raise HTTPException(status_code=503, detail="OIDC 설정이 없다")
+        raise ApiError(E.AUTH_NOT_CONFIGURED)
 
     try:
         claims = verify_oidc_token(token, settings)
         user = claims_to_user(claims, settings.client_id)
-    except HTTPException:
+    except ApiError:
         raise
     except Exception as exc:
         #  사유를 그대로 돌려주지 않는다. 검증 실패 원인은 탐색의 단서가 된다
         log.warning("토큰 검증에 실패했다: %s", exc)
-        raise HTTPException(status_code=401, detail="토큰을 검증하지 못했다") from exc
+        raise ApiError(E.AUTH_TOKEN_INVALID) from exc
 
     role = ROLE_MAP.get(str(user.get("role")), Role.VIEWER)
     return Identity(
@@ -104,7 +105,7 @@ async def current_identity(
         return DEV_IDENTITY
 
     if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=401, detail="Bearer 토큰이 필요하다")
+        raise ApiError(E.AUTH_TOKEN_REQUIRED)
 
     return identity_from_token(authorization.split(" ", 1)[1].strip())
 
@@ -120,7 +121,7 @@ def require(*roles: Role):
 
     async def guard(identity: CurrentIdentity) -> Identity:
         if not identity.has(*roles):
-            raise HTTPException(status_code=403, detail="권한이 없다")
+            raise ApiError(E.AUTH_FORBIDDEN)
         return identity
 
     return guard

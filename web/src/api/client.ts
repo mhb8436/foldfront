@@ -121,6 +121,10 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** Stable identifier such as `run.not_found`. Branch on this, not on the text. */
+    readonly code: string | null = null,
+    /** Values the message was built from, so a screen can use them directly. */
+    readonly params: Record<string, unknown> = {},
   ) {
     super(message)
     this.name = 'ApiError'
@@ -136,15 +140,24 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   })
 
   if (!response.ok) {
-    // FastAPI 는 오류를 {detail: "..."} 로 낸다
-    let detail = `${response.status} ${response.statusText}`
+    //  The platform answers {error: {code, message, params}}; FastAPI's own
+    //  failures - validation, for one - still answer {detail}. Read both.
+    let message = `${response.status} ${response.statusText}`
+    let code: string | null = null
+    let params: Record<string, unknown> = {}
     try {
       const body = await response.json()
-      if (typeof body?.detail === 'string') detail = body.detail
+      if (body?.error && typeof body.error.message === 'string') {
+        message = body.error.message
+        code = typeof body.error.code === 'string' ? body.error.code : null
+        params = body.error.params ?? {}
+      } else if (typeof body?.detail === 'string') {
+        message = body.detail
+      }
     } catch {
-      // 본문이 JSON 이 아니면 상태줄을 쓴다
+      //  Not JSON. The status line is the best that is left.
     }
-    throw new ApiError(detail, response.status)
+    throw new ApiError(message, response.status, code, params)
   }
 
   if (response.status === 204) return undefined as T
@@ -178,7 +191,7 @@ export const api = {
 
   artifactText: async (runId: string, path: string) => {
     const r = await fetch(api.artifactUrl(runId, path))
-    if (!r.ok) throw new ApiError(`산출물을 읽지 못했습니다 (${r.status})`, r.status)
+    if (!r.ok) throw new ApiError(`산출물을 읽지 못했습니다 (${r.status})`, r.status, 'artifact.unreadable')
     return await r.text()
   },
 

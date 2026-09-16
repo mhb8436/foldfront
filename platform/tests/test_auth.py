@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import pytest
-from fastapi import HTTPException
+from foldfront.core.errors import ApiError, E
 
 from foldfront.core import auth
 from foldfront.core.auth import Identity, auth_mode, current_identity, require
@@ -33,10 +33,10 @@ def test_모르는_역할은_조회_전용으로_떨어진다():
 async def test_권한이_없으면_403_을_낸다():
     guard = require(Role.ADMIN)
 
-    with pytest.raises(HTTPException) as caught:
+    with pytest.raises(ApiError) as caught:
         await guard(_identity(Role.VIEWER))
 
-    assert caught.value.status_code == 403
+    assert caught.value.status == 403
 
 
 async def test_요구_역할_가운데_하나만_있으면_통과한다():
@@ -59,19 +59,19 @@ async def test_oidc_가_꺼져_있으면_개발_신원으로_통과한다(monkey
 async def test_oidc_가_켜져_있으면_토큰_없이는_401_이다(monkeypatch):
     monkeypatch.setattr(auth, "oidc_enabled", lambda: True)
 
-    with pytest.raises(HTTPException) as caught:
+    with pytest.raises(ApiError) as caught:
         await current_identity(authorization=None)
 
-    assert caught.value.status_code == 401
+    assert caught.value.status == 401
 
 
 async def test_bearer_형식이_아니면_401_이다(monkeypatch):
     monkeypatch.setattr(auth, "oidc_enabled", lambda: True)
 
-    with pytest.raises(HTTPException) as caught:
+    with pytest.raises(ApiError) as caught:
         await current_identity(authorization="Basic dXNlcjpwYXNz")
 
-    assert caught.value.status_code == 401
+    assert caught.value.status == 401
 
 
 async def test_검증_실패_사유를_응답에_싣지_않는다(monkeypatch):
@@ -88,11 +88,12 @@ async def test_검증_실패_사유를_응답에_싣지_않는다(monkeypatch):
 
     monkeypatch.setattr("pipeline_mcp.oidc.verify_oidc_token", _boom)
 
-    with pytest.raises(HTTPException) as caught:
+    with pytest.raises(ApiError) as caught:
         await current_identity(authorization="Bearer 아무거나")
 
-    assert caught.value.status_code == 401
-    assert "kid" not in str(caught.value.detail)
+    assert caught.value.status == 401
+    assert "kid" not in str(caught.value.code)
+    assert caught.value.params == {}
 
 
 def test_쓰기_경로에_권한이_걸려_있다():

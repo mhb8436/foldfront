@@ -9,11 +9,13 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from foldfront.api.routes import router
 from foldfront.api.mcp import router as mcp_router
 from foldfront.core.auth import auth_mode, warn_if_open
+from foldfront.core.errors import ApiError, negotiate
 from foldfront.core.config import get_settings
 from foldfront.db.client import close_client, ensure_indexes, get_db
 
@@ -35,6 +37,14 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+
+#  Errors answer with a code plus a message chosen for the caller's language.
+#  Registered before the routers so every path shares one error shape.
+@app.exception_handler(ApiError)
+async def _api_error(request: Request, exc: ApiError) -> JSONResponse:
+    language = negotiate(request.headers.get("accept-language"))
+    return JSONResponse(status_code=exc.status, content=exc.body(language))
 
 
 app.include_router(router)

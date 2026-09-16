@@ -8,7 +8,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { api } from '../../api/client'
+import { ApiError, api } from '../../api/client'
 import { Monitor } from '../Monitor'
 import { Models } from '../Models'
 import { Analyze } from '../Analyze'
@@ -241,5 +241,54 @@ describe('구조 산출물', () => {
 
     const a3mRow = screen.getByText('run-0001/msa/hits.a3m').closest('tr')!
     expect(within(a3mRow).queryByRole('button', { name: '구조 열람' })).not.toBeInTheDocument()
+  })
+})
+
+//  ---------------------------------------------------------------- API errors
+//  The platform answers a code plus a translated message. A screen must show the
+//  message and be able to branch on the code without matching on the text.
+
+describe('API 오류', () => {
+  function respond(status: number, body: unknown) {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status,
+      statusText: 'Not Found',
+      json: async () => body,
+    } as never))
+  }
+
+  it('코드와 메시지와 인자를 모두 싣는다', async () => {
+    respond(404, {
+      error: { code: 'run.not_found', message: '실행을 찾지 못했습니다: run-1', params: { run_id: 'run-1' } },
+    })
+
+    const caught = (await api.getRun('run-1').catch((e) => e)) as ApiError
+
+    expect(caught).toBeInstanceOf(ApiError)
+    expect(caught.code).toBe('run.not_found')
+    expect(caught.message).toBe('실행을 찾지 못했습니다: run-1')
+    expect(caught.params).toEqual({ run_id: 'run-1' })
+    expect(caught.status).toBe(404)
+  })
+
+  it('FastAPI 자체 오류인 detail 형태도 읽는다', async () => {
+    respond(422, { detail: 'validation failed' })
+
+    const caught = (await api.getRun('run-1').catch((e) => e)) as ApiError
+
+    expect(caught.message).toBe('validation failed')
+    expect(caught.code).toBeNull()
+  })
+
+  it('본문이 JSON 이 아니면 상태줄을 쓴다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false, status: 502, statusText: 'Bad Gateway',
+      json: async () => { throw new Error('not json') },
+    } as never))
+
+    const caught = (await api.getRun('run-1').catch((e) => e)) as ApiError
+
+    expect(caught.message).toBe('502 Bad Gateway')
   })
 })
