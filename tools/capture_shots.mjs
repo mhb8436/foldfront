@@ -37,6 +37,9 @@ const SHOTS = [
   { file: 'dashboard.png', path: '/dashboard', budget: 6000 },
   { file: 'setup.png', path: '/setup', budget: 5000 },
   { file: 'studio.png', path: '/studio', budget: 9000 },
+  //  The node editor open over the canvas. Reached by address rather than by
+  //  clicking, because Chrome's --screenshot cannot click.
+  { file: 'studio-node.png', path: '/studio?wf=binding-prediction&node=gate', budget: 9000 },
   { file: 'monitor.png', path: '/monitor', budget: 6000 },
   //  Two structures, rendered in software. Slower than the other screens.
   { file: 'analyze.png', path: '/analyze', budget: 14000 },
