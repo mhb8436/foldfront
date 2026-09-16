@@ -130,3 +130,7 @@ web/dist/
 
 web/tsconfig.tsbuildinfo
 web/*.tsbuildinfo
+
+# playwright
+web/test-results/
+web/playwright-report/
