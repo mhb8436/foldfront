@@ -20,7 +20,7 @@ from typing import Any, Literal
 
 from pathlib import Path
 
-from fastapi import APIRouter, Body, Depends, Query
+from fastapi import APIRouter, Body, Depends, File, Query, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -490,6 +490,66 @@ async def me(identity: CurrentIdentity) -> dict[str, Any]:
         "roles": [str(r) for r in identity.roles],
         "authenticated": identity.authenticated,
         "auth_mode": auth_mode(),
+    }
+
+
+# ---------------------------------------------------------------- inputs
+
+
+#  What a design run takes in. Anything else is not an input to this platform,
+#  and an allowlist is the only form of this check that stays correct as new
+#  file types appear - a denylist would not.
+INPUT_SUFFIXES = {
+    ".fasta": "fasta", ".fa": "fasta", ".faa": "fasta", ".seq": "fasta",
+    ".pdb": "pdb", ".cif": "pdb", ".ent": "pdb",
+    ".a3m": "msa", ".sto": "msa",
+}
+
+#  Large enough for a structure with several chains, small enough that a
+#  mistaken upload cannot fill the disk.
+MAX_INPUT_BYTES = 32 * 1024 * 1024
+
+
+@router.post("/inputs", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))],
+             tags=["Runs"], summary="Upload a file for a run to read")
+async def upload_input(identity: CurrentIdentity, file: UploadFile = File(...)) -> dict[str, Any]:
+    """Take a sequence or structure file and return the path a run can name.
+
+    A console has no other way to supply one: a browser cannot know a path on
+    the server, and a run request that carried the whole file would copy it
+    into the run document and again into every job built from it.
+
+    The name that arrives is never used to build the path. It is a label, kept
+    so a person recognises what they uploaded; the stored name is generated
+    here, which makes a traversal impossible rather than merely caught.
+    """
+    original = Path(file.filename or "").name
+    suffix = Path(original).suffix.lower()
+    kind = INPUT_SUFFIXES.get(suffix)
+    if kind is None:
+        raise ApiError(E.INPUT_TYPE_REJECTED, suffix=suffix or "(없음)")
+
+    body = await file.read(MAX_INPUT_BYTES + 1)
+    if len(body) > MAX_INPUT_BYTES:
+        raise ApiError(E.INPUT_TOO_LARGE, limit_mb=MAX_INPUT_BYTES // (1024 * 1024))
+    if not body.strip():
+        raise ApiError(E.INPUT_EMPTY)
+
+    root = Path(get_settings().output_root).resolve()
+    folder = root / "inputs" / utcnow().strftime("%Y%m%d")
+    folder.mkdir(parents=True, exist_ok=True)
+    stored = folder / f"{new_id('in')}{suffix}"
+    stored.write_bytes(body)
+
+    await repos().audit.record(
+        "input.upload", actor_id=identity.user_id, target_type="input",
+        target_id=stored.name, detail={"name": original, "bytes": len(body), "kind": kind},
+    )
+    return {
+        "path": str(stored),
+        "name": original,
+        "kind": kind,
+        "size_bytes": len(body),
     }
 
 

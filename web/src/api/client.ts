@@ -391,6 +391,19 @@ export const api = {
       method: 'POST',
     }),
 
+  /** Send a sequence or structure file up, and get back the path a run can name. */
+  uploadInput: (file: File) => {
+    const form = new FormData()
+    form.append('file', file, file.name)
+    //  No content type: the browser sets multipart/form-data with its
+    //  boundary, and a JSON header here would make the server reject it.
+    return request<{ path: string; name: string; kind: string; size_bytes: number }>('/inputs', {
+      method: 'POST',
+      body: form,
+      headers: {},
+    })
+  },
+
   // ------------------------------------------------------- projects
   listProjects: (include_archived = false) =>
     request<Listed<Project>>(`/projects${query({ include_archived })}`),
