@@ -490,3 +490,18 @@ async def test_요약은_승인_대기_모델을_가려낸다(client):
 
     assert body["models"]["total"] == 2
     assert [m["model_id"] for m in body["models"]["pending_approval"]] == ["waiting"]
+
+
+async def test_요약은_감사_기록을_함께_낸다(client):
+    """The audit branch had no records under test and shipped broken once:
+    search() returns documents, not dictionaries."""
+    from foldfront.db.repositories import Repos
+
+    await Repos().audit.record("run.create", actor_id="someone", target_id="run-1")
+
+    entry = (await client.get("/api/v1/summary")).json()["audit"][0]
+
+    assert entry["action"] == "run.create"
+    assert entry["actor_id"] == "someone"
+    assert entry["target_id"] == "run-1"
+    assert entry["created_at"]
