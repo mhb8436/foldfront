@@ -138,6 +138,17 @@ export interface Round {
   created_at?: string | null
 }
 
+export interface Notice {
+  id: string
+  kind: string
+  /** action - waits on a decision. warning - a state that is already wrong. */
+  severity: 'action' | 'warning'
+  title: string
+  detail: string
+  href: string | null
+  at: string | null
+}
+
 export interface Summary {
   runs: {
     total: number
@@ -363,6 +374,8 @@ export const api = {
   // ------------------------------------------------------------ dashboard
   summary: (recent = 5, project_id?: string) =>
     request<Summary>(`/summary${query({ recent, project_id })}`),
+
+  notices: () => request<Listed<Notice>>('/notices'),
 
   // ------------------------------------------------------- projects
   listProjects: (include_archived = false) =>
