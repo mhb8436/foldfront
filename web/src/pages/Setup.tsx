@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Field, Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { InputField } from '../components/InputField'
+import type { PdbSummary } from '@/lib/bio'
 import { useIdentity } from '@/lib/identity'
 import { roundLabel, useProject } from '@/lib/project'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -157,29 +159,39 @@ export function Setup() {
 
         <Panel title="입력">
           <div className="flex flex-col gap-3.5">
-            <Field>
-              <Label htmlFor="fasta">대상 서열 (FASTA 경로)</Label>
-              <Input
-                id="fasta"
-                value={targetFasta}
-                onChange={(e) => setTargetFasta(e.target.value)}
-                placeholder="/data/targets/lysozyme.fasta"
-                className="font-mono text-[13px]"
-              />
-            </Field>
-            <Field>
-              <Label htmlFor="pdb">대상 구조 (PDB 경로)</Label>
-              <Input
-                id="pdb"
-                value={targetPdb}
-                onChange={(e) => setTargetPdb(e.target.value)}
-                placeholder="/data/targets/lysozyme.pdb"
-                className="font-mono text-[13px]"
-              />
-            </Field>
+            <InputField
+              id="fasta"
+              kind="fasta"
+              label="대상 서열"
+              value={targetFasta}
+              onChange={setTargetFasta}
+              placeholder={'>lysozyme\nMKALIVLGLVLLSVTVQGKVFERCELARTLKRLGMDGYRG…'}
+              disabled={!canRun}
+            />
+            <InputField
+              id="pdb"
+              kind="pdb"
+              label="대상 구조"
+              value={targetPdb}
+              onChange={setTargetPdb}
+              onSummary={(s) => {
+                //  A structure says which chains it has. Filling them in
+                //  saves typing and, more to the point, saves typing a chain
+                //  the file does not contain.
+                const p = s as PdbSummary | null
+                if (p?.ok && p.chains.length) setChains(p.chains.join(', '))
+              }}
+              placeholder="/data/targets/lysozyme.pdb 또는 PDB 내용"
+              disabled={!canRun}
+            />
             <Field>
               <Label htmlFor="chains">설계 체인 (쉼표로 구분)</Label>
-              <Input id="chains" value={chains} onChange={(e) => setChains(e.target.value)} />
+              <Input
+                id="chains"
+                value={chains}
+                onChange={(e) => setChains(e.target.value)}
+                disabled={!canRun}
+              />
             </Field>
           </div>
         </Panel>

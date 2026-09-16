@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import socket
+from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -445,6 +446,159 @@ async def test_실체_파일이_없으면_404_를_낸다(client, tmp_path, monke
                          params={"path": "run-shot/af2/사라짐.pdb"})
 
     assert r.status_code == 404
+
+
+#  ---------------------------------------------------------------- 입력 파일
+#
+#  A console has no other way to supply a sequence: a browser cannot know a
+#  path on the server. That makes this the one endpoint that writes a file
+#  from something the caller sent, so what it refuses matters as much as what
+#  it accepts.
+
+
+FASTA = b">lys\nMKALIVLGLVLLSVTVQG\n"
+
+
+async def test_서열_파일을_올리면_실행이_읽을_경로를_낸다(client, tmp_path, monkeypatch):
+    from foldfront.core.config import get_settings
+
+    monkeypatch.setenv("PIPELINE_OUTPUT_ROOT", str(tmp_path))
+    get_settings.cache_clear()
+
+    r = await client.post("/api/v1/inputs", files={"file": ("lys.fasta", FASTA, "text/plain")})
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["kind"] == "fasta"
+    assert body["name"] == "lys.fasta"
+    assert body["size_bytes"] == len(FASTA)
+    #  실행이 그대로 읽을 수 있어야 한다
+    assert Path(body["path"]).read_bytes() == FASTA
+
+
+async def test_올린_파일은_저장_위치_안에만_쓴다(client, tmp_path, monkeypatch):
+    from foldfront.core.config import get_settings
+
+    monkeypatch.setenv("PIPELINE_OUTPUT_ROOT", str(tmp_path))
+    get_settings.cache_clear()
+
+    r = await client.post("/api/v1/inputs", files={"file": ("x.fasta", FASTA, "text/plain")})
+
+    assert Path(r.json()["path"]).resolve().is_relative_to(tmp_path.resolve())
+
+
+async def test_올린_파일의_이름으로_경로를_만들지_않는다(client, tmp_path, monkeypatch):
+    """The name that arrives is a label, never a path component. Building the
+    stored name here makes a traversal impossible rather than merely caught."""
+    from foldfront.core.config import get_settings
+
+    monkeypatch.setenv("PIPELINE_OUTPUT_ROOT", str(tmp_path))
+    get_settings.cache_clear()
+
+    r = await client.post(
+        "/api/v1/inputs",
+        files={"file": ("../../../../etc/passwd.fasta", FASTA, "text/plain")},
+    )
+
+    stored = Path(r.json()["path"])
+    assert stored.resolve().is_relative_to(tmp_path.resolve())
+    assert "passwd" not in stored.name
+    assert ".." not in str(stored)
+    #  원래 이름은 사람이 알아보라고 남기되, 경로에는 쓰지 않는다
+    assert r.json()["name"] == "passwd.fasta"
+
+
+async def test_받지_않는_형식은_거절한다(client, tmp_path, monkeypatch):
+    from foldfront.core.config import get_settings
+
+    monkeypatch.setenv("PIPELINE_OUTPUT_ROOT", str(tmp_path))
+    get_settings.cache_clear()
+
+    r = await client.post("/api/v1/inputs", files={"file": ("run.sh", b"rm -rf /", "text/plain")})
+
+    assert r.status_code == 415
+    assert r.json()["error"]["code"] == "input.type_rejected"
+    #  거절한 것은 쓰지 않는다
+    assert not list(tmp_path.rglob("*.sh"))
+
+
+async def test_확장자가_없으면_거절한다(client, tmp_path, monkeypatch):
+    from foldfront.core.config import get_settings
+
+    monkeypatch.setenv("PIPELINE_OUTPUT_ROOT", str(tmp_path))
+    get_settings.cache_clear()
+
+    r = await client.post("/api/v1/inputs", files={"file": ("noname", FASTA, "text/plain")})
+
+    assert r.status_code == 415
+
+
+async def test_빈_파일은_거절한다(client, tmp_path, monkeypatch):
+    from foldfront.core.config import get_settings
+
+    monkeypatch.setenv("PIPELINE_OUTPUT_ROOT", str(tmp_path))
+    get_settings.cache_clear()
+
+    r = await client.post("/api/v1/inputs", files={"file": ("x.fasta", b"   \n", "text/plain")})
+
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "input.empty"
+
+
+async def test_너무_큰_파일은_거절한다(client, tmp_path, monkeypatch):
+    """A mistaken upload should not be able to fill the disk."""
+    from foldfront.api import routes
+    from foldfront.core.config import get_settings
+
+    monkeypatch.setenv("PIPELINE_OUTPUT_ROOT", str(tmp_path))
+    monkeypatch.setattr(routes, "MAX_INPUT_BYTES", 16)
+    get_settings.cache_clear()
+
+    r = await client.post("/api/v1/inputs", files={"file": ("x.fasta", b"A" * 64, "text/plain")})
+
+    assert r.status_code == 413
+    assert not list(tmp_path.rglob("*.fasta"))
+
+
+async def test_올린_것을_감사_기록에_남긴다(client, tmp_path, monkeypatch):
+    from foldfront.core.config import get_settings
+    from foldfront.db.repositories import Repos
+
+    monkeypatch.setenv("PIPELINE_OUTPUT_ROOT", str(tmp_path))
+    get_settings.cache_clear()
+    await client.post("/api/v1/inputs", files={"file": ("lys.fasta", FASTA, "text/plain")})
+
+    records = await Repos().audit.search(action="input.upload")
+
+    assert len(records) == 1
+    assert records[0].detail["name"] == "lys.fasta"
+    assert records[0].detail["bytes"] == len(FASTA)
+
+
+async def test_두_번_올리면_서로_덮어쓰지_않는다(client, tmp_path, monkeypatch):
+    """Two people uploading the same filename must not collide."""
+    from foldfront.core.config import get_settings
+
+    monkeypatch.setenv("PIPELINE_OUTPUT_ROOT", str(tmp_path))
+    get_settings.cache_clear()
+
+    a = await client.post("/api/v1/inputs", files={"file": ("x.fasta", b">a\nMK\n", "text/plain")})
+    b = await client.post("/api/v1/inputs", files={"file": ("x.fasta", b">b\nQW\n", "text/plain")})
+
+    assert a.json()["path"] != b.json()["path"]
+    assert Path(a.json()["path"]).read_bytes() == b">a\nMK\n"
+
+
+async def test_조회자는_파일을_올리지_못한다(client, tmp_path, monkeypatch):
+    from foldfront.core.config import get_settings
+
+    monkeypatch.setenv("PIPELINE_OUTPUT_ROOT", str(tmp_path))
+    monkeypatch.setenv("DEV_ROLE", "viewer")
+    get_settings.cache_clear()
+
+    r = await client.post("/api/v1/inputs", files={"file": ("x.fasta", FASTA, "text/plain")})
+
+    assert r.status_code == 403
 
 
 #  ---------------------------------------------------------------- notices

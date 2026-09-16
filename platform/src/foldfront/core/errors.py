@@ -50,6 +50,9 @@ class E(StrEnum):
     ARTIFACT_FILE_MISSING = "artifact.file_missing"
 
     # -------------------------------------------------- model registry
+    INPUT_TYPE_REJECTED = "input.type_rejected"
+    INPUT_TOO_LARGE = "input.too_large"
+    INPUT_EMPTY = "input.empty"
     MODEL_NOT_FOUND = "model.not_found"
     MODEL_UNRESOLVABLE = "model.unresolvable"
 
@@ -68,6 +71,9 @@ STATUS: dict[E, int] = {
     E.ARTIFACT_NOT_REGISTERED: 404,
     E.ARTIFACT_OUTSIDE_ROOT: 400,
     E.ARTIFACT_FILE_MISSING: 404,
+    E.INPUT_TYPE_REJECTED: 415,
+    E.INPUT_TOO_LARGE: 413,
+    E.INPUT_EMPTY: 400,
     E.MODEL_NOT_FOUND: 404,
     E.MODEL_UNRESOLVABLE: 404,
 }
@@ -88,6 +94,9 @@ MESSAGES: dict[str, dict[E, str]] = {
         E.ARTIFACT_NOT_REGISTERED: "등록되지 않은 산출물입니다.",
         E.ARTIFACT_OUTSIDE_ROOT: "저장 위치를 벗어나는 경로입니다.",
         E.ARTIFACT_FILE_MISSING: "산출물 파일이 저장소에 없습니다.",
+        E.INPUT_TYPE_REJECTED: "받지 않는 파일 형식입니다: {suffix}. 서열(FASTA)이나 구조(PDB·mmCIF) 파일을 올리십시오.",
+        E.INPUT_TOO_LARGE: "파일이 너무 큽니다. {limit_mb}MB 이하만 올릴 수 있습니다.",
+        E.INPUT_EMPTY: "빈 파일입니다.",
         E.MODEL_NOT_FOUND: "모델을 찾지 못했습니다: {model_id}",
         E.MODEL_UNRESOLVABLE: "모델의 실행 위치를 해석하지 못했습니다: {reason}",
     },
@@ -103,6 +112,9 @@ MESSAGES: dict[str, dict[E, str]] = {
         E.ARTIFACT_NOT_REGISTERED: "That artifact is not registered.",
         E.ARTIFACT_OUTSIDE_ROOT: "That path lies outside the storage root.",
         E.ARTIFACT_FILE_MISSING: "The artifact file is not in storage.",
+        E.INPUT_TYPE_REJECTED: "That file type is not accepted: {suffix}. Upload a sequence (FASTA) or a structure (PDB, mmCIF).",
+        E.INPUT_TOO_LARGE: "That file is too large. The limit is {limit_mb}MB.",
+        E.INPUT_EMPTY: "That file is empty.",
         E.MODEL_NOT_FOUND: "No such model: {model_id}",
         E.MODEL_UNRESOLVABLE: "The model could not be resolved to an endpoint: {reason}",
     },
