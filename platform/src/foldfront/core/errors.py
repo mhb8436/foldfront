@@ -66,6 +66,8 @@ class E(StrEnum):
     USER_EMPTY_PATCH = "user.empty_patch"
     AUTH_IDENTITY_MISMATCH = "auth.identity_mismatch"
     FORK_NOT_READY = "run.fork_not_ready"
+    COPILOT_EMPTY = "copilot.empty"
+    COPILOT_UNAVAILABLE = "copilot.unavailable"
     MODEL_NOT_FOUND = "model.not_found"
     MODEL_UNRESOLVABLE = "model.unresolvable"
 
@@ -100,6 +102,8 @@ STATUS: dict[E, int] = {
     E.USER_EMPTY_PATCH: 400,
     E.AUTH_IDENTITY_MISMATCH: 403,
     E.FORK_NOT_READY: 400,
+    E.COPILOT_EMPTY: 400,
+    E.COPILOT_UNAVAILABLE: 503,
     E.MODEL_NOT_FOUND: 404,
     E.MODEL_UNRESOLVABLE: 404,
 }
@@ -136,6 +140,8 @@ MESSAGES: dict[str, dict[E, str]] = {
         E.USER_EMPTY_PATCH: "바꿀 내용이 없습니다.",
         E.AUTH_IDENTITY_MISMATCH: "이름 {user_id} 는 다른 계정이 쓰고 있습니다. 운영자에게 알리십시오.",
         E.FORK_NOT_READY: "이 지점에서 갈라질 수 없습니다: {reason}",
+        E.COPILOT_EMPTY: "물어볼 내용이 없습니다.",
+        E.COPILOT_UNAVAILABLE: "설계 Copilot 의 모델에 닿지 못했습니다: {reason}",
         E.MODEL_NOT_FOUND: "모델을 찾지 못했습니다: {model_id}",
         E.MODEL_UNRESOLVABLE: "모델의 실행 위치를 해석하지 못했습니다: {reason}",
     },
@@ -167,6 +173,8 @@ MESSAGES: dict[str, dict[E, str]] = {
         E.USER_EMPTY_PATCH: "Nothing to change.",
         E.AUTH_IDENTITY_MISMATCH: "The name {user_id} belongs to a different account. Tell an operator.",
         E.FORK_NOT_READY: "Cannot fork at that point: {reason}",
+        E.COPILOT_EMPTY: "Nothing to ask.",
+        E.COPILOT_UNAVAILABLE: "The copilot model could not be reached: {reason}",
         E.MODEL_NOT_FOUND: "No such model: {model_id}",
         E.MODEL_UNRESOLVABLE: "The model could not be resolved to an endpoint: {reason}",
     },

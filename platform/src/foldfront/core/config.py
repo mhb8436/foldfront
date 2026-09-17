@@ -54,6 +54,12 @@ class Settings(BaseSettings):
     #  Uploaded inputs. One person may hold this much at once, and a file no
     #  run has read is removed after this many days. A file a run read stays
     #  as long as the run does - it is that run's provenance.
+    #  The design copilot's model: any OpenAI-compatible chat endpoint. The
+    #  default is ollama on this machine; nothing leaves the box.
+    local_llm_url: str = Field(default="http://127.0.0.1:11434/v1", alias="LOCAL_LLM_URL")
+    local_llm_model: str = Field(default="exaone3.5:7.8b", alias="LOCAL_LLM_MODEL")
+    local_llm_timeout_s: float = Field(default=120.0, alias="LOCAL_LLM_TIMEOUT_S")
+
     input_quota_mb: int = Field(default=512, alias="INPUT_QUOTA_MB")
     input_retention_days: int = Field(default=30, alias="INPUT_RETENTION_DAYS")
 

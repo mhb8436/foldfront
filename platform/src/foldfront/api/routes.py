@@ -24,6 +24,7 @@ from typing import Any, Literal
 
 from pathlib import Path
 
+import httpx
 from fastapi import APIRouter, Body, Depends, Query, Request
 from starlette.datastructures import UploadFile as FormFile
 from fastapi.responses import FileResponse
@@ -522,6 +523,36 @@ async def create_round(round_: Round, identity: CurrentIdentity) -> dict[str, An
         target_id=saved.round_id, detail={"project_id": saved.project_id},
     )
     return saved.model_dump()
+
+
+# ---------------------------------------------------------------- copilot
+
+
+class CopilotTurn(BaseModel):
+    messages: list[dict[str, str]] = Field(default_factory=list)
+    project_id: str | None = None
+    run_id: str | None = None
+
+
+@router.get("/copilot/status", tags=["Copilot"], summary="Whether the design copilot's model answers")
+async def copilot_status() -> dict[str, Any]:
+    from foldfront.engine import copilot
+
+    return await copilot.available()
+
+
+@router.post("/copilot/chat", tags=["Copilot"], summary="Ask the design copilot about this installation's runs")
+async def copilot_chat(turn: CopilotTurn, identity: CurrentIdentity) -> dict[str, Any]:
+    """Answers from the facts it is handed; starts nothing. Any role may ask -
+    the facts are the ones that role could read on the screens anyway."""
+    from foldfront.engine import copilot
+
+    if not turn.messages or turn.messages[-1].get("role") != "user":
+        raise ApiError(E.COPILOT_EMPTY)
+    try:
+        return await copilot.chat(repos(), turn.messages, project_id=turn.project_id, run_id=turn.run_id)
+    except httpx.HTTPError as exc:
+        raise ApiError(E.COPILOT_UNAVAILABLE, reason=str(exc)) from exc
 
 
 # ---------------------------------------------------------------- users

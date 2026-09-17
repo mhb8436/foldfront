@@ -25,6 +25,7 @@ EXEMPT: dict[str, str] = {
     "preflight": "Reads and validates, changes nothing",
     "start_run": "ExecutionService.start records run.create one layer down",
     "start_forked_run": "ExecutionService.resume records run.start one layer down",
+    "copilot_chat": "Reads and answers; changes nothing",
 }
 
 

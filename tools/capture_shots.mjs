@@ -47,6 +47,7 @@ const SHOTS = [
   { file: 'models.png', path: '/models', budget: 6000 },
   { file: 'operations.png', path: '/operations', budget: 6000 },
   { file: 'users.png', path: '/users', budget: 6000 },
+  { file: 'copilot.png', path: '/copilot', budget: 6000 },
 ]
 
 async function capture(shot) {

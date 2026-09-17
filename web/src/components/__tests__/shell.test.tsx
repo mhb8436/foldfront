@@ -72,15 +72,17 @@ describe('콘솔 골격', () => {
     }
   })
 
-  it('미구현 메뉴는 링크가 아니라 「예정」으로 표시한다', async () => {
+  it('모든 메뉴가 실제 화면으로 이어진다', async () => {
+    //  There was a 예정 badge on the copilot until it existed. Nothing in the
+    //  navigation should promise a screen that is not there.
     const { container } = mount()
     await screen.findByText('tester')
     const nav = container.querySelector('nav')!
     const hrefs = Array.from(nav.querySelectorAll('a')).map((a) => a.getAttribute('href'))
 
     expect(hrefs).toContain('/monitor')
-    expect(hrefs).not.toContain('/copilot')
-    expect(nav.textContent).toContain('예정')
+    expect(hrefs).toContain('/copilot')
+    expect(nav.textContent).not.toContain('예정')
   })
 
   it('현재 경로의 메뉴만 활성 표시한다', async () => {

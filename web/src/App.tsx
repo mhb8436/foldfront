@@ -10,6 +10,7 @@ import { Analyze } from './pages/Analyze'
 import { Models } from './pages/Models'
 import { Operations } from './pages/Operations'
 import { Users } from './pages/Users'
+import { Copilot } from './pages/Copilot'
 
 export function App() {
   return (
@@ -25,6 +26,7 @@ export function App() {
         <Route path="/models" element={<Models />} />
         <Route path="/operations" element={<Operations />} />
         <Route path="/users" element={<Users />} />
+        <Route path="/copilot" element={<Copilot />} />
       </Routes>
     </Shell>
   )
