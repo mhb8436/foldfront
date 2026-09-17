@@ -5,7 +5,7 @@
 운영 중인 설치에도 돌릴 수 있다.
 
 ```bash
-uv run python tools/load_test.py --users 50 --seconds 30        # 요건 조건
+uv run python tools/load_test.py --users 50 --seconds 30        # 예비 실측 — 요건(PER-001)은 50명 · 30분 지속 · 작업 등록 포함
 uv run python tools/load_test.py --users 100 --seconds 20 --think 0.2
 ```
 
@@ -16,7 +16,7 @@ uv run python tools/load_test.py --users 100 --seconds 20 --think 0.2
 | **50명 · 30초 · 간격 0.5초** | 2,923 | 0 | 96 | 0.006s | **0.058s** | 0.157s | 0.271s | **100%** |
 | 100명 · 20초 · 간격 0.2초 | 5,291 | 0 | 262 | 0.052s | 0.663s | 1.897s | 5.131s | 99.7% |
 
-요건(동시 50명 · 응답 3초)은 **50배 여유**로 충족한다. 원 JSON 은 `50users-30s.json` · `100users-20s.json`.
+동시 50명 · 응답 3초 조건은 이 예비 실측(30초 · 조회 경로)에서 p95 0.058초였다. 요건이 정한 **30분 지속 · 작업 등록 포함** 시험은 아직이다. 원 JSON 은 `50users-30s.json` · `100users-20s.json`.
 
 ## 드러난 것
 
