@@ -224,7 +224,7 @@ async def fork_run(
     """Forking never writes to the run it came from."""
     r = repos()
     try:
-        child = await r.runs.fork(run_id, from_stage=from_stage)
+        child = await ExecutionService(r).fork(run_id, from_stage=from_stage)
     except ValueError as exc:
         raise ApiError(E.FORK_NOT_READY, reason=str(exc)) from exc
     if child is None:

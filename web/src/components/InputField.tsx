@@ -40,6 +40,7 @@ export function InputField({
   value,
   onChange,
   onSummary,
+  onUploaded,
   placeholder,
   disabled,
 }: {
@@ -50,6 +51,8 @@ export function InputField({
   onChange: (value: string) => void
   /** What the field made of the content, for the screen to act on. */
   onSummary?: (summary: FastaSummary | PdbSummary | null) => void
+  /** A file went up. What is stored just changed. */
+  onUploaded?: () => void
   placeholder?: string
   disabled?: boolean
 }) {
@@ -94,6 +97,7 @@ export function InputField({
       const stored = await api.uploadInput(file)
       setUploaded({ name: stored.name, size: stored.size_bytes })
       onChange(stored.path)
+      onUploaded?.()
     } catch (e) {
       setError((e as Error).message)
       setSummary(null)

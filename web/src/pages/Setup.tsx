@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Field, Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { InputField } from '../components/InputField'
-import { looksLikePath, type PdbSummary } from '@/lib/bio'
+import type { PdbSummary } from '@/lib/bio'
 import { useIdentity } from '@/lib/identity'
 import { roundLabel, useProject } from '@/lib/project'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -30,8 +30,10 @@ export function Setup() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const { canRun } = useIdentity()
-  //  Re-read after either field changes: an upload just moved the number.
-  const usage = useAsync(() => api.inputUsage(), [targetFasta.length > 0 && looksLikePath(targetFasta), targetPdb.length > 0 && looksLikePath(targetPdb)])
+  //  Re-read after every upload - the field says when one landed - and not
+  //  on keystrokes, which change nothing stored.
+  const [uploads, setUploads] = useState(0)
+  const usage = useAsync(() => api.inputUsage(), [uploads])
   //  null: nothing chosen yet, so the latest round. '': chosen to be none.
   //  Two different things, and `roundId || latest` could not tell them apart -
   //  「회차 없이」 snapped straight back to the latest round.
@@ -180,6 +182,7 @@ export function Setup() {
               label="대상 서열"
               value={targetFasta}
               onChange={setTargetFasta}
+              onUploaded={() => setUploads((n) => n + 1)}
               placeholder={'>lysozyme\nMKALIVLGLVLLSVTVQGKVFERCELARTLKRLGMDGYRG…'}
               disabled={!canRun}
             />
@@ -189,6 +192,7 @@ export function Setup() {
               label="대상 구조"
               value={targetPdb}
               onChange={setTargetPdb}
+              onUploaded={() => setUploads((n) => n + 1)}
               onSummary={(s) => {
                 //  A structure says which chains it has. Filling them in
                 //  saves typing and, more to the point, saves typing a chain

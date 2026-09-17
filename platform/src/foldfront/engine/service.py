@@ -113,6 +113,41 @@ class ExecutionService:
 
         return await self.repos.runs.get(run.run_id) or run
 
+    async def fork(self, run_id: str, *, from_stage: str | None = None) -> Run | None:
+        """A new run that inherits what the original finished before a stage.
+
+        What it inherits is decided from the graph, not from the order stages
+        happen to be listed in: the fork point's ancestors must all have
+        succeeded, and only those come along. A sibling on another branch -
+        failed, or skipped because a condition went the other way - is neither
+        a reason to refuse nor something to inherit; it is simply re-derived.
+        """
+        run = await self.repos.runs.get(run_id)
+        if run is None:
+            return None
+        if not from_stage:
+            return await self.repos.runs.fork(run_id, keep_names=[])
+        workflow = await self.repos.workflows.get(run.workflow_id, run.workflow_version) if run.workflow_id else None
+        if workflow is None:
+            raise ValueError("워크플로를 찾지 못해 갈라질 수 없습니다")
+        graph = build_graph(workflow)
+        if from_stage not in graph.nodes:
+            raise ValueError(f"그런 단계가 없습니다: {from_stage}")
+
+        ancestors: set[str] = set()
+        frontier = list(graph.parents(from_stage))
+        while frontier:
+            n = frontier.pop()
+            if n in ancestors:
+                continue
+            ancestors.add(n)
+            frontier.extend(graph.parents(n))
+        status = {st.name: st.status for st in run.stages}
+        for name in sorted(ancestors):
+            if status.get(name) is not RunStatus.SUCCEEDED:
+                raise ValueError(f"{name} 단계가 끝나지 않아 {from_stage} 부터 갈라질 수 없습니다")
+        return await self.repos.runs.fork(run_id, from_stage=from_stage, keep_names=sorted(ancestors))
+
     async def resume(self, run_id: str, *, actor_id: str | None = None) -> Run | None:
         """Start a run that exists but has not begun - a fork, waiting.
 
@@ -165,8 +200,11 @@ class ExecutionService:
 
         Here, not in one route: runs start from the API, from MCP, from the CLI
         and from a fork, and a file is that run's provenance whichever way it
-        was started. Values are resolved the way StageInput.text resolves them,
-        so a relative spelling links the same file the run will read.
+        was started. Only top-level values are looked at, because that is all
+        StageInput.path ever reads - linking a file under a nested key would
+        record as read something no stage reads. Values are resolved the way
+        StageInput.text resolves them, so a relative spelling links the same
+        file the run will read.
         """
         from pathlib import Path
 
@@ -175,21 +213,14 @@ class ExecutionService:
         root = Path(get_settings().output_root).resolve()
         paths: list[str] = []
 
-        def walk(v: Any) -> None:
-            if isinstance(v, str):
-                raw = v.strip()
-                if raw and "\n" not in raw and not raw.startswith(">") and not re.search(r"\s", raw):
-                    target = (root / raw).resolve()
-                    if target.is_relative_to(root):
-                        paths.append(str(target))
-            elif isinstance(v, dict):
-                for x in v.values():
-                    walk(x)
-            elif isinstance(v, list):
-                for x in v:
-                    walk(x)
-
-        walk(request or {})
+        for v in (request or {}).values():
+            if not isinstance(v, str):
+                continue
+            raw = v.strip()
+            if raw and not raw.startswith(">") and not re.search(r"\s", raw):
+                target = (root / raw).resolve()
+                if target.is_relative_to(root):
+                    paths.append(str(target))
         return await self.repos.inputs.link_run(paths, run_id) if paths else 0
 
     # ------------------------------------------------------------ progress

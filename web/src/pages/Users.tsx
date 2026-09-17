@@ -32,7 +32,7 @@ export function Users() {
   //  A row's switches are built from the row as last fetched. Two clicks
   //  before the first answers would each send a list missing the other's
   //  change, so a row takes one change at a time.
-  const [busy, setBusy] = useState<string | null>(null)
+  const [busy, setBusy] = useState<Set<string>>(() => new Set())
 
   async function toggleRole(u: UserAccount, role: Role) {
     const roles = u.roles.includes(role) ? u.roles.filter((r) => r !== role) : [...u.roles, role]
@@ -40,8 +40,8 @@ export function Users() {
   }
 
   async function apply(u: UserAccount, patch: { roles?: string[]; active?: boolean }) {
-    if (busy) return
-    setBusy(u.user_id)
+    if (busy.has(u.user_id)) return
+    setBusy((b) => new Set(b).add(u.user_id))
     setError(null)
     setMessage(null)
     try {
@@ -53,7 +53,11 @@ export function Users() {
     } catch (e) {
       setError((e as Error).message)
     } finally {
-      setBusy(null)
+      setBusy((b) => {
+        const next = new Set(b)
+        next.delete(u.user_id)
+        return next
+      })
     }
   }
 
@@ -115,7 +119,7 @@ export function Users() {
                               //  Your own operator role is not yours to remove: the
                               //  server refuses it, and a switch that answers 400 is
                               //  worse than one that is not offered.
-                              disabled={!u.active || busy === u.user_id || (me && role === 'admin' && on)}
+                              disabled={!u.active || busy.has(u.user_id) || (me && role === 'admin' && on)}
                               onClick={() => toggleRole(u, role)}
                               className={cn(
                                 'rounded-md border px-2 py-0.5 text-[12px] transition-colors',
@@ -139,7 +143,7 @@ export function Users() {
                         //  Switching yourself off is the one thing this screen refuses
                         //  to offer: the server would refuse the last operator anyway,
                         //  and a button that answers 409 is worse than no button.
-                        disabled={me || busy === u.user_id}
+                        disabled={me || busy.has(u.user_id)}
                         onClick={() => apply(u, { active: !u.active })}
                       >
                         <StatusDot status={u.active ? 'succeeded' : 'cancelled'} />

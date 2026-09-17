@@ -143,7 +143,8 @@ class RunRepo(BaseRepo):
             )
         return Run(**_clean(doc)) if doc else None
 
-    async def fork(self, run_id: str, *, from_stage: str | None = None) -> Run | None:
+    async def fork(self, run_id: str, *, from_stage: str | None = None,
+                   keep_names: list[str] | None = None) -> Run | None:
         """Forking makes a new run. The original is never written to.
 
         With from_stage, everything before that stage is inherited and the run
@@ -155,7 +156,10 @@ class RunRepo(BaseRepo):
             return None
 
         keep: list[StageState] = []
-        if from_stage:
+        if keep_names is not None:
+            #  The service decided from the graph which stages the fork inherits.
+            keep = [st for st in src.stages if st.name in keep_names]
+        elif from_stage:
             names = [st.name for st in src.stages]
             if from_stage not in names:
                 #  Found in review: an unknown name inherited every stage and the
@@ -733,14 +737,15 @@ class InputRepo(BaseRepo):
         return item
 
     async def usage(self, owner_id: str | None) -> int:
-        """Bytes this owner holds that no run has read.
+        """Bytes this owner holds, all of them.
 
-        A file a run read belongs to that run's record now, not to the
-        person's allowance; counting it would fill the allowance with files
-        nothing can free.
+        Counting only unread files made the allowance unbounded: a run that
+        merely named an upload took it off the count for good. Everything
+        counts; what is pinned by a run is listed as such so the person can
+        see why the number does not fall.
         """
         rows = await self.col.aggregate([
-            {"$match": {"owner_id": owner_id, "run_ids": {"$size": 0}}},
+            {"$match": {"owner_id": owner_id}},
             {"$group": {"_id": None, "bytes": {"$sum": "$size_bytes"}}},
         ]).to_list(length=1)
         return int(rows[0]["bytes"]) if rows else 0
@@ -811,6 +816,7 @@ class UserRepo(BaseRepo):
         """
         now = utcnow()
         stale = now - timedelta(seconds=60)
+        subject = subject or None
         existing = await self.col.find_one({"subject": subject}) if subject else None
         if existing is None:
             same_name = await self.col.find_one({"user_id": user_id})
@@ -820,25 +826,48 @@ class UserRepo(BaseRepo):
                 existing = same_name
 
         if existing is None:
-            d = await self.col.find_one_and_update(
-                {"subject": subject} if subject else {"user_id": user_id},
-                {"$setOnInsert": {"user_id": user_id, "subject": subject or None,
-                                  "roles": [str(r) for r in roles], "active": True,
-                                  "created_at": now, "last_login_at": now, "updated_at": now,
-                                  "email": email or None}},
-                upsert=True, return_document=ReturnDocument.AFTER,
-            )
-            return User(**_clean(d))
+            doc: dict[str, Any] = {
+                "user_id": user_id, "roles": [str(r) for r in roles], "active": True,
+                "created_at": now, "last_login_at": now, "updated_at": now, "email": email or None,
+            }
+            #  No subject key at all when there is none: the unique index is
+            #  sparse, and an explicit null would still be indexed - and collide.
+            if subject:
+                doc["subject"] = subject
+            try:
+                await self.col.insert_one(doc)
+            except DuplicateKeyError:
+                #  A first visit fires several requests at once, and each of
+                #  them reached here with no record. One insert won; this is
+                #  the record it made.
+                pass
+            found = await self.col.find_one({"subject": subject}) if subject else None
+            if found is None:
+                found = await self.col.find_one({"user_id": user_id})
+            if found is None:
+                raise ValueError(f"'{user_id}' 계정을 기록하지 못했습니다")
+            if found.get("subject") and subject and found["subject"] != subject:
+                raise ValueError(f"'{user_id}' 는 다른 계정의 이름입니다")
+            existing = found
 
         patch: dict[str, Any] = {}
+        if subject and not existing.get("subject"):
+            #  A record made from a token with no subject, now claimed by one
+            #  that has it. From here on the subject is what finds it.
+            patch["subject"] = subject
         if existing.get("user_id") != user_id:
             #  Renamed at the provider. Keep the record, take the new name -
             #  unless the name is already someone else's, in which case keep ours.
             taken = await self.col.find_one({"user_id": user_id, "_id": {"$ne": existing["_id"]}})
             if taken is None:
                 patch["user_id"] = user_id
-        if email and existing.get("email") != email:
-            patch["email"] = email
+                #  Everything the person owns is keyed on the name; it follows.
+                for col in (C.INPUTS, C.RUNS):
+                    await self.db[col].update_many(
+                        {"owner_id": existing["user_id"]}, {"$set": {"owner_id": user_id}},
+                    )
+        if existing.get("email") != (email or None):
+            patch["email"] = email or None
         if not existing.get("last_login_at") or existing["last_login_at"] < stale:
             patch["last_login_at"] = now
         if patch:

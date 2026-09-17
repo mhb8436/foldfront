@@ -1173,9 +1173,10 @@ async def test_정리는_아무_실행도_읽지_않은_옛_파일만_지운다(
 
 
 
-async def test_실행이_읽은_파일은_한도에_들지_않는다(client, tmp_path, monkeypatch):
-    """Otherwise the allowance fills with files nothing can free, and the
-    refusal promises a cleanup that never comes."""
+async def test_실행이_읽은_파일도_한도에_든다(client, tmp_path, monkeypatch):
+    """Review found the opposite rule made the allowance unbounded: naming a
+    file in any run took it off the count for good. Everything counts; what
+    is pinned is shown, not hidden."""
     from foldfront.core.config import get_settings
     from foldfront.db.repositories import Repos
 
@@ -1186,4 +1187,6 @@ async def test_실행이_읽은_파일은_한도에_들지_않는다(client, tmp
 
     await Repos().inputs.link_run([up["path"]], "run-x")
 
-    assert (await client.get("/api/v1/inputs/usage")).json()["used_bytes"] == 0
+    usage = (await client.get("/api/v1/inputs/usage")).json()
+    assert usage["used_bytes"] == len(FASTA)
+    assert usage["items"][0]["run_ids"] == ["run-x"]
