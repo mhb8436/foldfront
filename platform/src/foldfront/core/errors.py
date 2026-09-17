@@ -68,6 +68,7 @@ class E(StrEnum):
     FORK_NOT_READY = "run.fork_not_ready"
     COPILOT_EMPTY = "copilot.empty"
     COPILOT_UNAVAILABLE = "copilot.unavailable"
+    COPILOT_TOO_LONG = "copilot.too_long"
     MODEL_NOT_FOUND = "model.not_found"
     MODEL_UNRESOLVABLE = "model.unresolvable"
 
@@ -104,6 +105,7 @@ STATUS: dict[E, int] = {
     E.FORK_NOT_READY: 400,
     E.COPILOT_EMPTY: 400,
     E.COPILOT_UNAVAILABLE: 503,
+    E.COPILOT_TOO_LONG: 413,
     E.MODEL_NOT_FOUND: 404,
     E.MODEL_UNRESOLVABLE: 404,
 }
@@ -142,6 +144,7 @@ MESSAGES: dict[str, dict[E, str]] = {
         E.FORK_NOT_READY: "이 지점에서 갈라질 수 없습니다: {reason}",
         E.COPILOT_EMPTY: "물어볼 내용이 없습니다.",
         E.COPILOT_UNAVAILABLE: "설계 Copilot 의 모델에 닿지 못했습니다: {reason}",
+        E.COPILOT_TOO_LONG: "질문이 너무 깁니다. 한 메시지 {chars}자, 대화는 최근 {turns}턴까지만 읽습니다.",
         E.MODEL_NOT_FOUND: "모델을 찾지 못했습니다: {model_id}",
         E.MODEL_UNRESOLVABLE: "모델의 실행 위치를 해석하지 못했습니다: {reason}",
     },
@@ -175,6 +178,7 @@ MESSAGES: dict[str, dict[E, str]] = {
         E.FORK_NOT_READY: "Cannot fork at that point: {reason}",
         E.COPILOT_EMPTY: "Nothing to ask.",
         E.COPILOT_UNAVAILABLE: "The copilot model could not be reached: {reason}",
+        E.COPILOT_TOO_LONG: "That is too long. One message may be {chars} characters, and only the last {turns} turns are read.",
         E.MODEL_NOT_FOUND: "No such model: {model_id}",
         E.MODEL_UNRESOLVABLE: "The model could not be resolved to an endpoint: {reason}",
     },

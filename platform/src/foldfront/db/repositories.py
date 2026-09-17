@@ -259,6 +259,12 @@ class RunEventRepo(BaseRepo):
         cur = self.col.find({"run_id": run_id}).sort("seq", ASCENDING).limit(limit)
         return [RunEvent(**_clean(d)) for d in await cur.to_list(length=limit)]
 
+    async def tail(self, run_id: str, n: int) -> list[RunEvent]:
+        """The newest n, in order. list() with a limit gives the oldest."""
+        cur = self.col.find({"run_id": run_id}).sort("seq", DESCENDING).limit(n)
+        rows = [RunEvent(**_clean(d)) for d in await cur.to_list(length=n)]
+        return list(reversed(rows))
+
 
 class ArtifactRepo(BaseRepo):
     """Metadata only. The files themselves live in object storage."""

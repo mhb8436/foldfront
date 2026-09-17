@@ -33,7 +33,22 @@ export function Copilot() {
   const { current } = useProject()
   const [runId, setRunId] = useState('')
   const [draft, setDraft] = useState('')
-  const [messages, setMessages] = useState<Message[]>([])
+  //  Kept for the tab: the model's own answers send people to other screens,
+  //  and coming back to an empty thread would make that advice cost the thread.
+  const [messages, setMessages] = useState<Message[]>(() => {
+    try {
+      return JSON.parse(window.sessionStorage.getItem('foldfront.copilot') ?? '[]') as Message[]
+    } catch {
+      return []
+    }
+  })
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem('foldfront.copilot', JSON.stringify(messages.slice(-40)))
+    } catch {
+      //  Storage refused; the thread lives for this mount only.
+    }
+  }, [messages])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const bottom = useRef<HTMLDivElement>(null)
@@ -52,10 +67,14 @@ export function Copilot() {
     setMessages(next)
     setBusy(true)
     try {
+      const run = runId.trim()
+      if (run && !/^run-[0-9a-f]{6,}$/i.test(run)) {
+        throw new Error(`실행 식별자 형식이 아닙니다: ${run}. run- 으로 시작하는 식별자를 적으십시오.`)
+      }
       const out = await api.copilotChat({
         messages: next.map(({ role, content }) => ({ role, content })),
         project_id: current?.project_id,
-        run_id: runId.trim() || undefined,
+        run_id: run || undefined,
       })
       setMessages([...next, { role: 'assistant', content: out.reply, context: out.context_used }])
     } catch (e) {
@@ -75,6 +94,13 @@ export function Copilot() {
       <PageHeader
         title="설계 Copilot"
         description="이 설치의 실행·회차·워크플로를 근거로 답합니다. 실행은 시작하지 않습니다 — 그건 실행 준비 화면에서 하십시오."
+        actions={
+          messages.length > 0 && (
+            <Button variant="outline" size="sm" onClick={() => setMessages([])}>
+              대화 비우기
+            </Button>
+          )
+        }
       />
       <ErrorBox message={error ?? status.error} />
 
@@ -87,7 +113,11 @@ export function Copilot() {
             ) : (
               <span className="inline-flex items-center gap-1.5">
                 <StatusDot status={available ? 'succeeded' : 'failed'} />
-                {available ? `로컬 모델 ${status.data!.model}` : `모델에 닿지 못했습니다 (${status.data?.url ?? ''})`}
+                {available
+                  ? `로컬 모델 ${status.data!.model}`
+                  : status.error
+                    ? `상태를 읽지 못했습니다 — ${status.error}`
+                    : `모델에 닿지 못했습니다 (${status.data?.url ?? ''})`}
               </span>
             )
           }
@@ -168,6 +198,12 @@ export function Copilot() {
             </Field>
             <p className="text-muted-foreground text-[11.5px]">
               모델은 이 기계에서 돕니다. 서열·결과가 밖으로 나가지 않습니다.
+            </p>
+            <p className="text-muted-foreground border-t pt-3 text-[11.5px]">
+              {/*  Said here, not buried in docs: the person deciding whether to
+                  act on an answer needs to know what kind of thing it is. */}
+              언어 모델의 답입니다. 「참고」에 적힌 현황 안에서 답하도록 묶어 두었지만, 수치와 상태는 실행 감시·결과
+              분석 화면에서 확인하고 행동하십시오.
             </p>
           </div>
         </Panel>
