@@ -431,6 +431,20 @@ export const api = {
       method: 'POST',
     }),
 
+  // -------------------------------------------------------- copilot
+  copilotStatus: () =>
+    request<{ available: boolean; model: string; url: string; served: string[] }>('/copilot/status'),
+
+  copilotChat: (body: {
+    messages: Array<{ role: 'user' | 'assistant'; content: string }>
+    project_id?: string
+    run_id?: string
+  }) =>
+    request<{ reply: string; context_used: string[]; model: string }>('/copilot/chat', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
   // ---------------------------------------------------------- users
   listUsers: () => request<Listed<UserAccount>>('/users'),
 
