@@ -32,6 +32,12 @@ async def lifespan(app: FastAPI):
         from foldfront.db.repositories import Repos
 
         await Repos().users.col.update_many({"subject": "dev"}, {"$set": {"active": False}})
+    else:
+        #  And back on when the provider is off again - a staging box that
+        #  trialled a provider and reverted must not be locked out of itself.
+        from foldfront.db.repositories import Repos
+
+        await Repos().users.col.update_many({"subject": "dev", "active": False}, {"$set": {"active": True}})
     yield
     await close_client()
 

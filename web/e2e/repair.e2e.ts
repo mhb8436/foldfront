@@ -35,7 +35,10 @@ test('멈춘 실행 되살리기: 알림 → 되살리기 → 성공', async ({ 
   //  The button, not the worker's own sweep: a hand repair is audited under
   //  the person who pressed it, and the run's log says what was re-queued.
   const audit = await (await page.request.get(`/api/v1/audit?action=run.reconcile&target_id=${runId}`)).json()
-  expect(audit.count).toBeGreaterThanOrEqual(1)
+  //  Not merely that the button was pressed: that pressing it repaired
+  //  something. A row with repaired=0 would mean the worker's sweep got there
+  //  first and the button did nothing.
+  expect(audit.items.some((a: { detail: { repaired: number } }) => a.detail.repaired >= 1)).toBe(true)
   const events = await (await page.request.get(`/api/v1/runs/${runId}/events`)).json()
   expect(events.items.some((e: { message: string }) => /다시 큐에 넣었습니다/.test(e.message))).toBe(true)
 

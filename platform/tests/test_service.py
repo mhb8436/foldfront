@@ -772,7 +772,7 @@ async def test_끝나지_않은_단계_뒤에서는_갈라질_수_없다(seeded:
     run = await svc.start(wf)  # msa is queued, not done
 
     with pytest.raises(ValueError, match="끝나지 않아"):
-        await seeded.runs.fork(run.run_id, from_stage="rfd3")
+        await svc.fork(run.run_id, from_stage="rfd3")
 
 
 async def test_없는_단계에서는_갈라질_수_없다(seeded: Repos):
@@ -783,7 +783,7 @@ async def test_없는_단계에서는_갈라질_수_없다(seeded: Repos):
     run = await svc.start(wf)
 
     with pytest.raises(ValueError, match="그런 단계가 없습니다"):
-        await seeded.runs.fork(run.run_id, from_stage="does-not-exist")
+        await svc.fork(run.run_id, from_stage="does-not-exist")
 
 
 async def test_시작은_한_번만_된다(seeded: Repos):
@@ -835,9 +835,60 @@ async def test_어디서_시작하든_읽은_파일은_실행에_묶인다(seede
     svc = ExecutionService(seeded)
     wf = await seeded.workflows.save(builtin_pipeline_workflow())
 
-    #  relative spelling, nested under a dict - both the ways review found missed
-    run = await svc.start(wf, request={"inputs": {"target_fasta": "inputs/in-1.fasta"}})
+    #  relative spelling, the way review found missed; top level, the way a stage reads
+    run = await svc.start(wf, request={"target_fasta": "inputs/in-1.fasta"})
 
     linked = await seeded.inputs.by_paths([str(f.resolve())])
     assert linked[0].run_ids == [run.run_id]
+    get_settings.cache_clear()
+
+
+
+async def test_다른_가지가_실패해도_내_가지에서는_갈라질_수_있다(seeded: Repos):
+    """Found in review: the check walked list order, so a failed or skipped
+    sibling on another branch refused every fork past it. Predecessors are a
+    graph question."""
+    from foldfront.db.models import NodeKind, Workflow, WorkflowEdge, WorkflowNode
+
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(Workflow(
+        workflow_id="wf-fan", name="갈래",
+        nodes=[WorkflowNode(node_id=n, kind=NodeKind.MODEL, model_id=m)
+               for n, m in (("msa", "msa"), ("rfd3", "rfd3"), ("bioemu", "bioemu"))],
+        edges=[WorkflowEdge(source="msa", target="rfd3"), WorkflowEdge(source="msa", target="bioemu")],
+    ))
+    run = await svc.start(wf)
+    await svc.complete_node(run.run_id, "msa", succeeded=True, result={"depth": 1})
+    await svc.complete_node(run.run_id, "rfd3", succeeded=False, error="GPU 없음")
+    await svc.complete_node(run.run_id, "bioemu", succeeded=True, result={"structures": 3})
+
+    child = await svc.fork(run.run_id, from_stage="bioemu")
+
+    assert [st.name for st in child.stages] == ["msa"]
+    started = await svc.resume(child.run_id)
+    assert started.status is RunStatus.RUNNING
+    #  The fork point runs, and so does the failed sibling: it was not
+    #  inherited, so it is re-derived from the ancestor that succeeded.
+    assert {j.node_id for j in await seeded.jobs.list_for_run(child.run_id)} == {"bioemu", "rfd3"}
+
+
+async def test_중첩된_값은_실행에_묶이지_않는다(seeded: Repos, tmp_path, monkeypatch):
+    """A stage reads top-level keys only. Linking a nested value would record
+    as read something nothing reads - and make the quota escapable."""
+    from foldfront.core.config import get_settings
+    from foldfront.db.models import InputFile
+
+    monkeypatch.setenv("PIPELINE_OUTPUT_ROOT", str(tmp_path))
+    get_settings.cache_clear()
+    (tmp_path / "inputs").mkdir()
+    f = tmp_path / "inputs" / "in-2.fasta"
+    f.write_text(">a\nMK\n")
+    await seeded.inputs.record(InputFile(input_id="in-2", owner_id="me", name="a.fasta", kind="fasta",
+                                         path=str(f.resolve()), size_bytes=8))
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(builtin_pipeline_workflow())
+
+    await svc.start(wf, request={"scratch": {"anything": ["inputs/in-2.fasta"]}})
+
+    assert (await seeded.inputs.by_paths([str(f.resolve())]))[0].run_ids == []
     get_settings.cache_clear()

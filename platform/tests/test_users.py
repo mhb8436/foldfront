@@ -191,3 +191,71 @@ async def test_조회자는_이용자_목록을_보지_못한다(client, monkeyp
     get_settings.cache_clear()
 
     assert (await client.get("/api/v1/users")).status_code == 403
+
+
+
+async def test_첫_로그인이_동시에_여러_번_와도_기록은_하나다(client):
+    """A first visit fires several requests at once; each reached seen() with
+    no record and one of the inserts lost on uq_user_id - a 500 on the first
+    page a person ever saw."""
+    import asyncio
+
+    from foldfront.db.repositories import Repos
+
+    users = Repos().users
+    results = await asyncio.gather(*(
+        users.seen("alice", subject="sub-a", email="a@x", roles=[Role.RESEARCHER]) for _ in range(12)
+    ))
+
+    assert {u.user_id for u in results} == {"alice"}
+    assert await users.col.count_documents({}) == 1
+
+
+async def test_subject_없는_계정_둘은_서로_충돌하지_않는다(client):
+    from foldfront.db.repositories import Repos
+
+    users = Repos().users
+    await users.seen("alice", subject="", email=None, roles=[Role.VIEWER])
+    await users.seen("bob", subject="", email=None, roles=[Role.VIEWER])
+
+    assert await users.col.count_documents({}) == 2
+    assert (await users.col.find_one({"user_id": "alice"})).get("subject") is None
+
+
+async def test_subject_있는_토큰이_subject_없는_기록을_맡으면_그때부터_subject_로_찾는다(client):
+    from foldfront.db.repositories import Repos
+
+    users = Repos().users
+    await users.seen("alice", subject="", email=None, roles=[Role.VIEWER])
+    await users.seen("alice", subject="sub-real", email=None, roles=[Role.VIEWER])
+
+    rec = await users.col.find_one({"user_id": "alice"})
+    assert rec["subject"] == "sub-real"
+    #  and another subject with the same name is now refused, not adopted
+    with pytest.raises(ValueError):
+        await users.seen("alice", subject="sub-other", email=None, roles=[Role.ADMIN])
+
+
+async def test_이름이_바뀌면_올린_파일과_실행도_따라간다(client):
+    from foldfront.db.models import InputFile, Run
+    from foldfront.db.repositories import Repos
+
+    r = Repos()
+    await r.users.seen("kim", subject="sub-k", email=None, roles=[Role.RESEARCHER])
+    await r.inputs.record(InputFile(input_id="i1", owner_id="kim", name="a", kind="fasta", path="/p/a", size_bytes=1))
+    await r.runs.create(Run(run_id="run-k", owner_id="kim"))
+
+    await r.users.seen("kim2", subject="sub-k", email=None, roles=[Role.RESEARCHER])
+
+    assert (await r.inputs.col.find_one({"input_id": "i1"}))["owner_id"] == "kim2"
+    assert (await r.runs.get("run-k")).owner_id == "kim2"
+
+
+async def test_공급자가_이메일을_빼면_기록에서도_빠진다(client):
+    from foldfront.db.repositories import Repos
+
+    users = Repos().users
+    await users.seen("u", subject="s", email="u@x", roles=[Role.VIEWER])
+    rec = await users.seen("u", subject="s", email="", roles=[Role.VIEWER])
+
+    assert rec.email is None

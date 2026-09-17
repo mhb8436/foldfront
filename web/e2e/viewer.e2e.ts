@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { mongo, snap } from './helpers'
+import { FASTA, mongo, snap, startRun, waitForRunStatus } from './helpers'
 
 /**
  * What a reader sees.
@@ -10,6 +10,10 @@ import { mongo, snap } from './helpers'
  * navigation. The signed-in account is demoted for the duration and put back.
  */
 test('조회자 화면: 쓰기 단추가 없다', async ({ page }) => {
+  //  A run to look at, made while still an operator, so the monitor check
+  //  below always has a row and cannot pass by having nothing to assert on.
+  const runId = await startRun(page, FASTA)
+  await waitForRunStatus(page, runId, '성공')
   mongo(`db.users.updateOne({user_id:'dev'}, {$set: {roles: ['viewer']}})`)
   try {
     await page.goto('/studio')
@@ -29,12 +33,12 @@ test('조회자 화면: 쓰기 단추가 없다', async ({ page }) => {
     expect(refused.status()).toBe(403)
 
     await page.goto('/monitor')
-    const anyRow = page.getByRole('row').nth(1)
-    if (await anyRow.count()) {
-      await anyRow.click()
-      await expect(page.getByRole('button', { name: '여기서 fork' })).toHaveCount(0)
-      await expect(page.getByRole('button', { name: '정합성 점검' })).toHaveCount(0)
-    }
+    const row = page.getByRole('row', { name: new RegExp(runId) })
+    await expect(row).toBeVisible()
+    await row.click()
+    await expect(page.getByText(`실행 상세 — ${runId}`)).toBeVisible()
+    await expect(page.getByRole('button', { name: '여기서 fork' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '정합성 점검' })).toHaveCount(0)
 
     await page.goto('/dashboard')
     await expect(page.getByRole('link', { name: /실행 시작/ })).toHaveCount(0)
@@ -46,5 +50,6 @@ test('조회자 화면: 쓰기 단추가 없다', async ({ page }) => {
     await snap(page, 'viewer-03-notices')
   } finally {
     mongo(`db.users.updateOne({user_id:'dev'}, {$set: {roles: ['admin']}})`)
+    mongo(`db.runs.deleteMany({run_id:'${runId}'}); db.jobs.deleteMany({run_id:'${runId}'}); db.run_events.deleteMany({run_id:'${runId}'});`)
   }
 })
