@@ -1190,3 +1190,23 @@ async def test_실행이_읽은_파일도_한도에_든다(client, tmp_path, mon
     usage = (await client.get("/api/v1/inputs/usage")).json()
     assert usage["used_bytes"] == len(FASTA)
     assert usage["items"][0]["run_ids"] == ["run-x"]
+
+
+
+async def test_copilot_은_너무_긴_질문을_거절한다(client):
+    r = await client.post("/api/v1/copilot/chat", json={
+        "messages": [{"role": "user", "content": "가" * 5000}],
+    })
+    assert r.status_code == 413
+    assert r.json()["error"]["code"] == "copilot.too_long"
+
+
+async def test_copilot_상태는_모델_이름만_말한다(client, monkeypatch):
+    from foldfront.engine import copilot
+
+    async def fake():
+        return {"available": True, "model": "m", "url": "u", "served": ["m", "secret-other"]}
+
+    monkeypatch.setattr(copilot, "available", fake)
+    body = (await client.get("/api/v1/copilot/status")).json()
+    assert "served" not in body and body["model"] == "m"

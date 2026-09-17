@@ -535,10 +535,13 @@ class CopilotTurn(BaseModel):
 
 
 @router.get("/copilot/status", tags=["Copilot"], summary="Whether the design copilot's model answers")
-async def copilot_status() -> dict[str, Any]:
+async def copilot_status(identity: CurrentIdentity) -> dict[str, Any]:
     from foldfront.engine import copilot
 
-    return await copilot.available()
+    status = await copilot.available()
+    #  Which model answers is the person's business; what else the box
+    #  serves is not.
+    return {k: v for k, v in status.items() if k != "served"}
 
 
 @router.post("/copilot/chat", tags=["Copilot"], summary="Ask the design copilot about this installation's runs")
@@ -549,10 +552,17 @@ async def copilot_chat(turn: CopilotTurn, identity: CurrentIdentity) -> dict[str
 
     if not turn.messages or turn.messages[-1].get("role") != "user":
         raise ApiError(E.COPILOT_EMPTY)
+    #  A question is a few hundred characters. Anything that pushes the rules
+    #  out of the model's window is refused, and every call occupies the one
+    #  model on this machine for tens of seconds.
+    if len(turn.messages) > copilot.MAX_TURNS * 4 or any(
+        len(str(m.get("content", ""))) > copilot.MAX_MESSAGE_CHARS for m in turn.messages
+    ):
+        raise ApiError(E.COPILOT_TOO_LONG, chars=copilot.MAX_MESSAGE_CHARS, turns=copilot.MAX_TURNS)
     try:
         return await copilot.chat(repos(), turn.messages, project_id=turn.project_id, run_id=turn.run_id)
     except httpx.HTTPError as exc:
-        raise ApiError(E.COPILOT_UNAVAILABLE, reason=str(exc)) from exc
+        raise ApiError(E.COPILOT_UNAVAILABLE, reason=str(exc) or type(exc).__name__) from exc
 
 
 # ---------------------------------------------------------------- users
