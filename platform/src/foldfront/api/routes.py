@@ -15,6 +15,8 @@ under either surface.
 
 from __future__ import annotations
 
+import asyncio
+
 import json
 
 from datetime import datetime, timedelta
@@ -27,7 +29,7 @@ from starlette.datastructures import UploadFile as FormFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from foldfront.core.auth import CurrentIdentity, auth_mode, require
+from foldfront.core.auth import CurrentIdentity, auth_mode, oidc_enabled, require
 from foldfront.core.config import get_settings
 from foldfront.core.errors import ApiError, E
 from foldfront.db.models import (
@@ -121,8 +123,6 @@ async def start_run(body: StartRunBody, identity: CurrentIdentity) -> dict[str, 
                 project_id=body.project_id or "(없음)",
             )
 
-    named = [v.strip() for v in body.request.values() if isinstance(v, str) and "/" in v and "\n" not in v]
-
     try:
         run = await ExecutionService(r).start(
             wf,
@@ -134,8 +134,6 @@ async def start_run(body: StartRunBody, identity: CurrentIdentity) -> dict[str, 
     except GraphError as exc:
         raise ApiError(E.WORKFLOW_GRAPH_INVALID, reason=str(exc)) from exc
 
-    #  What a run read stays with it: these are now provenance, not clutter.
-    await r.inputs.link_run(named, run.run_id)
     return run.model_dump()
 
 
@@ -225,7 +223,10 @@ async def fork_run(
 ) -> dict[str, Any]:
     """Forking never writes to the run it came from."""
     r = repos()
-    child = await r.runs.fork(run_id, from_stage=from_stage)
+    try:
+        child = await r.runs.fork(run_id, from_stage=from_stage)
+    except ValueError as exc:
+        raise ApiError(E.FORK_NOT_READY, reason=str(exc)) from exc
     if child is None:
         raise ApiError(E.RUN_NOT_FOUND, run_id=run_id)
     await r.audit.record(
@@ -526,6 +527,9 @@ async def create_round(round_: Round, identity: CurrentIdentity) -> dict[str, An
 # ---------------------------------------------------------------- users
 
 
+_USER_PATCH_LOCK = asyncio.Lock()
+
+
 class UserPatch(BaseModel):
     roles: list[Role] | None = None
     active: bool | None = None
@@ -544,27 +548,39 @@ async def patch_user(user_id: str, patch: UserPatch, identity: CurrentIdentity) 
     """An operator's decision about an account. Two things it will not do:
     leave the installation with no active operator, and let the operator do
     that to themselves by accident."""
-    r = repos()
-    current = await r.users.get(user_id)
-    if current is None:
-        raise ApiError(E.USER_NOT_FOUND, user_id=user_id)
+    if patch.roles is None and patch.active is None:
+        raise ApiError(E.USER_EMPTY_PATCH)
 
-    losing_admin = (
-        Role.ADMIN in current.roles and current.active
-        and ((patch.roles is not None and Role.ADMIN not in patch.roles) or patch.active is False)
-    )
-    if losing_admin and await r.users.active_admins() <= 1:
-        raise ApiError(E.USER_LAST_ADMIN, user_id=user_id)
+    #  Serialised: the last-operator rule is a count followed by a write, and
+    #  two demotions at once would each see the other operator still there.
+    async with _USER_PATCH_LOCK:
+        r = repos()
+        current = await r.users.get(user_id)
+        if current is None:
+            raise ApiError(E.USER_NOT_FOUND, user_id=user_id)
 
-    if patch.roles is not None:
-        await r.users.set_roles(user_id, patch.roles)
-    if patch.active is not None:
-        await r.users.set_active(user_id, patch.active)
-    updated = await r.users.get(user_id)
+        losing_admin = (
+            Role.ADMIN in current.roles and current.active
+            and ((patch.roles is not None and Role.ADMIN not in patch.roles) or patch.active is False)
+        )
+        #  Not to yourself, ever: locking yourself out is not a decision another
+        #  operator can be presumed to have made. And not to the last one.
+        if losing_admin and user_id == identity.user_id:
+            raise ApiError(E.USER_SELF)
+        exclude = "dev" if oidc_enabled() else None
+        if losing_admin and await r.users.active_admins(exclude_subject=exclude) <= 1:
+            raise ApiError(E.USER_LAST_ADMIN, user_id=user_id)
+
+        before = {"roles": [str(x) for x in current.roles], "active": current.active}
+        if patch.roles is not None:
+            await r.users.set_roles(user_id, patch.roles)
+        if patch.active is not None:
+            await r.users.set_active(user_id, patch.active)
+        updated = await r.users.get(user_id)
     await r.audit.record(
         "user.update", actor_id=identity.user_id, target_type="user", target_id=user_id,
-        detail={"roles": [str(x) for x in (patch.roles or [])] if patch.roles is not None else None,
-                "active": patch.active},
+        detail={"before": before,
+                "after": {"roles": [str(x) for x in updated.roles], "active": updated.active} if updated else None},
     )
     return updated.model_dump() if updated else {}
 

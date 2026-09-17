@@ -10,7 +10,11 @@ import { expect, type Page } from '@playwright/test'
  * put back what they changed.
  */
 
-export const STAMP = process.env.E2E_STAMP ?? String(Date.now()).slice(-6)
+//  Unique per process, and only characters that are safe inside the cleanup
+//  regex: a stamp is interpolated into a query that deletes things.
+const raw = process.env.E2E_STAMP ?? `${Date.now().toString(36)}${process.pid.toString(36)}`
+if (!/^[0-9a-z]{4,20}$/i.test(raw)) throw new Error(`E2E_STAMP must be 4-20 alphanumerics, got ${JSON.stringify(raw)}`)
+export const STAMP = raw
 
 export const FASTA = `>lys-wt
 MKALIVLGLVLLSVTVQGKVFERCELARTLKRLGMDGYRGISLANWMCLAKWESGYNTRATNYNAGDRSTDYGIFQINSRYWCNDGKTPGAVNACHLSCSALLQDNIADAVACAKRVVRDPQGIRAWVAWRNRCQNRDVRQYVQGCGV`
@@ -32,8 +36,8 @@ export async function snap(page: Page, name: string) {
 /** Everything a scenario made, found by its stamp, removed. */
 export function cleanup(stamp = STAMP) {
   mongo(`
-    const projs = db.projects.find({name: /E2E .*${stamp}/}).toArray().map(p => p.project_id);
-    const wfs = db.workflows.find({workflow_id: /^wf-e2e-.*${stamp}/}).toArray().map(w => w.workflow_id);
+    const projs = db.projects.find({name: /^E2E .* ${stamp}$/}).toArray().map(p => p.project_id);
+    const wfs = db.workflows.find({workflow_id: /^wf-e2e-(studio-)?${stamp}$/}).toArray().map(w => w.workflow_id);
     const runs = db.runs.find({$or: [{project_id: {$in: projs}}, {workflow_id: {$in: wfs}}]}).toArray().map(r => r.run_id);
     db.rounds.deleteMany({project_id: {$in: projs}}); db.projects.deleteMany({project_id: {$in: projs}});
     db.workflows.deleteMany({workflow_id: {$in: wfs}});

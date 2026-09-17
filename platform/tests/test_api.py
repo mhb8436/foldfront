@@ -1170,3 +1170,20 @@ async def test_정리는_아무_실행도_읽지_않은_옛_파일만_지운다(
     assert not Path(old["path"]).exists()
     assert Path(kept["path"]).exists() and Path(fresh["path"]).exists()
     assert report["freed_bytes"] == len(FASTA)
+
+
+
+async def test_실행이_읽은_파일은_한도에_들지_않는다(client, tmp_path, monkeypatch):
+    """Otherwise the allowance fills with files nothing can free, and the
+    refusal promises a cleanup that never comes."""
+    from foldfront.core.config import get_settings
+    from foldfront.db.repositories import Repos
+
+    monkeypatch.setenv("PIPELINE_OUTPUT_ROOT", str(tmp_path))
+    get_settings.cache_clear()
+    up = (await client.post("/api/v1/inputs", files={"file": ("a.fasta", FASTA, "text/plain")})).json()
+    assert (await client.get("/api/v1/inputs/usage")).json()["used_bytes"] == len(FASTA)
+
+    await Repos().inputs.link_run([up["path"]], "run-x")
+
+    assert (await client.get("/api/v1/inputs/usage")).json()["used_bytes"] == 0

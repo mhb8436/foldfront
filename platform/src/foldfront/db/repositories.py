@@ -98,6 +98,17 @@ class RunRepo(BaseRepo):
     async def count(self, **q: Any) -> int:
         return await self.col.count_documents({k: v for k, v in q.items() if v is not None})
 
+    async def claim_start(self, run_id: str) -> Run | None:
+        """PENDING -> RUNNING, once. A second starter, or a cancel that landed
+        in between, finds nothing to claim and gets None."""
+        now = utcnow()
+        doc = await self.col.find_one_and_update(
+            {"run_id": run_id, "status": RunStatus.PENDING},
+            {"$set": {"status": RunStatus.RUNNING, "started_at": now, "updated_at": now}},
+            return_document=ReturnDocument.AFTER,
+        )
+        return Run(**_clean(doc)) if doc else None
+
     async def set_status(
         self, run_id: str, status: RunStatus, *, error: str | None = None
     ) -> Run | None:
@@ -145,9 +156,18 @@ class RunRepo(BaseRepo):
 
         keep: list[StageState] = []
         if from_stage:
+            names = [st.name for st in src.stages]
+            if from_stage not in names:
+                #  Found in review: an unknown name inherited every stage and the
+                #  fork "succeeded" on start having run nothing - fabricated provenance.
+                raise ValueError(f"그런 단계가 없습니다: {from_stage}")
             for st in src.stages:
                 if st.name == from_stage:
                     break
+                if st.status is not RunStatus.SUCCEEDED:
+                    #  A stage inherited as RUNNING or FAILED blocks the fork point
+                    #  for ever; nothing in the child can ever finish it.
+                    raise ValueError(f"{st.name} 단계가 끝나지 않아 {from_stage} 부터 갈라질 수 없습니다")
                 keep.append(st)
 
         child = Run(
@@ -713,9 +733,14 @@ class InputRepo(BaseRepo):
         return item
 
     async def usage(self, owner_id: str | None) -> int:
-        """Bytes this owner has stored."""
+        """Bytes this owner holds that no run has read.
+
+        A file a run read belongs to that run's record now, not to the
+        person's allowance; counting it would fill the allowance with files
+        nothing can free.
+        """
         rows = await self.col.aggregate([
-            {"$match": {"owner_id": owner_id}},
+            {"$match": {"owner_id": owner_id, "run_ids": {"$size": 0}}},
             {"$group": {"_id": None, "bytes": {"$sum": "$size_bytes"}}},
         ]).to_list(length=1)
         return int(rows[0]["bytes"]) if rows else 0
@@ -742,8 +767,11 @@ class InputRepo(BaseRepo):
         ).sort("created_at", ASCENDING).limit(limit)
         return [InputFile(**_clean(d)) for d in await cur.to_list(length=limit)]
 
-    async def forget(self, input_id: str) -> None:
-        await self.col.delete_one({"input_id": input_id})
+    async def forget_if_unread(self, input_id: str) -> bool:
+        """Remove the record only if still nothing has read it. A run that
+        linked the file between the sweep's read and this is respected."""
+        res = await self.col.delete_one({"input_id": input_id, "run_ids": {"$size": 0}})
+        return res.deleted_count == 1
 
     async def list(self, owner_id: str | None, *, limit: int = 200) -> list[InputFile]:
         cur = self.col.find({"owner_id": owner_id}).sort("created_at", DESCENDING).limit(limit)
@@ -769,18 +797,57 @@ class UserRepo(BaseRepo):
 
     async def seen(self, user_id: str, *, subject: str | None, email: str | None,
                    roles: list[Role]) -> User:
-        """Record a sign-in. A first sign-in creates the record with the roles
-        the provider gave; a later one only stamps the time. What an operator
-        set is never overwritten by the provider."""
+        """Record a sign-in and return the account.
+
+        The account is the provider's *subject*. The username is a label the
+        provider may change and that two people may, at different times, share
+        - so it is never what a record is found by. A subject seen before is
+        that record, under whatever name it now carries; a name seen before
+        under a different subject is somebody else's, and is refused rather
+        than inherited.
+
+        What an operator set is never overwritten by the provider, and the
+        sign-in stamp is written at most once a minute rather than per request.
+        """
         now = utcnow()
-        d = await self.col.find_one_and_update(
-            {"user_id": user_id},
-            {"$set": {"last_login_at": now, "updated_at": now, "email": email or None},
-             "$setOnInsert": {"user_id": user_id, "subject": subject or None,
-                              "roles": [str(r) for r in roles], "active": True, "created_at": now}},
-            upsert=True, return_document=ReturnDocument.AFTER,
-        )
-        return User(**_clean(d))
+        stale = now - timedelta(seconds=60)
+        existing = await self.col.find_one({"subject": subject}) if subject else None
+        if existing is None:
+            same_name = await self.col.find_one({"user_id": user_id})
+            if same_name is not None:
+                if same_name.get("subject") and same_name.get("subject") != subject:
+                    raise ValueError(f"'{user_id}' 는 다른 계정의 이름입니다")
+                existing = same_name
+
+        if existing is None:
+            d = await self.col.find_one_and_update(
+                {"subject": subject} if subject else {"user_id": user_id},
+                {"$setOnInsert": {"user_id": user_id, "subject": subject or None,
+                                  "roles": [str(r) for r in roles], "active": True,
+                                  "created_at": now, "last_login_at": now, "updated_at": now,
+                                  "email": email or None}},
+                upsert=True, return_document=ReturnDocument.AFTER,
+            )
+            return User(**_clean(d))
+
+        patch: dict[str, Any] = {}
+        if existing.get("user_id") != user_id:
+            #  Renamed at the provider. Keep the record, take the new name -
+            #  unless the name is already someone else's, in which case keep ours.
+            taken = await self.col.find_one({"user_id": user_id, "_id": {"$ne": existing["_id"]}})
+            if taken is None:
+                patch["user_id"] = user_id
+        if email and existing.get("email") != email:
+            patch["email"] = email
+        if not existing.get("last_login_at") or existing["last_login_at"] < stale:
+            patch["last_login_at"] = now
+        if patch:
+            patch["updated_at"] = now
+            d = await self.col.find_one_and_update(
+                {"_id": existing["_id"]}, {"$set": patch}, return_document=ReturnDocument.AFTER,
+            )
+            return User(**_clean(d))
+        return User(**_clean(existing))
 
     async def list(self, *, limit: int = 500) -> list[User]:
         cur = self.col.find({}).sort("last_login_at", DESCENDING).limit(limit)
@@ -801,8 +868,11 @@ class UserRepo(BaseRepo):
         )
         return User(**_clean(d)) if d else None
 
-    async def active_admins(self) -> int:
-        return await self.col.count_documents({"active": True, "roles": str(Role.ADMIN)})
+    async def active_admins(self, *, exclude_subject: str | None = None) -> int:
+        q: dict[str, Any] = {"active": True, "roles": str(Role.ADMIN)}
+        if exclude_subject:
+            q["subject"] = {"$ne": exclude_subject}
+        return await self.col.count_documents(q)
 
 
 class Repos:

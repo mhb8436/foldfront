@@ -17,6 +17,7 @@ export default defineConfig({
   workers: 1,
   reporter: [['list']],
   use: {
+    actionTimeout: 15_000,
     baseURL: process.env.E2E_BASE ?? 'http://localhost:5173',
     viewport: { width: 1440, height: 900 },
     locale: 'ko-KR',

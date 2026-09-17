@@ -58,8 +58,9 @@ def dev_identity() -> Identity:
     """Stands in while authentication is off.
 
     Same shape as a real identity, so the permission checks run down one path
-    rather than two. Its role comes from DEV_ROLE, which is how the console can
-    be seen as a viewer without standing up an identity provider.
+    rather than two. DEV_ROLE sets the role the account is *first recorded*
+    with; after that the users record is the word, as for any account, and
+    the role is changed on the 이용자 screen.
     """
     try:
         role = Role(get_settings().dev_role)
@@ -117,12 +118,16 @@ async def apply_local(identity: Identity) -> Identity:
     """
     from foldfront.db.repositories import Repos
 
-    record = await Repos().users.seen(
-        identity.user_id, subject=identity.subject, email=identity.email, roles=list(identity.roles),
-    )
+    try:
+        record = await Repos().users.seen(
+            identity.user_id, subject=identity.subject, email=identity.email, roles=list(identity.roles),
+        )
+    except ValueError as exc:
+        #  The name belongs to a different subject. Not this person's record.
+        raise ApiError(E.AUTH_IDENTITY_MISMATCH, user_id=identity.user_id) from exc
     if not record.active:
         raise ApiError(E.AUTH_FORBIDDEN)
-    return replace(identity, roles=tuple(record.roles))
+    return replace(identity, user_id=record.user_id, roles=tuple(record.roles))
 
 
 async def current_identity(

@@ -102,7 +102,7 @@ export function Monitor() {
         )}
       </Panel>
 
-      {selected && <RunDetail runId={selected} onClose={() => setSelected(null)} onOpen={setSelected} />}
+      {selected && <RunDetail key={selected} runId={selected} onClose={() => setSelected(null)} onOpen={setSelected} />}
     </>
   )
 }
@@ -149,14 +149,24 @@ function RunDetail({
   async function fork(stage: string) {
     //  Open the fork rather than close this: it is created waiting, and the
     //  button that starts it is on its own screen.
-    const child = await api.forkRun(runId, stage)
-    onOpen(child.run_id)
+    setRepair(null)
+    try {
+      const child = await api.forkRun(runId, stage)
+      onOpen(child.run_id)
+    } catch (e) {
+      setRepair((e as Error).message)
+    }
   }
 
   async function start() {
-    await api.startForkedRun(runId)
-    run.reload()
-    events.reload()
+    setRepair(null)
+    try {
+      await api.startForkedRun(runId)
+      run.reload()
+      events.reload()
+    } catch (e) {
+      setRepair((e as Error).message)
+    }
   }
 
   return (
@@ -241,9 +251,11 @@ function RunDetail({
                       ))}
               </TableCell>
               <TableCell>
-                <Button variant="outline" size="sm" onClick={() => fork(s.name)}>
-                  여기서 fork
-                </Button>
+                {canRun && (
+                  <Button variant="outline" size="sm" onClick={() => fork(s.name)}>
+                    여기서 fork
+                  </Button>
+                )}
               </TableCell>
             </TableRow>
           ))}

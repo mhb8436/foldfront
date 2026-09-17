@@ -32,6 +32,13 @@ test('멈춘 실행 되살리기: 알림 → 되살리기 → 성공', async ({ 
   await expect(menu.getByText(new RegExp(runId))).toHaveCount(0, { timeout: 15_000 })
   await page.keyboard.press('Escape')
 
+  //  The button, not the worker's own sweep: a hand repair is audited under
+  //  the person who pressed it, and the run's log says what was re-queued.
+  const audit = await (await page.request.get(`/api/v1/audit?action=run.reconcile&target_id=${runId}`)).json()
+  expect(audit.count).toBeGreaterThanOrEqual(1)
+  const events = await (await page.request.get(`/api/v1/runs/${runId}/events`)).json()
+  expect(events.items.some((e: { message: string }) => /다시 큐에 넣었습니다/.test(e.message))).toBe(true)
+
   await waitForRunStatus(page, runId, '성공')
   await snap(page, 'repair-02-recovered')
   void row

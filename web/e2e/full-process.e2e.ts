@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
+import { STAMP, cleanup, snap } from './helpers'
 
 /**
  * The whole process, once, on screen.
@@ -10,7 +11,6 @@ import { expect, test, type Page } from '@playwright/test'
  * Everything created carries STAMP, so a cleanup can find it.
  */
 
-const STAMP = process.env.E2E_STAMP ?? String(Date.now()).slice(-6)
 const PROJECT = `E2E 리소자임 ${STAMP}`
 const WF_ID = `wf-e2e-${STAMP}`
 const FASTA = `>lys-wt
@@ -18,15 +18,11 @@ MKALIVLGLVLLSVTVQGKVFERCELARTLKRLGMDGYRGISLANWMCLAKWESGYNTRATNYNAGDRSTDYGIFQINSR
 >lys-d1
 MKALIVLGLVLLSVTVQGKVFERCELARTLKRLGMDGYRGISLANWMCLAKWESGYNTRATNYNAGDRSTDYGIFQINSRYWCNDGKTPGAVNACHLSCSALLQDNIADAVACAKRVVRDPQGIRAWVAWRNRCQNRDVRQYVQGCGV`
 
-let shot = 0
-async function snap(page: Page, name: string) {
-  shot += 1
-  await page.screenshot({ path: `../docs/e2e/${String(shot).padStart(2, '0')}-${name}.png`, fullPage: true })
-}
 
 test.describe.configure({ mode: 'serial' })
 
 test('전 과정: 프로젝트 → 회차 → 워크플로 → 입력 → 실행 → 결과 → 알림 → 운영', async ({ page }) => {
+  try {
   // ---------------------------------------------------------------- 1 프로젝트
   await page.goto('/projects')
   await expect(page.getByRole('heading', { name: '프로젝트' })).toBeVisible()
@@ -117,4 +113,7 @@ test('전 과정: 프로젝트 → 회차 → 워크플로 → 입력 → 실행
   await page.goto('/dashboard')
   await expect(page.getByText(/전체 \d+건/)).toBeVisible()
   await snap(page, 'dashboard-whole')
+  } finally {
+    cleanup()
+  }
 })

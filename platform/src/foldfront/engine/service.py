@@ -13,6 +13,8 @@ queue together.
 
 from __future__ import annotations
 
+import re
+
 from typing import Any
 
 from foldfront.db.models import (
@@ -97,6 +99,7 @@ class ExecutionService:
 
         if round_id:
             await self.repos.rounds.link_runs(round_id, [run.run_id])
+        await self._link_inputs(run.run_id, run.request)
 
         plan = ExecutionPlan.start(graph)
         await self._enqueue_ready(run.run_id, graph, plan, request=dict(run.request or {}))
@@ -121,8 +124,10 @@ class ExecutionService:
         run = await self.repos.runs.get(run_id)
         if run is None:
             return None
-        if run.status is not RunStatus.PENDING:
-            #  Already going, or already over. Neither is a start.
+        #  One starter. A second click, or a cancel that landed first, finds
+        #  nothing PENDING to claim and changes nothing.
+        claimed = await self.repos.runs.claim_start(run_id)
+        if claimed is None:
             return run
 
         loaded = await self.load_plan(run_id)
@@ -131,7 +136,6 @@ class ExecutionService:
             return await self.repos.runs.get(run_id)
         graph, plan = loaded
 
-        await self.repos.runs.set_status(run_id, RunStatus.RUNNING)
         await self.repos.events.append(
             run_id,
             f"{run.forked_from_stage} 단계부터 다시 시작했습니다" if run.forked_from_stage else "실행을 시작했습니다",
@@ -142,13 +146,51 @@ class ExecutionService:
         )
         if run.round_id:
             await self.repos.rounds.link_runs(run.round_id, [run_id])
+        await self._link_inputs(run_id, run.request)
 
-        await self._enqueue_ready(run_id, graph, plan, request=dict(run.request or {}))
+        queued = await self._enqueue_ready(run_id, graph, plan, request=dict(run.request or {}))
         if plan.done():
             final = RunStatus.SUCCEEDED if plan.succeeded() else RunStatus.FAILED
             await self.repos.runs.set_status(run_id, final)
             await self.repos.events.append(run_id, f"실행이 끝났습니다 ({final})")
+        elif not queued:
+            #  Nothing ready and nothing running is a run that will never move.
+            #  Closing it here is better than a stalled notice in half an hour.
+            await self.repos.runs.set_status(run_id, RunStatus.FAILED, error="시작할 수 있는 노드가 없습니다")
+            await self.repos.events.append(run_id, "시작할 수 있는 노드가 없어 닫았습니다", level="error")
         return await self.repos.runs.get(run_id)
+
+    async def _link_inputs(self, run_id: str, request: dict[str, Any] | None) -> int:
+        """Tie the uploaded files a request names to the run that reads them.
+
+        Here, not in one route: runs start from the API, from MCP, from the CLI
+        and from a fork, and a file is that run's provenance whichever way it
+        was started. Values are resolved the way StageInput.text resolves them,
+        so a relative spelling links the same file the run will read.
+        """
+        from pathlib import Path
+
+        from foldfront.core.config import get_settings
+
+        root = Path(get_settings().output_root).resolve()
+        paths: list[str] = []
+
+        def walk(v: Any) -> None:
+            if isinstance(v, str):
+                raw = v.strip()
+                if raw and "\n" not in raw and not raw.startswith(">") and not re.search(r"\s", raw):
+                    target = (root / raw).resolve()
+                    if target.is_relative_to(root):
+                        paths.append(str(target))
+            elif isinstance(v, dict):
+                for x in v.values():
+                    walk(x)
+            elif isinstance(v, list):
+                for x in v:
+                    walk(x)
+
+        walk(request or {})
+        return await self.repos.inputs.link_run(paths, run_id) if paths else 0
 
     # ------------------------------------------------------------ progress
 
