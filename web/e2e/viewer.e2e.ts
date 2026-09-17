@@ -24,6 +24,18 @@ test('조회자 화면: 쓰기 단추가 없다', async ({ page }) => {
     await expect(page.getByRole('textbox', { name: '대상 서열' })).toBeDisabled()
     await snap(page, 'viewer-02-setup')
 
+    //  Hiding is the courtesy; refusing is the check. Both must hold.
+    const refused = await page.request.post('/api/v1/projects', { data: { project_id: '', name: 'E2E 침입', archived: false, tags: [] } })
+    expect(refused.status()).toBe(403)
+
+    await page.goto('/monitor')
+    const anyRow = page.getByRole('row').nth(1)
+    if (await anyRow.count()) {
+      await anyRow.click()
+      await expect(page.getByRole('button', { name: '여기서 fork' })).toHaveCount(0)
+      await expect(page.getByRole('button', { name: '정합성 점검' })).toHaveCount(0)
+    }
+
     await page.goto('/dashboard')
     await expect(page.getByRole('link', { name: /실행 시작/ })).toHaveCount(0)
     //  Approvals and the auth warning are for an operator: a reader is not told

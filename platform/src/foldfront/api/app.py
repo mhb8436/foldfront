@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 
 from foldfront.api.routes import router
 from foldfront.api.mcp import router as mcp_router
-from foldfront.core.auth import auth_mode, warn_if_open
+from foldfront.core.auth import auth_mode, oidc_enabled, warn_if_open
 from foldfront.core.errors import ApiError, negotiate
 from foldfront.core.config import get_settings
 from foldfront.db.client import close_client, ensure_indexes, get_db
@@ -25,6 +25,13 @@ from foldfront.db.client import close_client, ensure_indexes, get_db
 async def lifespan(app: FastAPI):
     warn_if_open()
     app.state.index_result = await ensure_indexes()
+    if oidc_enabled():
+        #  The development stand-in was an operator while auth was off. Under
+        #  a real provider nobody is 'dev', and a record that says an operator
+        #  is would count towards the last-operator rule for no one.
+        from foldfront.db.repositories import Repos
+
+        await Repos().users.col.update_many({"subject": "dev"}, {"$set": {"active": False}})
     yield
     await close_client()
 

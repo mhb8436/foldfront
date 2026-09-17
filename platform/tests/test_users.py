@@ -69,14 +69,99 @@ async def test_꺼진_계정은_들어오지_못한다(client):
     assert (await client.get("/api/v1/me")).status_code == 403
 
 
-async def test_마지막_운영자의_운영_권한은_뺄_수_없다(client):
+async def test_자기_운영_권한은_뺄_수_없다(client):
+    """Locking yourself out is not a decision another operator made."""
     await client.get("/api/v1/me")
 
     r = await client.patch("/api/v1/users/dev", json={"roles": ["researcher"]})
 
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "user.self"
+    assert (await client.get("/api/v1/me")).json()["roles"] == ["admin"]
+
+
+async def test_마지막_운영자의_운영_권한은_뺄_수_없다(client, monkeypatch):
+    """Under a real provider the development stand-in does not count, so the
+    other operator is the last one."""
+    from foldfront.api import routes
+    from foldfront.db.models import User
+    from foldfront.db.repositories import Repos
+
+    await client.get("/api/v1/me")
+    await Repos().users.col.insert_one(User(user_id="other", subject="sub-other", roles=[Role.ADMIN]).model_dump())
+    monkeypatch.setattr(routes, "oidc_enabled", lambda: True)
+
+    r = await client.patch("/api/v1/users/other", json={"roles": ["researcher"]})
+
     assert r.status_code == 409
     assert r.json()["error"]["code"] == "user.last_admin"
-    assert (await client.get("/api/v1/me")).json()["roles"] == ["admin"]
+
+
+async def test_같은_이름_다른_subject_는_남의_계정을_물려받지_못한다(client):
+    """Found in review: records were found by username, so a token with the
+    same preferred_username and a different sub inherited the roles."""
+    from foldfront.db.models import User
+    from foldfront.db.repositories import Repos
+
+    await Repos().users.col.insert_one(
+        User(user_id="dev", subject="sub-someone-else", roles=[Role.ADMIN]).model_dump())
+
+    r = await client.get("/api/v1/me")
+
+    assert r.status_code == 403
+    assert r.json()["error"]["code"] == "auth.identity_mismatch"
+
+
+async def test_공급자에서_이름이_바뀌어도_같은_계정이다(client):
+    """Same sub, new preferred_username: the record follows, and the old name
+    does not collide on uq_subject into a 500."""
+    from foldfront.db.models import User
+    from foldfront.db.repositories import Repos
+
+    await Repos().users.col.insert_one(
+        User(user_id="old-name", subject="dev", roles=[Role.RESEARCHER]).model_dump())
+
+    me = (await client.get("/api/v1/me")).json()
+
+    assert me["user_id"] == "dev"
+    assert me["roles"] == ["researcher"]
+    assert await Repos().users.col.count_documents({}) == 1
+
+
+async def test_동시에_둘을_낮춰도_운영자는_남는다(client, monkeypatch):
+    import asyncio
+
+    from foldfront.api import routes
+    from foldfront.db.models import User
+    from foldfront.db.repositories import Repos
+
+    await client.get("/api/v1/me")
+    for uid in ("a", "b"):
+        await Repos().users.col.insert_one(User(user_id=uid, subject=f"sub-{uid}", roles=[Role.ADMIN]).model_dump())
+    monkeypatch.setattr(routes, "oidc_enabled", lambda: True)
+
+    rs = await asyncio.gather(
+        client.patch("/api/v1/users/a", json={"roles": ["researcher"]}),
+        client.patch("/api/v1/users/b", json={"roles": ["researcher"]}),
+    )
+
+    assert sorted(r.status_code for r in rs) == [200, 409]
+    assert await Repos().users.active_admins(exclude_subject="dev") == 1
+
+
+async def test_감사_기록에_전후가_남는다(client):
+    from foldfront.db.models import User
+    from foldfront.db.repositories import Repos
+
+    await client.get("/api/v1/me")
+    await Repos().users.col.insert_one(User(user_id="kim", subject="sub-kim", roles=[Role.RESEARCHER]).model_dump())
+
+    await client.patch("/api/v1/users/kim", json={"roles": ["viewer"]})
+
+    rec = (await Repos().audit.search(action="user.update"))[0]
+    assert rec.detail["before"]["roles"] == ["researcher"]
+    assert rec.detail["after"]["roles"] == ["viewer"]
+    assert (await client.patch("/api/v1/users/kim", json={})).status_code == 400
 
 
 async def test_다른_운영자가_있으면_역할을_바꿀_수_있다(client):

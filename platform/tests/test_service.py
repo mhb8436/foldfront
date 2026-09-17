@@ -607,6 +607,7 @@ async def test_정합성_점검은_시작하지_않은_실행을_시작하지_�
     svc = ExecutionService(seeded)
     wf = await seeded.workflows.save(builtin_pipeline_workflow())
     run = await svc.start(wf)
+    await svc.complete_node(run.run_id, "msa", succeeded=True, result={"depth": 9})
     child = await seeded.runs.fork(run.run_id, from_stage="rfd3")
     assert child.status is RunStatus.PENDING
 
@@ -757,3 +758,86 @@ async def test_이미_도는_실행을_시작해도_아무_일도_없다(seeded:
 
 async def test_없는_실행을_시작하면_없다고_한다(seeded: Repos):
     assert await ExecutionService(seeded).resume("run-없음") is None
+
+
+
+#  ---------------------------------------------------------------- fork 의 조건 (검증에서)
+
+
+async def test_끝나지_않은_단계_뒤에서는_갈라질_수_없다(seeded: Repos):
+    """A stage inherited as RUNNING blocks the fork point for ever; nothing in
+    the child can finish it, and reconcile leaves live runs alone."""
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(builtin_pipeline_workflow())
+    run = await svc.start(wf)  # msa is queued, not done
+
+    with pytest.raises(ValueError, match="끝나지 않아"):
+        await seeded.runs.fork(run.run_id, from_stage="rfd3")
+
+
+async def test_없는_단계에서는_갈라질_수_없다(seeded: Repos):
+    """An unknown name used to inherit every stage and 'succeed' on start
+    having run nothing."""
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(builtin_pipeline_workflow())
+    run = await svc.start(wf)
+
+    with pytest.raises(ValueError, match="그런 단계가 없습니다"):
+        await seeded.runs.fork(run.run_id, from_stage="does-not-exist")
+
+
+async def test_시작은_한_번만_된다(seeded: Repos):
+    """A double click, or two operators. One start, one event, one audit row."""
+    import asyncio
+
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(builtin_pipeline_workflow())
+    run = await svc.start(wf)
+    await svc.complete_node(run.run_id, "msa", succeeded=True, result={"depth": 9})
+    child = await seeded.runs.fork(run.run_id, from_stage="rfd3")
+
+    await asyncio.gather(*(svc.resume(child.run_id, actor_id="me") for _ in range(3)))
+
+    events = [e.message for e in await seeded.events.list(child.run_id)]
+    assert sum("다시 시작" in m for m in events) == 1
+    assert len(await seeded.audit.search(action="run.start")) == 1
+    assert [j.node_id for j in await seeded.jobs.list_for_run(child.run_id)] == ["rfd3"]
+
+
+async def test_취소된_fork_는_시작되지_않는다(seeded: Repos):
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(builtin_pipeline_workflow())
+    run = await svc.start(wf)
+    await svc.complete_node(run.run_id, "msa", succeeded=True, result={"depth": 9})
+    child = await seeded.runs.fork(run.run_id, from_stage="rfd3")
+    await svc.cancel(child.run_id)
+
+    after = await svc.resume(child.run_id)
+
+    assert after.status is RunStatus.CANCELLED
+    assert await seeded.jobs.list_for_run(child.run_id) == [] or all(
+        j.status != JobStatus.QUEUED for j in await seeded.jobs.list_for_run(child.run_id))
+
+
+async def test_어디서_시작하든_읽은_파일은_실행에_묶인다(seeded: Repos, tmp_path, monkeypatch):
+    """Linking lives in the service, so MCP, the CLI and a fork all keep their
+    provenance - not only POST /runs."""
+    from foldfront.core.config import get_settings
+    from foldfront.db.models import InputFile
+
+    monkeypatch.setenv("PIPELINE_OUTPUT_ROOT", str(tmp_path))
+    get_settings.cache_clear()
+    (tmp_path / "inputs").mkdir()
+    f = tmp_path / "inputs" / "in-1.fasta"
+    f.write_text(">a\nMK\n")
+    await seeded.inputs.record(InputFile(input_id="in-1", owner_id="me", name="a.fasta", kind="fasta",
+                                         path=str(f.resolve()), size_bytes=8))
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(builtin_pipeline_workflow())
+
+    #  relative spelling, nested under a dict - both the ways review found missed
+    run = await svc.start(wf, request={"inputs": {"target_fasta": "inputs/in-1.fasta"}})
+
+    linked = await seeded.inputs.by_paths([str(f.resolve())])
+    assert linked[0].run_ids == [run.run_id]
+    get_settings.cache_clear()

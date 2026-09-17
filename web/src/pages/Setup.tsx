@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Field, Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { InputField } from '../components/InputField'
-import type { PdbSummary } from '@/lib/bio'
+import { looksLikePath, type PdbSummary } from '@/lib/bio'
 import { useIdentity } from '@/lib/identity'
 import { roundLabel, useProject } from '@/lib/project'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -21,7 +21,6 @@ export function Setup() {
   //  Scoped the way the dashboard is: a workflow another project owns must
   //  not be offered here, where it would be started under this one.
   const workflows = useAsync(() => api.listWorkflows({ project_id: filter }), [filter])
-  const usage = useAsync(() => api.inputUsage(), [])
   const [workflowId, setWorkflowId] = useState('')
   const [targetFasta, setTargetFasta] = useState('')
   const [targetPdb, setTargetPdb] = useState('')
@@ -31,6 +30,8 @@ export function Setup() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const { canRun } = useIdentity()
+  //  Re-read after either field changes: an upload just moved the number.
+  const usage = useAsync(() => api.inputUsage(), [targetFasta.length > 0 && looksLikePath(targetFasta), targetPdb.length > 0 && looksLikePath(targetPdb)])
   //  null: nothing chosen yet, so the latest round. '': chosen to be none.
   //  Two different things, and `roundId || latest` could not tell them apart -
   //  「회차 없이」 snapped straight back to the latest round.

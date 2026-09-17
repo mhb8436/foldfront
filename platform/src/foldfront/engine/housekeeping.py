@@ -27,10 +27,13 @@ async def prune_inputs(repos: Repos, *, days: int | None = None, limit: int = 10
     removed: list[dict[str, Any]] = []
     freed = 0
     for item in await repos.inputs.prunable(older_than=cutoff, limit=limit):
+        #  The record goes first, and only if still unread: a run that linked
+        #  the file since the sweep began keeps it, file and all.
+        if not await repos.inputs.forget_if_unread(item.input_id):
+            continue
         path = Path(item.path)
         if path.is_file():
             path.unlink()
             freed += item.size_bytes
-        await repos.inputs.forget(item.input_id)
         removed.append({"input_id": item.input_id, "name": item.name, "owner_id": item.owner_id})
     return {"days": days, "removed": len(removed), "freed_bytes": freed, "items": removed}

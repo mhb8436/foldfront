@@ -62,6 +62,10 @@ class E(StrEnum):
     PROJECT_NOT_FOUND = "project.not_found"
     USER_NOT_FOUND = "user.not_found"
     USER_LAST_ADMIN = "user.last_admin"
+    USER_SELF = "user.self"
+    USER_EMPTY_PATCH = "user.empty_patch"
+    AUTH_IDENTITY_MISMATCH = "auth.identity_mismatch"
+    FORK_NOT_READY = "run.fork_not_ready"
     MODEL_NOT_FOUND = "model.not_found"
     MODEL_UNRESOLVABLE = "model.unresolvable"
 
@@ -92,6 +96,10 @@ STATUS: dict[E, int] = {
     E.PROJECT_NOT_FOUND: 404,
     E.USER_NOT_FOUND: 404,
     E.USER_LAST_ADMIN: 409,
+    E.USER_SELF: 400,
+    E.USER_EMPTY_PATCH: 400,
+    E.AUTH_IDENTITY_MISMATCH: 403,
+    E.FORK_NOT_READY: 400,
     E.MODEL_NOT_FOUND: 404,
     E.MODEL_UNRESOLVABLE: 404,
 }
@@ -124,6 +132,10 @@ MESSAGES: dict[str, dict[E, str]] = {
         E.PROJECT_NOT_FOUND: "프로젝트를 찾지 못했습니다: {project_id}",
         E.USER_NOT_FOUND: "이용자를 찾지 못했습니다: {user_id}",
         E.USER_LAST_ADMIN: "{user_id} 는 마지막 운영자입니다. 다른 운영자를 먼저 두십시오.",
+        E.USER_SELF: "자기 계정의 운영 권한을 빼거나 끌 수 없습니다. 다른 운영자가 해야 합니다.",
+        E.USER_EMPTY_PATCH: "바꿀 내용이 없습니다.",
+        E.AUTH_IDENTITY_MISMATCH: "이름 {user_id} 는 다른 계정이 쓰고 있습니다. 운영자에게 알리십시오.",
+        E.FORK_NOT_READY: "이 지점에서 갈라질 수 없습니다: {reason}",
         E.MODEL_NOT_FOUND: "모델을 찾지 못했습니다: {model_id}",
         E.MODEL_UNRESOLVABLE: "모델의 실행 위치를 해석하지 못했습니다: {reason}",
     },
@@ -151,6 +163,10 @@ MESSAGES: dict[str, dict[E, str]] = {
         E.PROJECT_NOT_FOUND: "No such project: {project_id}",
         E.USER_NOT_FOUND: "No such user: {user_id}",
         E.USER_LAST_ADMIN: "{user_id} is the last operator. Appoint another first.",
+        E.USER_SELF: "You cannot remove your own operator role or switch yourself off. Another operator must.",
+        E.USER_EMPTY_PATCH: "Nothing to change.",
+        E.AUTH_IDENTITY_MISMATCH: "The name {user_id} belongs to a different account. Tell an operator.",
+        E.FORK_NOT_READY: "Cannot fork at that point: {reason}",
         E.MODEL_NOT_FOUND: "No such model: {model_id}",
         E.MODEL_UNRESOLVABLE: "The model could not be resolved to an endpoint: {reason}",
     },
