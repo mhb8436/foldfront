@@ -134,6 +134,28 @@ export interface Plan {
   note: string
 }
 
+/** Whether external GPU management can work, and why not when it cannot. */
+export interface GpuStatus {
+  configured: boolean
+  reachable: boolean
+  reason?: string
+  endpoints?: number
+}
+
+export interface GpuEndpoint {
+  id?: string
+  name?: string
+  managed?: boolean
+  workersMin?: number
+  workersMax?: number
+  workersStandby?: number
+  idleTimeout?: number
+  gpuTypeIds?: string[]
+  health?: Record<string, unknown>
+  workers?: Array<Record<string, unknown>>
+  [key: string]: unknown
+}
+
 export interface RunEvent {
   run_id: string
   seq: number
@@ -442,6 +464,31 @@ export const api = {
     rfd3_input_pdb?: string
     rfd3_contig?: string
   }) => request<Plan>('/copilot/plan', { method: 'POST', body: JSON.stringify(body) }),
+
+  // ------------------------------------------------------------ external GPU
+  /*  The original's RunPod admin, which this console never called. Every
+      one of these needs credentials; gpuStatus says so without a network
+      round trip, so a screen can explain itself before it fails. */
+  gpuStatus: () => request<GpuStatus>('/gpu/status'),
+
+  gpuEndpoints: (params: { include_workers?: boolean; managed_only?: boolean } = {}) =>
+    request<{ endpoints: GpuEndpoint[]; summary?: Record<string, unknown> }>(
+      `/gpu/endpoints${query(params)}`,
+    ),
+
+  gpuBilling: (days = 30) =>
+    request<Record<string, unknown>>(`/gpu/billing${query({ days })}`),
+
+  gpuHistory: (endpointId: string, limit = 50) =>
+    request<Record<string, unknown>>(
+      `/gpu/history${query({ endpoint_id: endpointId, limit })}`,
+    ),
+
+  gpuUpdateEndpoint: (endpointId: string, patch: Record<string, unknown>) =>
+    request<Record<string, unknown>>(`/gpu/endpoints/${encodeURIComponent(endpointId)}`, {
+      method: 'POST',
+      body: JSON.stringify(patch),
+    }),
 
   // ------------------------------------------------------------ analysis
   /*  The ranking, the WT difference and the comparison metrics are the

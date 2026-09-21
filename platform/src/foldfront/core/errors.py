@@ -69,6 +69,8 @@ class E(StrEnum):
     FORK_NOT_READY = "run.fork_not_ready"
     RUN_NOT_HELD = "run.not_held"
     UPSTREAM_UNAVAILABLE = "upstream.unavailable"
+    GPU_NOT_CONFIGURED = "gpu.not_configured"
+    GPU_UNREACHABLE = "gpu.unreachable"
     UPSTREAM_REFUSED = "upstream.refused"
     RUN_CONTROL_REFUSED = "run.control_refused"
     COPILOT_EMPTY = "copilot.empty"
@@ -111,6 +113,8 @@ STATUS: dict[E, int] = {
     E.AUTH_SESSION_ENDED: 401,
     E.RUN_NOT_HELD: 409,
     E.UPSTREAM_UNAVAILABLE: 503,
+    E.GPU_NOT_CONFIGURED: 503,
+    E.GPU_UNREACHABLE: 502,
     E.UPSTREAM_REFUSED: 400,
     E.RUN_CONTROL_REFUSED: 409,
     E.COPILOT_EMPTY: 400,
@@ -155,6 +159,8 @@ MESSAGES: dict[str, dict[E, str]] = {
         E.AUTH_SESSION_ENDED: "세션이 종료되었습니다. 다시 로그인하십시오.",
         E.RUN_NOT_HELD: "검토를 기다리는 단계가 아닙니다: {reason}",
         E.UPSTREAM_UNAVAILABLE: "원본 분석 도구를 쓸 수 없습니다: {reason}",
+        E.GPU_NOT_CONFIGURED: "외부 GPU 자격 증명이 없습니다. RUNPOD_API_KEY 를 설정해야 관제가 됩니다.",
+        E.GPU_UNREACHABLE: "외부 GPU 에 닿지 못했습니다: {reason}",
         E.UPSTREAM_REFUSED: "{tool} 이(가) 처리하지 못했습니다: {reason}",
         E.RUN_CONTROL_REFUSED: "지금 상태에서는 할 수 없습니다: {reason}",
         E.COPILOT_EMPTY: "물어볼 내용이 없습니다.",
@@ -194,6 +200,8 @@ MESSAGES: dict[str, dict[E, str]] = {
         E.AUTH_SESSION_ENDED: "The session has ended. Sign in again.",
         E.RUN_NOT_HELD: "Not a stage waiting on review: {reason}",
         E.UPSTREAM_UNAVAILABLE: "The original analysis tools are unavailable: {reason}",
+        E.GPU_NOT_CONFIGURED: "No external GPU credentials. Set RUNPOD_API_KEY to manage endpoints.",
+        E.GPU_UNREACHABLE: "Could not reach the external GPU: {reason}",
         E.UPSTREAM_REFUSED: "{tool} could not handle it: {reason}",
         E.RUN_CONTROL_REFUSED: "Not possible in this state: {reason}",
         E.COPILOT_EMPTY: "Nothing to ask.",

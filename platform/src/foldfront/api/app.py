@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 
 from foldfront.api.routes import router
 from foldfront.api.analysis import router as analysis_router
+from foldfront.api.gpu import router as gpu_router
 from foldfront.api.mcp import router as mcp_router
 from foldfront.core.auth import auth_mode, oidc_enabled, warn_if_open
 from foldfront.core.errors import ApiError, negotiate
@@ -95,6 +96,7 @@ app.include_router(router)
 #  One surface for the original tools and the ones added here
 app.include_router(mcp_router)
 app.include_router(analysis_router, prefix="/api/v1")
+app.include_router(gpu_router, prefix="/api/v1")
 
 
 @app.get("/healthz", tags=["Operations"])

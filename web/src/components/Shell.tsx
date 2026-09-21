@@ -2,6 +2,7 @@ import { useEffect, useState, type ComponentType, type ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import {
   BarChart3,
+  Cpu,
   Dna,
   FolderOpen,
   LayoutGrid,
@@ -67,6 +68,7 @@ const NAV: Array<{ section: string; items: Item[] }> = [
     section: '관리',
     items: [
       { to: '/models', label: '모델 관리', icon: Layers },
+      { to: '/gpu', label: '외부 GPU', icon: Cpu },
       { to: '/operations', label: '운영', icon: Settings2, roles: ['admin'] },
       { to: '/users', label: '이용자', icon: UsersRound, roles: ['admin'] },
       { to: '/copilot', label: '설계 Copilot', icon: MessageSquare },

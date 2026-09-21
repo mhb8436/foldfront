@@ -8,6 +8,7 @@ import { Studio } from './pages/Studio'
 import { Monitor } from './pages/Monitor'
 import { Analyze } from './pages/Analyze'
 import { Models } from './pages/Models'
+import { Gpu } from './pages/Gpu'
 import { Operations } from './pages/Operations'
 import { Users } from './pages/Users'
 import { Copilot } from './pages/Copilot'
@@ -25,6 +26,7 @@ export function App() {
         <Route path="/analyze" element={<Analyze />} />
         <Route path="/models" element={<Models />} />
         <Route path="/operations" element={<Operations />} />
+          <Route path="/gpu" element={<Gpu />} />
         <Route path="/users" element={<Users />} />
         <Route path="/copilot" element={<Copilot />} />
       </Routes>
