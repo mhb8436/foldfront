@@ -12,13 +12,17 @@ the admin surface for them - `runpod_list_endpoints`, `runpod_get_endpoint`,
     POST /gpu/endpoints/{id}     pipeline.runpod_update_endpoint
     GET  /gpu/status             whether any of the above can work at all
 
-**The runner here is not the one the analysis paths use.** Those read a run
-directory and need nothing but a storage root. These talk to RunPod, and the
-admin service finds its client by looking through the runner's model clients
-for one carrying a `RunPodClient` - so the runner has to be the fully wired
-one the original builds from its own configuration. `pipeline_mcp/app.py`
-already does that, and it is called rather than repeated: which endpoint id
-belongs to which model, and which provider override wins, is settled there.
+**No runner.** The original reaches its admin service through
+`build_runner`, which constructs every model client and refuses without
+MMSEQS_ENDPOINT_ID and its siblings. Those say where models run and have
+nothing to do with administering an account - requiring them would mean an
+operator cannot look at their endpoints until they have configured
+endpoints, and looking is how they find out what to configure. So the
+client is built from the key and the service from the client.
+
+Which endpoints this installation actually uses comes from our own Model
+Registry rather than from the original's environment variables, because
+the registry is where this platform decides what runs where.
 
 **Without credentials this surface says so.** `/gpu/status` answers first and
 plainly, because the alternative is five screens each failing separately with
@@ -31,11 +35,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, Query
 
 from foldfront.core.auth import CurrentIdentity, require, require_signed_in
+from foldfront.core.config import get_settings
 from foldfront.core.errors import ApiError, E
 from foldfront.db.models import Role
 from foldfront.db.repositories import Repos
@@ -55,37 +61,57 @@ def credentials_present() -> bool:
     return bool(str(os.environ.get("RUNPOD_API_KEY") or "").strip())
 
 
-def _runner() -> Any:
-    """The original's own fully wired runner.
+async def _managed_endpoints() -> dict[str, list[dict[str, str]]]:
+    """Which endpoints this installation actually routes to, by endpoint id.
 
-    Built per call rather than held: it carries API clients and endpoint ids
-    read from configuration and from the provider store, and a long-lived
-    copy would keep serving an endpoint an operator has since repointed.
+    Read from our own Model Registry rather than from the original's
+    environment variables. The registry is where this platform decides what
+    runs where, so it is the honest answer to "are we using this endpoint" -
+    and an account can hold endpoints nothing here points at.
     """
-    from pipeline_mcp.app import build_runner
-
-    return build_runner()
+    by_endpoint: dict[str, list[dict[str, str]]] = {}
+    for mv in await Repos().models.list(active_only=True):
+        endpoint = str(getattr(mv, "endpoint_id", "") or "").strip()
+        if not endpoint:
+            continue
+        by_endpoint.setdefault(endpoint, []).append(
+            {"key": mv.model_id, "label": f"{mv.model_id}:{mv.version}",
+             "endpoint_id": endpoint, "configured": "true"}
+        )
+    return by_endpoint
 
 
 async def _service() -> Any:
-    """The original's RunPod admin service, or a refusal that explains itself."""
+    """The original's RunPod admin service, or a refusal that explains itself.
+
+    Built from a RunPodClient directly rather than through the original's
+    `build_runner`. That builder constructs every model client and refuses
+    without MMSEQS_ENDPOINT_ID and its siblings - which have nothing to do
+    with administering an account. Requiring them would mean an operator
+    could not look at their endpoints until they had already configured
+    endpoints, and looking is how they find out what to configure.
+    """
     if not credentials_present():
         raise ApiError(E.GPU_NOT_CONFIGURED)
     try:
-        from pipeline_mcp.runpod_admin import build_runpod_admin_service
+        from pipeline_mcp.clients.runpod import RunPodClient
+        from pipeline_mcp.runpod_admin import RunPodAdminService
     except Exception as exc:  # pragma: no cover - 원본을 뗀 구성
         raise ApiError(E.UPSTREAM_UNAVAILABLE, reason=str(exc)) from exc
 
-    try:
-        #  Both the build and every call below reach the network, and this
-        #  is a sync library. Off the event loop or one slow endpoint stalls
-        #  every other request the API is serving.
-        service = await asyncio.to_thread(lambda: build_runpod_admin_service(_runner()))
-    except Exception as exc:
-        raise ApiError(E.GPU_UNREACHABLE, reason=str(exc)) from exc
-    if service is None:
-        raise ApiError(E.GPU_NOT_CONFIGURED)
-    return service
+    managed = await _managed_endpoints()
+    return RunPodAdminService(
+        runpod=RunPodClient(
+            api_key=str(os.environ.get("RUNPOD_API_KEY") or "").strip(),
+            ca_bundle=os.environ.get("RUNPOD_CA_BUNDLE") or None,
+            skip_verify=str(os.environ.get("RUNPOD_SKIP_VERIFY") or "").lower()
+            in ("1", "true", "yes"),
+            timeout_s=30.0,
+        ),
+        output_root=str(Path(get_settings().output_root).resolve()),
+        managed_endpoint_map=managed,
+        managed_services=[s for lst in managed.values() for s in lst],
+    )
 
 
 async def _call(what: str, fn: Any, *args: Any, **kwargs: Any) -> Any:

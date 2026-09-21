@@ -225,10 +225,14 @@ function Billing() {
   const [days, setDays] = useState(30)
   const bill = useAsync(() => api.gpuBilling(days), [days])
 
-  //  The provider's shape is its own and changes; rendering whatever came
-  //  back beats a table of columns that quietly go blank after an update.
+  //  The provider's shape is its own and changes, so whatever scalar it
+  //  sends is rendered rather than a fixed set of columns that would go
+  //  quietly blank after an update. What is dropped is the transport's own
+  //  bookkeeping - `mode`, `read_only` and the like - which is not usage
+  //  and reads as a cost figure when put in a cost table.
+  const NOT_USAGE = new Set(['mode', 'read_only', 'history_source', 'window'])
   const rows = Object.entries(bill.data ?? {}).filter(
-    ([, v]) => v !== null && typeof v !== 'object',
+    ([k, v]) => v !== null && typeof v !== 'object' && !NOT_USAGE.has(k),
   )
 
   return (
@@ -252,7 +256,11 @@ function Billing() {
     >
       <ErrorBox message={bill.error} />
       {rows.length === 0 ? (
-        <Empty>{bill.loading ? '불러오는 중입니다.' : '집계가 없습니다.'}</Empty>
+        <Empty>
+          {bill.loading
+            ? '불러오는 중입니다.'
+            : '이 기간에 쓴 내역이 없습니다. 엔드포인트가 돌면 여기에 사용량과 비용이 쌓입니다.'}
+        </Empty>
       ) : (
         <dl className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
           {rows.map(([k, v]) => (
