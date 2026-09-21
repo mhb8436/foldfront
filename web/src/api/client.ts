@@ -461,6 +461,15 @@ export const api = {
       { method: 'DELETE' },
     ),
 
+  // ------------------------------------------------------------ MCP onboarding
+  mcpInfo: () =>
+    request<{ endpoint: string; transport: string; tool_count: number; auth: string }>(
+      '/mcp/info',
+    ),
+
+  /** The skill package download, opened directly by the browser. */
+  mcpSkillUrl: () => `${BASE}/mcp/skill`,
+
   startRun: (body: {
     workflow_id: string
     workflow_version?: number

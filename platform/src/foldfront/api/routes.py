@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import asyncio
 
+import io
 import json
+import zipfile
 
 from datetime import datetime, timedelta
 from typing import Any, Literal
@@ -27,7 +29,7 @@ from pathlib import Path
 import httpx
 from fastapi import APIRouter, Body, Depends, Query, Request
 from starlette.datastructures import UploadFile as FormFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from foldfront.core.auth import (
@@ -267,6 +269,49 @@ async def delete_evidence(run_id: str, evidence_id: str, identity: CurrentIdenti
         detail={"evidence_id": evidence_id, "removed": removed},
     )
     return {"deleted": removed}
+
+
+# ---------------------------------------------------------------- MCP onboarding
+
+
+@router.get("/mcp/info", dependencies=[Depends(require_signed_in())], tags=["MCP"],
+            summary="How an external agent connects to the MCP endpoint")
+async def mcp_info(identity: CurrentIdentity, request: Request) -> dict[str, Any]:
+    #  The MCP endpoint is mounted at the app root, not under /api/v1. Its tool
+    #  count is read from the live registry, not stated, so it never drifts.
+    from foldfront.api.mcp import PLATFORM_TOOLS, _upstream_definitions
+
+    endpoint = str(request.base_url).rstrip("/") + "/mcp"
+    return {
+        "endpoint": endpoint,
+        "transport": "http",
+        "tool_count": len(_upstream_definitions()) + len(PLATFORM_TOOLS),
+        #  The agent sends the signed-in user's OIDC access token as the bearer;
+        #  no long-lived key is issued. In dev, authentication is off.
+        "auth": "bearer-oidc",
+    }
+
+
+def _skill_dir() -> Path:
+    return Path(__file__).resolve().parents[4] / "skills" / "protein-pipeline-stepper"
+
+
+@router.get("/mcp/skill", dependencies=[Depends(require_signed_in())], tags=["MCP"],
+            summary="Download the agent skill package")
+async def mcp_skill(identity: CurrentIdentity) -> Response:
+    root = _skill_dir()
+    if not root.is_dir():
+        raise ApiError(E.ARTIFACT_FILE_MISSING)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in sorted(root.rglob("*")):
+            if f.is_file():
+                zf.write(f, arcname=str(Path(root.name) / f.relative_to(root)))
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="protein-pipeline-stepper.zip"'},
+    )
 
 
 @router.get("/runs/{run_id}/artifacts/content", dependencies=[Depends(require_signed_in())], tags=["Runs"], summary="Fetch an artifact")

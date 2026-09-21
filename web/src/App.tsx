@@ -12,6 +12,7 @@ import { Gpu } from './pages/Gpu'
 import { Operations } from './pages/Operations'
 import { Users } from './pages/Users'
 import { Copilot } from './pages/Copilot'
+import { Mcp } from './pages/Mcp'
 
 export function App() {
   return (
@@ -29,6 +30,7 @@ export function App() {
           <Route path="/gpu" element={<Gpu />} />
         <Route path="/users" element={<Users />} />
         <Route path="/copilot" element={<Copilot />} />
+        <Route path="/mcp" element={<Mcp />} />
       </Routes>
     </Shell>
   )

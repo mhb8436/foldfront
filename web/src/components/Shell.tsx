@@ -11,6 +11,7 @@ import {
   MessageSquare,
   Moon,
   PanelLeft,
+  Plug,
   Play,
   Settings2,
   Sun,
@@ -72,6 +73,7 @@ const NAV: Array<{ section: string; items: Item[] }> = [
       { to: '/operations', label: '운영', icon: Settings2, roles: ['admin'] },
       { to: '/users', label: '이용자', icon: UsersRound, roles: ['admin'] },
       { to: '/copilot', label: '설계 Copilot', icon: MessageSquare },
+      { to: '/mcp', label: '에이전트 연결', icon: Plug },
     ],
   },
 ]
