@@ -174,6 +174,25 @@ export interface Artifact {
   user_visible: boolean
 }
 
+export interface ReferenceHit {
+  id: string
+  source: string
+  title: string
+  url: string
+  extra: Record<string, unknown>
+}
+
+export interface Evidence {
+  evidence_id: string
+  run_id: string
+  node_id: string | null
+  source: string
+  query: string
+  hit: ReferenceHit
+  attached_by: string | null
+  created_at: string
+}
+
 export interface WorkflowNode {
   node_id: string
   kind: NodeKind
@@ -416,6 +435,30 @@ export const api = {
   listArtifacts: (runId: string, stage?: string) =>
     request<Listed<Artifact> & { total_bytes: number }>(
       `/runs/${encodeURIComponent(runId)}/artifacts${query({ stage })}`,
+    ),
+
+  // ------------------------------------------------------------ references / evidence
+  searchReferences: (q: string, source = 'literature', limit = 10) =>
+    request<Listed<ReferenceHit> & { source: string }>(
+      `/references/search${query({ q, source, limit })}`,
+    ),
+
+  listEvidence: (runId: string) =>
+    request<Listed<Evidence>>(`/runs/${encodeURIComponent(runId)}/evidence`),
+
+  attachEvidence: (
+    runId: string,
+    body: { source: string; query: string; hit: ReferenceHit; node_id?: string },
+  ) =>
+    request<Evidence>(`/runs/${encodeURIComponent(runId)}/evidence`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  deleteEvidence: (runId: string, evidenceId: string) =>
+    request<{ deleted: boolean }>(
+      `/runs/${encodeURIComponent(runId)}/evidence/${encodeURIComponent(evidenceId)}`,
+      { method: 'DELETE' },
     ),
 
   startRun: (body: {

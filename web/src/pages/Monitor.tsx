@@ -6,6 +6,7 @@ import { useProject } from '@/lib/project'
 import { api } from '../api/client'
 import { StructureViewer } from '../components/StructureViewer'
 import { QualityPanel } from '../components/QualityPanel'
+import { EvidencePanel } from '../components/EvidencePanel'
 import { metricTerm, stageTerm } from '@/lib/glossary'
 import { useIdentity } from '@/lib/identity'
 import { usePolling, useAsync } from '../hooks/useAsync'
@@ -35,6 +36,7 @@ export function Monitor() {
   const [params, setParams] = useSearchParams()
   const [selected, setSelectedState] = useState<string | null>(() => params.get('run'))
   const { filter } = useProject()
+  const { canRun } = useIdentity()
 
   function setSelected(runId: string | null) {
     setSelectedState(runId)
@@ -81,6 +83,7 @@ export function Monitor() {
       {selected && (
         <RunDetail key={selected} runId={selected} onClose={() => setSelected(null)} onOpen={setSelected} />
       )}
+      {selected && <EvidencePanel key={`ev-${selected}`} runId={selected} canRun={canRun} />}
 
       <Panel
         title="실행 목록"
