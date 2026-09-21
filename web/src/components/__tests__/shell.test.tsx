@@ -163,3 +163,45 @@ describe('권한에 따른 메뉴', () => {
     expect(await screen.findByText(/인증 꺼짐/)).toBeInTheDocument()
   })
 })
+
+describe('로그아웃', () => {
+  function mountAs(authenticated: boolean) {
+    vi.spyOn(api, 'me').mockResolvedValue({
+      user_id: 'kim', email: '', roles: ['researcher'],
+      authenticated, auth_mode: authenticated ? 'oidc' : 'disabled',
+    } as never)
+    return render(
+      <MemoryRouter initialEntries={['/monitor']}>
+        <IdentityProvider>
+          <Shell>
+            <PageHeader title="실행 감시" description="상태를 확인합니다." />
+          </Shell>
+        </IdentityProvider>
+      </MemoryRouter>,
+    )
+  }
+
+  it('인증이 꺼져 있으면 단추를 두지 않는다', async () => {
+    //  끝낼 세션이 없는데 끝나는 척하는 단추는 없느니만 못하다.
+    mountAs(false)
+
+    expect(await screen.findByText('kim')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '로그아웃' })).not.toBeInTheDocument()
+  })
+
+  it('인증이 켜져 있으면 누를 때 세션을 끝낸다', async () => {
+    const out = vi.spyOn(api, 'logout').mockResolvedValue({
+      ok: true, signed_out_at: '2026-09-21T03:00:00Z',
+    } as never)
+    //  jsdom 은 reload 를 구현하지 않는다. 호출만 삼킨다.
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, reload: vi.fn() },
+      writable: true,
+    })
+    mountAs(true)
+
+    fireEvent.click(await screen.findByRole('button', { name: '로그아웃' }))
+
+    await waitFor(() => expect(out).toHaveBeenCalled())
+  })
+})

@@ -1,0 +1,20 @@
+#  TLS in front of the platform, for development and for a single-machine
+#  install. An institution fronting this with its own load balancer does not
+#  need it; the application speaks plain HTTP either way.
+#
+#  8443 rather than 443 deliberately: 443 is often already taken on a
+#  developer's machine, and needing root to bind it is a poor reason to be
+#  unable to test TLS at all.
+services:
+  tls:
+    image: nginx:1.27-alpine
+    container_name: foldfront-tls
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+      #  The built console. `cd web && npm run build` puts it here.
+      - ../../../web/dist:/usr/share/nginx/html:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

@@ -5,6 +5,7 @@ import {
   Dna,
   FolderOpen,
   LayoutGrid,
+  LogOut,
   Layers,
   MessageSquare,
   Moon,
@@ -226,6 +227,10 @@ export function Shell({ children }: { children: ReactNode }) {
               {identity && !identity.authenticated && ' · 인증 꺼짐'}
             </span>
           </div>
+          {/*  Only where there is a session to end. With authentication off
+               there is none, and a button that cannot work is worse than
+               no button. */}
+          {identity?.authenticated && <SignOut />}
         </div>
       </header>
 
@@ -325,5 +330,43 @@ export function PageHeader({
       </div>
       {actions && <div className="ml-auto flex items-center gap-2">{actions}</div>}
     </div>
+  )
+}
+
+/**
+ * End the session.
+ *
+ * Not just this tab: the token is stateless, so the server records the
+ * moment and refuses every token issued before it. That is what makes this
+ * a sign-out rather than a page clear - the same token on another device
+ * stops working too, which is the point of the button.
+ */
+function SignOut() {
+  const [busy, setBusy] = useState(false)
+
+  async function out() {
+    setBusy(true)
+    try {
+      await api.logout()
+    } catch {
+      //  Reloading anyway. A failed call leaves the session open on the
+      //  server, and the next request will say so - better than a dead
+      //  console that claims to have signed out.
+    }
+    window.location.reload()
+  }
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="size-8"
+      aria-label="로그아웃"
+      title="세션을 끝냅니다. 다른 기기의 같은 세션도 끝납니다."
+      disabled={busy}
+      onClick={out}
+    >
+      <LogOut className="size-4" />
+    </Button>
   )
 }

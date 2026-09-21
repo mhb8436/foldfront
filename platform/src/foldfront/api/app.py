@@ -54,6 +54,35 @@ app = FastAPI(
 )
 
 
+@app.middleware("http")
+async def _security_headers(request: Request, call_next):
+    """Headers every answer carries, whatever path produced it.
+
+    HSTS only when the request actually arrived over TLS, and only on the
+    proxy's word: `X-Forwarded-Proto` is set by our own nginx config and not
+    passed through from the client, so a client cannot talk the platform into
+    claiming a plain connection was encrypted. Sending HSTS from a plain
+    deployment would lock a browser out of an installation that has no
+    certificate yet.
+
+    The rest hold whether or not there is TLS. `nosniff` because artifacts
+    are served from a path a person chooses the name of; `DENY` because this
+    console has no reason to be in a frame and framing it is how a click is
+    stolen; `no-referrer` because a run id in a URL should not travel to
+    whatever a report links out to.
+    """
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+
+    if request.headers.get("x-forwarded-proto") == "https" or request.url.scheme == "https":
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+        )
+    return response
+
+
 #  Errors answer with a code plus a message chosen for the caller's language.
 #  Registered before the routers so every path shares one error shape.
 @app.exception_handler(ApiError)
@@ -69,10 +98,14 @@ app.include_router(analysis_router, prefix="/api/v1")
 
 
 @app.get("/healthz", tags=["Operations"])
-async def healthz() -> dict[str, object]:
+async def healthz(request: Request) -> dict[str, object]:
     """Health check. The path matches the original so existing deployment
     scripts keep working."""
     db = get_db()
+    behind_tls = (
+        request.headers.get("x-forwarded-proto") == "https"
+        or request.url.scheme == "https"
+    )
     ping = await db.command("ping")
     return {
         "status": "ok",
@@ -80,4 +113,8 @@ async def healthz() -> dict[str, object]:
         "mongo_ok": bool(ping.get("ok")),
         #  Makes it visible when a deployment reaches production unauthenticated
         "auth": auth_mode(),
+        #  Says whether this deployment is behind TLS, the same way the
+        #  auth line says whether it is behind a provider. Both are things
+        #  an install can silently reach production without.
+        "tls": "terminated" if behind_tls else "none",
     }

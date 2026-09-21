@@ -962,6 +962,35 @@ class UserRepo(BaseRepo):
             return User(**_clean(d))
         return User(**_clean(existing))
 
+    async def sign_out(self, user_id: str) -> User | None:
+        """End every session this account has open.
+
+        An OIDC token is stateless, so there is nothing to delete. What is
+        recorded is the instant, and `apply_local` refuses any token issued
+        before it - which is every token the account is currently holding.
+        Signing back in gets a newer one and works again.
+        """
+        doc = await self.col.find_one_and_update(
+            {"user_id": user_id},
+            {"$set": {"signed_out_at": utcnow(), "updated_at": utcnow()}},
+            return_document=ReturnDocument.AFTER,
+        )
+        return User(**_clean(doc)) if doc else None
+
+    async def note_token(self, user_id: str, issued_at: datetime) -> bool:
+        """Record the newest token seen. True when this one is newer.
+
+        True means a token this account had not presented before, which is
+        the only moment in a stateless scheme that can honestly be called a
+        sign-in: `seen` runs on every request and cannot tell them apart.
+        """
+        doc = await self.col.find_one_and_update(
+            {"user_id": user_id,
+             "$or": [{"last_token_iat": None}, {"last_token_iat": {"$lt": issued_at}}]},
+            {"$set": {"last_token_iat": issued_at, "updated_at": utcnow()}},
+        )
+        return doc is not None
+
     async def list(self, *, limit: int = 500) -> list[User]:
         cur = self.col.find({}).sort("last_login_at", DESCENDING).limit(limit)
         return [User(**_clean(d)) for d in await cur.to_list(length=limit)]

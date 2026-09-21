@@ -1298,3 +1298,132 @@ async def test_copilot_상태는_모델_이름만_말한다(client, monkeypatch)
     monkeypatch.setattr(copilot, "available", fake)
     body = (await client.get("/api/v1/copilot/status")).json()
     assert "served" not in body and body["model"] == "m"
+
+
+# ---------------------------------------------------------------- 보안: 조회
+
+
+async def test_남의_실행은_조회도_막는다(client):
+    """역할만 맞으면 누구나 남의 설계를 읽던 자리다."""
+    from foldfront.db.client import get_db
+    from foldfront.db.repositories import Repos
+    from foldfront.db.models import Role
+
+    await _seed_models(client)
+    await client.post("/api/v1/workflows/builtin", json=["msa"])
+    run_id = (await client.post("/api/v1/runs", json={"workflow_id": "builtin-pipeline"})).json()["run_id"]
+    await get_db()[C.RUNS].update_one({"run_id": run_id}, {"$set": {"owner_id": "남"}})
+    await Repos().users.set_roles("dev", [Role.RESEARCHER])
+
+    assert (await client.get(f"/api/v1/runs/{run_id}")).status_code == 403
+    assert (await client.get(f"/api/v1/runs/{run_id}/events")).status_code == 403
+    assert (await client.get(f"/api/v1/runs/{run_id}/artifacts")).status_code == 403
+    r = await client.get(f"/api/v1/runs/{run_id}/artifacts/content", params={"path": "x.pdb"})
+    assert r.status_code == 403
+
+
+async def test_운영자는_남의_실행도_본다(client):
+    from foldfront.db.client import get_db
+
+    await _seed_models(client)
+    await client.post("/api/v1/workflows/builtin", json=["msa"])
+    run_id = (await client.post("/api/v1/runs", json={"workflow_id": "builtin-pipeline"})).json()["run_id"]
+    await get_db()[C.RUNS].update_one({"run_id": run_id}, {"$set": {"owner_id": "남"}})
+
+    assert (await client.get(f"/api/v1/runs/{run_id}")).status_code == 200
+
+
+async def test_산출물을_내려받으면_감사에_남는다(client, tmp_path, monkeypatch):
+    """무엇이 설치 밖으로 나갔는지가 감사의 본령이다."""
+    from foldfront.core.config import get_settings
+    from foldfront.db.models import Artifact
+    from foldfront.db.repositories import Repos
+
+    monkeypatch.setenv("PIPELINE_OUTPUT_ROOT", str(tmp_path))
+    get_settings.cache_clear()
+
+    await _seed_models(client)
+    await client.post("/api/v1/workflows/builtin", json=["msa"])
+    run_id = (await client.post("/api/v1/runs", json={"workflow_id": "builtin-pipeline"})).json()["run_id"]
+
+    rel = f"{run_id}/af2/best.pdb"
+    target = tmp_path / rel
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("ATOM      1  N   MET A   1\n", encoding="utf-8")
+    await Repos().artifacts.register(Artifact(
+        run_id=run_id, stage="af2", path=rel, kind="pdb",
+        size_bytes=target.stat().st_size,
+    ))
+
+    got = await client.get(f"/api/v1/runs/{run_id}/artifacts/content", params={"path": rel})
+    assert got.status_code == 200
+
+    logged = await Repos().audit.search(action="artifact.read")
+    assert logged, "산출물 조회가 감사에 남지 않는다"
+    assert logged[0].detail["path"] == rel
+    assert logged[0].detail["bytes"] > 0
+
+
+# ---------------------------------------------------------------- 보안: 세션
+
+
+async def test_인증이_꺼져_있으면_로그아웃할_것이_없다고_말한다(client):
+    """끝낼 세션이 없는데 끝난 척하지 않는다."""
+    r = await client.post("/api/v1/auth/logout")
+
+    assert r.status_code == 500 or r.json()["error"]["code"] == "auth.not_configured"
+
+
+async def test_로그아웃하면_그_전에_발급된_토큰을_거절한다(client):
+    """OIDC 토큰은 상태가 없다. 서명한 쪽은 여전히 유효하다고 한다."""
+    from datetime import datetime, timedelta, timezone
+
+    from foldfront.core.auth import Identity, apply_local
+    from foldfront.core.errors import ApiError
+    from foldfront.db.models import Role
+    from foldfront.db.repositories import Repos
+
+    now = datetime.now(timezone.utc)
+    who = Identity(user_id="사람", subject="sub-1", email="", roles=(Role.RESEARCHER,),
+                   authenticated=True, issued_at=now - timedelta(minutes=5))
+
+    #  로그아웃 전에는 통한다
+    assert (await apply_local(who)).user_id == "사람"
+
+    await Repos().users.sign_out("사람")
+
+    with pytest.raises(ApiError):
+        await apply_local(who)
+
+    #  다시 로그인해 받은 새 토큰은 통한다
+    fresh = Identity(user_id="사람", subject="sub-1", email="", roles=(Role.RESEARCHER,),
+                     authenticated=True, issued_at=datetime.now(timezone.utc) + timedelta(seconds=1))
+    assert (await apply_local(fresh)).user_id == "사람"
+
+
+async def test_새_토큰이_오면_로그인을_한_번_기록한다(client):
+    """seen 은 매 요청마다 돈다. 새 토큰만이 로그인이라 부를 수 있는 순간이다."""
+    from datetime import datetime, timedelta, timezone
+
+    from foldfront.core.auth import Identity, apply_local
+    from foldfront.db.models import Role
+    from foldfront.db.repositories import Repos
+
+    issued = datetime.now(timezone.utc)
+    who = Identity(user_id="사람2", subject="sub-2", email="", roles=(Role.RESEARCHER,),
+                   authenticated=True, issued_at=issued)
+
+    await apply_local(who)
+    await apply_local(who)          # 같은 토큰으로 두 번째 요청
+    await apply_local(who)
+
+    logged = await Repos().audit.search(action="auth.login")
+    mine = [a for a in logged if a.actor_id == "사람2"]
+    assert len(mine) == 1, f"같은 토큰인데 {len(mine)}번 기록했다"
+
+    #  새 토큰은 새 로그인이다
+    await apply_local(Identity(user_id="사람2", subject="sub-2", email="",
+                               roles=(Role.RESEARCHER,), authenticated=True,
+                               issued_at=issued + timedelta(minutes=10)))
+    again = [a for a in await Repos().audit.search(action="auth.login") if a.actor_id == "사람2"]
+    assert len(again) == 2

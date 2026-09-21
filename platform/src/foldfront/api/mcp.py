@@ -28,7 +28,7 @@ from typing import Any
 
 from fastapi import APIRouter, Body, Depends
 
-from foldfront.core.auth import CurrentIdentity, require
+from foldfront.core.auth import CurrentIdentity, may_see_run, require
 from foldfront.core.config import get_settings
 from foldfront.db.models import Role, Workflow
 from foldfront.db.repositories import Repos
@@ -243,7 +243,7 @@ async def _call_upstream(name: str, args: dict[str, Any], identity: Any) -> Any:
     run_id = str(args.get("run_id") or "").strip()
     projected: dict[str, Any] | None = None
     if run_id:
-        allowed = await _may_see_run(identity, run_id)
+        allowed = await may_see_run(identity, run_id)
         if not allowed:
             return {"ok": False, "error": f"{run_id} 을(를) 볼 권한이 없습니다"}
         view = await LegacyProjector(Repos()).project_if_present(run_id)
@@ -271,24 +271,6 @@ async def _call_upstream(name: str, args: dict[str, Any], identity: Any) -> Any:
 def _may_write(identity: Any) -> bool:
     roles = tuple(getattr(identity, "roles", ()) or ())
     return bool({Role.RESEARCHER, Role.ADMIN, Role.SERVICE} & set(roles))
-
-
-async def _may_see_run(identity: Any, run_id: str) -> bool:
-    """Whether this caller may read that run.
-
-    An admin or a service account sees every run. Anyone else sees a run they
-    own, and a run with no owner - runs made before ownership was recorded,
-    and the seeded ones - because refusing those would hide the only data a
-    fresh installation has.
-    """
-    roles = set(tuple(getattr(identity, "roles", ()) or ()))
-    if {Role.ADMIN, Role.SERVICE} & roles:
-        return True
-    run = await Repos().runs.get(run_id)
-    if run is None:
-        return True  # let the tool say "not found" in its own words
-    owner = run.owner_id
-    return owner is None or owner == getattr(identity, "user_id", None)
 
 
 # ---------------------------------------------------------------- JSON-RPC

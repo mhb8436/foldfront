@@ -531,6 +531,14 @@ export const api = {
   // ------------------------------------------------------------ identity
   me: () => request<Identity>('/me'),
 
+  /*  Ends every session this account has open, not just this tab: the
+      token is stateless, so the server records the moment and refuses
+      everything issued before it. */
+  logout: () =>
+    request<{ ok: boolean; signed_out_at: string | null }>('/auth/logout', {
+      method: 'POST',
+    }),
+
   // ------------------------------------------------------------ dashboard
   summary: (recent = 5, project_id?: string) =>
     request<Summary>(`/summary${query({ recent, project_id })}`),

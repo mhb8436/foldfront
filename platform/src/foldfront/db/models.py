@@ -518,3 +518,13 @@ class User(Doc):
     roles: list[Role] = Field(default_factory=lambda: [Role.VIEWER])
     active: bool = True
     last_login_at: datetime | None = None
+
+    #  Session termination. An OIDC bearer token is stateless - the provider
+    #  issued it and it stays valid until it expires, whatever this platform
+    #  thinks - so signing out has to be recorded on our side and checked on
+    #  every request. A token issued before this instant is refused.
+    signed_out_at: datetime | None = None
+    #  The newest token issue time seen for this account. A request carrying
+    #  a newer one is a fresh sign-in, which is the only reliable moment to
+    #  record a login: `seen` runs on every single request.
+    last_token_iat: datetime | None = None

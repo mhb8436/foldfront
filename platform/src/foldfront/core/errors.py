@@ -34,6 +34,7 @@ class E(StrEnum):
     AUTH_NOT_CONFIGURED = "auth.not_configured"
     AUTH_TOKEN_REQUIRED = "auth.token_required"
     AUTH_TOKEN_INVALID = "auth.token_invalid"
+    AUTH_SESSION_ENDED = "auth.session_ended"
     AUTH_FORBIDDEN = "auth.forbidden"
 
     # -------------------------------------------------- run
@@ -107,6 +108,7 @@ STATUS: dict[E, int] = {
     E.USER_EMPTY_PATCH: 400,
     E.AUTH_IDENTITY_MISMATCH: 403,
     E.FORK_NOT_READY: 400,
+    E.AUTH_SESSION_ENDED: 401,
     E.RUN_NOT_HELD: 409,
     E.UPSTREAM_UNAVAILABLE: 503,
     E.UPSTREAM_REFUSED: 400,
@@ -150,6 +152,7 @@ MESSAGES: dict[str, dict[E, str]] = {
         E.USER_EMPTY_PATCH: "바꿀 내용이 없습니다.",
         E.AUTH_IDENTITY_MISMATCH: "이름 {user_id} 는 다른 계정이 쓰고 있습니다. 운영자에게 알리십시오.",
         E.FORK_NOT_READY: "이 지점에서 갈라질 수 없습니다: {reason}",
+        E.AUTH_SESSION_ENDED: "세션이 종료되었습니다. 다시 로그인하십시오.",
         E.RUN_NOT_HELD: "검토를 기다리는 단계가 아닙니다: {reason}",
         E.UPSTREAM_UNAVAILABLE: "원본 분석 도구를 쓸 수 없습니다: {reason}",
         E.UPSTREAM_REFUSED: "{tool} 이(가) 처리하지 못했습니다: {reason}",
@@ -188,6 +191,7 @@ MESSAGES: dict[str, dict[E, str]] = {
         E.USER_EMPTY_PATCH: "Nothing to change.",
         E.AUTH_IDENTITY_MISMATCH: "The name {user_id} belongs to a different account. Tell an operator.",
         E.FORK_NOT_READY: "Cannot fork at that point: {reason}",
+        E.AUTH_SESSION_ENDED: "The session has ended. Sign in again.",
         E.RUN_NOT_HELD: "Not a stage waiting on review: {reason}",
         E.UPSTREAM_UNAVAILABLE: "The original analysis tools are unavailable: {reason}",
         E.UPSTREAM_REFUSED: "{tool} could not handle it: {reason}",

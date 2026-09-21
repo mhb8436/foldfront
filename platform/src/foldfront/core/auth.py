@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, replace
+from datetime import datetime, timezone
 from typing import Annotated, Any, Iterable
 
 from fastapi import Depends, Header
@@ -49,6 +50,10 @@ class Identity:
     email: str
     roles: tuple[Role, ...]
     authenticated: bool
+    #  When the bearer token was issued. Needed to honour a sign-out: the
+    #  token is stateless, so the only way to end a session is to refuse
+    #  everything issued before the moment the person signed out.
+    issued_at: datetime | None = None
 
     def has(self, *wanted: Role) -> bool:
         return any(r in self.roles for r in wanted)
@@ -98,12 +103,18 @@ def identity_from_token(token: str) -> Identity:
         raise ApiError(E.AUTH_TOKEN_INVALID) from exc
 
     role = ROLE_MAP.get(str(user.get("role")), Role.VIEWER)
+    issued = claims.get("iat") if isinstance(claims, dict) else None
     return Identity(
         user_id=str(user.get("username") or user.get("subject") or ""),
         subject=str(user.get("subject") or ""),
         email=str(user.get("email") or ""),
         roles=(role,),
         authenticated=True,
+        issued_at=(
+            datetime.fromtimestamp(float(issued), tz=timezone.utc)
+            if isinstance(issued, (int, float))
+            else None
+        ),
     )
 
 
@@ -127,6 +138,28 @@ async def apply_local(identity: Identity) -> Identity:
         raise ApiError(E.AUTH_IDENTITY_MISMATCH, user_id=identity.user_id) from exc
     if not record.active:
         raise ApiError(E.AUTH_FORBIDDEN)
+
+    #  Session termination. A token issued before the person signed out is
+    #  refused even though the provider would still verify it - that is the
+    #  whole of what signing out can mean for a stateless token.
+    if (
+        identity.issued_at is not None
+        and record.signed_out_at is not None
+        and identity.issued_at <= record.signed_out_at
+    ):
+        raise ApiError(E.AUTH_SESSION_ENDED)
+
+    if identity.issued_at is not None:
+        repos = Repos()
+        if await repos.users.note_token(record.user_id, identity.issued_at):
+            #  A token this account has not presented before. In a stateless
+            #  scheme this is the only honest moment to call it a sign-in.
+            await repos.audit.record(
+                "auth.login", actor_id=record.user_id, target_type="user",
+                target_id=record.user_id,
+                detail={"subject": record.subject, "roles": [str(r) for r in record.roles]},
+            )
+
     return replace(identity, user_id=record.user_id, roles=tuple(record.roles))
 
 
@@ -158,6 +191,46 @@ def require(*roles: Role):
         return identity
 
     return guard
+
+
+#  `has` is any-of, not a ladder: an admin does not carry the viewer role, so
+#  a read path guarded with require(Role.VIEWER) alone would refuse the
+#  operator. Reads name every role instead.
+ALL_ROLES: tuple[Role, ...] = (Role.VIEWER, Role.RESEARCHER, Role.SERVICE, Role.ADMIN)
+
+
+def require_signed_in():
+    """A dependency for read paths: any known role, but not nobody.
+
+    Read paths carried no dependency at all, which meant that with OIDC on,
+    run data and artifact downloads were served to anyone who could reach the
+    port. A reader needs no particular role, but they do need to be someone -
+    both so the refusal exists and so the audit trail has a name to record.
+    """
+    return require(*ALL_ROLES)
+
+
+async def may_see_run(identity: Identity, run_id: str) -> bool:
+    """Whether this caller may read that run.
+
+    An operator or a service account sees every run. Anyone else sees a run
+    they own, and a run with no owner - runs made before ownership was
+    recorded, and the seeded ones - because refusing those would hide the
+    only data a fresh installation has.
+
+    A run that does not exist reads as visible, so the caller is told it does
+    not exist rather than that they may not see it. Which of the two is
+    kinder here: this platform's run ids are issued, not guessed, and "you
+    may not see it" about a run nobody has is a worse answer to debug.
+    """
+    from foldfront.db.repositories import Repos
+
+    if identity.has(Role.ADMIN, Role.SERVICE):
+        return True
+    run = await Repos().runs.get(run_id)
+    if run is None:
+        return True
+    return run.owner_id is None or run.owner_id == identity.user_id
 
 
 def describe(roles: Iterable[Role]) -> dict[str, Any]:

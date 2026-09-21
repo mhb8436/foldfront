@@ -30,7 +30,14 @@ from starlette.datastructures import UploadFile as FormFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from foldfront.core.auth import CurrentIdentity, auth_mode, oidc_enabled, require
+from foldfront.core.auth import (
+    CurrentIdentity,
+    auth_mode,
+    may_see_run,
+    oidc_enabled,
+    require,
+    require_signed_in,
+)
 from foldfront.core.config import get_settings
 from foldfront.core.errors import ApiError, E
 from foldfront.db.models import (
@@ -138,7 +145,7 @@ async def start_run(body: StartRunBody, identity: CurrentIdentity) -> dict[str, 
     return run.model_dump()
 
 
-@router.get("/runs", tags=["Runs"], summary="List runs")
+@router.get("/runs", dependencies=[Depends(require_signed_in())], tags=["Runs"], summary="List runs")
 async def list_runs(
     status: RunStatus | None = None,
     project_id: str | None = None,
@@ -153,24 +160,33 @@ async def list_runs(
     return {"items": [i.model_dump() for i in items], "count": len(items)}
 
 
-@router.get("/runs/{run_id}", tags=["Runs"], summary="Run status")
-async def get_run(run_id: str) -> dict[str, Any]:
+@router.get("/runs/{run_id}", dependencies=[Depends(require_signed_in())], tags=["Runs"], summary="Run status")
+async def get_run(run_id: str, identity: CurrentIdentity) -> dict[str, Any]:
     run = await repos().runs.get(run_id)
     if run is None:
         raise ApiError(E.RUN_NOT_FOUND, run_id=run_id)
+    if not await may_see_run(identity, run_id):
+        raise ApiError(E.AUTH_FORBIDDEN)
     return run.model_dump()
 
 
-@router.get("/runs/{run_id}/events", tags=["Runs"], summary="Run events")
-async def list_events(run_id: str, limit: int = Query(default=200, le=1000)) -> dict[str, Any]:
+@router.get("/runs/{run_id}/events", dependencies=[Depends(require_signed_in())], tags=["Runs"], summary="Run events")
+async def list_events(
+    run_id: str, identity: CurrentIdentity, limit: int = Query(default=200, le=1000)
+) -> dict[str, Any]:
+    if not await may_see_run(identity, run_id):
+        raise ApiError(E.AUTH_FORBIDDEN)
     items = await repos().events.list(run_id, limit=limit)
     return {"items": [i.model_dump() for i in items], "count": len(items)}
 
 
-@router.get("/runs/{run_id}/artifacts", tags=["Runs"], summary="List artifacts")
+@router.get("/runs/{run_id}/artifacts", dependencies=[Depends(require_signed_in())], tags=["Runs"], summary="List artifacts")
 async def list_artifacts(
-    run_id: str, stage: str | None = None, user_visible: bool | None = None
+    run_id: str, identity: CurrentIdentity,
+    stage: str | None = None, user_visible: bool | None = None,
 ) -> dict[str, Any]:
+    if not await may_see_run(identity, run_id):
+        raise ApiError(E.AUTH_FORBIDDEN)
     items = await repos().artifacts.list(run_id, stage=stage, user_visible=user_visible)
     return {
         "items": [i.model_dump() for i in items],
@@ -179,8 +195,10 @@ async def list_artifacts(
     }
 
 
-@router.get("/runs/{run_id}/artifacts/content", tags=["Runs"], summary="Fetch an artifact")
-async def artifact_content(run_id: str, path: str) -> FileResponse:
+@router.get("/runs/{run_id}/artifacts/content", dependencies=[Depends(require_signed_in())], tags=["Runs"], summary="Fetch an artifact")
+async def artifact_content(
+    run_id: str, path: str, identity: CurrentIdentity
+) -> FileResponse:
     """Serve the artifact itself, which is what the structure viewer reads.
 
     The path is never handed to the filesystem as given. Two checks stand in
@@ -188,8 +206,19 @@ async def artifact_content(run_id: str, path: str) -> FileResponse:
     arbitrary path is not looked up at all. Then the resolved path is compared
     against the storage root, which also catches a registration that was itself
     poisoned with a traversal.
+
+    Two more stand in front of those, and they are newer. Whoever is asking
+    has to be someone, and the run has to be one they may see: this path
+    hands over a designed sequence or a predicted structure, which is the
+    most sensitive thing the platform holds, and it used to be served to
+    anyone who knew a run id. And the handover is recorded, because knowing
+    what left the installation is most of what an audit trail is for.
     """
-    art = await repos().artifacts.get(run_id, path)
+    r = repos()
+    if not await may_see_run(identity, run_id):
+        raise ApiError(E.AUTH_FORBIDDEN)
+
+    art = await r.artifacts.get(run_id, path)
     if art is None:
         raise ApiError(E.ARTIFACT_NOT_REGISTERED)
 
@@ -199,6 +228,15 @@ async def artifact_content(run_id: str, path: str) -> FileResponse:
         raise ApiError(E.ARTIFACT_OUTSIDE_ROOT)
     if not target.is_file():
         raise ApiError(E.ARTIFACT_FILE_MISSING)
+
+    #  Recorded before the file is handed over, not after: the response is
+    #  streamed, so "after" would mean after the bytes had already left.
+    await r.audit.record(
+        "artifact.read", actor_id=identity.user_id, target_type="artifact",
+        target_id=f"{run_id}/{art.path}",
+        detail={"run_id": run_id, "path": art.path, "bytes": art.size_bytes,
+                "kind": art.kind},
+    )
 
     return FileResponse(
         target,
@@ -358,7 +396,7 @@ async def cancel_run(
 # ---------------------------------------------------------------- workflows
 
 
-@router.get("/workflows", tags=["Workflows"], summary="List workflows (latest version of each)")
+@router.get("/workflows", dependencies=[Depends(require_signed_in())], tags=["Workflows"], summary="List workflows (latest version of each)")
 async def list_workflows(
     templates_only: bool = False, project_id: str | None = None
 ) -> dict[str, Any]:
@@ -366,7 +404,7 @@ async def list_workflows(
     return {"items": [i.model_dump() for i in items], "count": len(items)}
 
 
-@router.get("/workflows/{workflow_id}", tags=["Workflows"], summary="Fetch a workflow")
+@router.get("/workflows/{workflow_id}", dependencies=[Depends(require_signed_in())], tags=["Workflows"], summary="Fetch a workflow")
 async def get_workflow(workflow_id: str, version: int | None = None) -> dict[str, Any]:
     wf = await repos().workflows.get(workflow_id, version)
     if wf is None:
@@ -374,7 +412,7 @@ async def get_workflow(workflow_id: str, version: int | None = None) -> dict[str
     return wf.model_dump()
 
 
-@router.get("/workflows/{workflow_id}/versions", tags=["Workflows"], summary="List versions")
+@router.get("/workflows/{workflow_id}/versions", dependencies=[Depends(require_signed_in())], tags=["Workflows"], summary="List versions")
 async def workflow_versions(workflow_id: str) -> dict[str, Any]:
     versions = await repos().workflows.versions(workflow_id)
     if not versions:
@@ -437,7 +475,7 @@ async def seed_builtin(
 # ---------------------------------------------------------------- Model Registry
 
 
-@router.get("/models", tags=["Models"], summary="List registered models")
+@router.get("/models", dependencies=[Depends(require_signed_in())], tags=["Models"], summary="List registered models")
 async def list_models(
     model_id: str | None = None, kind: str | None = None, active_only: bool = False
 ) -> dict[str, Any]:
@@ -458,7 +496,7 @@ async def register_model(mv: ModelVersion, identity: CurrentIdentity) -> dict[st
     return saved.model_dump()
 
 
-@router.get("/models/{model_id}/resolve", tags=["Models"],
+@router.get("/models/{model_id}/resolve", dependencies=[Depends(require_signed_in())], tags=["Models"],
             summary="Resolve a model to an execution endpoint")
 async def resolve_model(
     model_id: str, version: str | None = None, max_gpu: int | None = None
@@ -523,7 +561,7 @@ async def lease_job(body: LeaseBody) -> dict[str, Any] | None:
     return job.model_dump() if job else None
 
 
-@router.get("/jobs/stats", tags=["Jobs"], summary="Queue depth")
+@router.get("/jobs/stats", dependencies=[Depends(require_signed_in())], tags=["Jobs"], summary="Queue depth")
 async def job_stats() -> dict[str, Any]:
     """How much work is queued, and in what state."""
     r = repos()
@@ -546,7 +584,7 @@ async def reclaim_jobs(identity: CurrentIdentity) -> dict[str, Any]:
 # ---------------------------------------------------------------- projects
 
 
-@router.get("/projects", tags=["Projects"], summary="List projects")
+@router.get("/projects", dependencies=[Depends(require_signed_in())], tags=["Projects"], summary="List projects")
 async def list_projects(include_archived: bool = False) -> dict[str, Any]:
     items = await repos().projects.list(include_archived=include_archived)
     return {"items": [i.model_dump() for i in items], "count": len(items)}
@@ -565,7 +603,7 @@ async def create_project(project: Project, identity: CurrentIdentity) -> dict[st
     return saved.model_dump()
 
 
-@router.get("/projects/{project_id}/rounds", tags=["Projects"], summary="List rounds")
+@router.get("/projects/{project_id}/rounds", dependencies=[Depends(require_signed_in())], tags=["Projects"], summary="List rounds")
 async def list_rounds(project_id: str) -> dict[str, Any]:
     items = await repos().rounds.list(project_id)
     return {"items": [i.model_dump() for i in items], "count": len(items)}
@@ -599,7 +637,7 @@ class CopilotTurn(BaseModel):
     run_id: str | None = None
 
 
-@router.get("/copilot/status", tags=["Copilot"], summary="Whether the design copilot's model answers")
+@router.get("/copilot/status", dependencies=[Depends(require_signed_in())], tags=["Copilot"], summary="Whether the design copilot's model answers")
 async def copilot_status(identity: CurrentIdentity) -> dict[str, Any]:
     from foldfront.engine import copilot
 
@@ -675,6 +713,34 @@ async def copilot_plan(body: PlanRequest, identity: CurrentIdentity) -> dict[str
     return drafted
 
 
+@router.post("/auth/logout", dependencies=[Depends(require_signed_in())],
+             tags=["Operations"], summary="End this account's sessions")
+async def logout(identity: CurrentIdentity) -> dict[str, Any]:
+    """Sign out.
+
+    There is no session to delete - the provider issued a bearer token and
+    it stays valid until it expires. What happens instead is that the moment
+    is recorded, and every token issued before it is refused from here on.
+    That ends the session on the tab in front of the person and on any other
+    device holding the same token, which is what signing out has to mean.
+
+    With authentication off there is nothing to end, and saying so is more
+    use than pretending it worked.
+    """
+    if not oidc_enabled():
+        raise ApiError(E.AUTH_NOT_CONFIGURED)
+
+    r = repos()
+    record = await r.users.sign_out(identity.user_id)
+    if record is None:
+        raise ApiError(E.USER_NOT_FOUND, user_id=identity.user_id)
+    await r.audit.record(
+        "auth.logout", actor_id=identity.user_id, target_type="user",
+        target_id=identity.user_id,
+    )
+    return {"ok": True, "signed_out_at": record.signed_out_at}
+
+
 # ---------------------------------------------------------------- users
 
 
@@ -739,7 +805,7 @@ async def patch_user(user_id: str, patch: UserPatch, identity: CurrentIdentity) 
 # ---------------------------------------------------------------- identity
 
 
-@router.get("/me", tags=["Operations"], summary="Who the caller is, and what they may do")
+@router.get("/me", dependencies=[Depends(require_signed_in())], tags=["Operations"], summary="Who the caller is, and what they may do")
 async def me(identity: CurrentIdentity) -> dict[str, Any]:
     """The console needs this to decide what to offer.
 
@@ -857,7 +923,7 @@ async def upload_input(identity: CurrentIdentity, request: Request) -> dict[str,
     }
 
 
-@router.get("/inputs/usage", tags=["Runs"], summary="What the caller has uploaded, against the limit")
+@router.get("/inputs/usage", dependencies=[Depends(require_signed_in())], tags=["Runs"], summary="What the caller has uploaded, against the limit")
 async def input_usage(identity: CurrentIdentity) -> dict[str, Any]:
     settings = get_settings()
     r = repos()
@@ -923,7 +989,7 @@ def _notice(
     }
 
 
-@router.get("/notices", tags=["Operations"], summary="What is waiting for a person")
+@router.get("/notices", dependencies=[Depends(require_signed_in())], tags=["Operations"], summary="What is waiting for a person")
 async def notices(identity: CurrentIdentity) -> dict[str, Any]:
     """Things someone has to do something about.
 
@@ -1002,7 +1068,7 @@ async def notices(identity: CurrentIdentity) -> dict[str, Any]:
 # ---------------------------------------------------------------- dashboard
 
 
-@router.get("/summary", tags=["Operations"], summary="Everything the dashboard shows")
+@router.get("/summary", dependencies=[Depends(require_signed_in())], tags=["Operations"], summary="Everything the dashboard shows")
 async def summary(
     recent: int = Query(default=5, le=20),
     project_id: str | None = None,

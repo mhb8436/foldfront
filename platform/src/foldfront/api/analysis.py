@@ -25,7 +25,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 
-from foldfront.core.auth import CurrentIdentity, require
+from foldfront.core.auth import CurrentIdentity, may_see_run, require
 from foldfront.core.config import get_settings
 from foldfront.core.errors import ApiError, E
 from foldfront.db.models import Role
@@ -46,13 +46,11 @@ async def _prepared(run_id: str, identity: CurrentIdentity) -> Any:
 
     Raises rather than returns on refusal, so a caller cannot forget to look.
     """
-    from foldfront.api.mcp import _may_see_run
-
     r = repos()
     run = await r.runs.get(run_id)
     if run is None:
         raise ApiError(E.RUN_NOT_FOUND, run_id=run_id)
-    if not await _may_see_run(identity, run_id):
+    if not await may_see_run(identity, run_id):
         raise ApiError(E.AUTH_FORBIDDEN)
 
     await LegacyProjector(r).project(run_id)
@@ -156,9 +154,7 @@ async def quality(run_id: str, identity: CurrentIdentity) -> dict[str, Any]:
     if run is None:
         raise ApiError(E.RUN_NOT_FOUND, run_id=run_id)
 
-    from foldfront.api.mcp import _may_see_run
-
-    if not await _may_see_run(identity, run_id):
+    if not await may_see_run(identity, run_id):
         raise ApiError(E.AUTH_FORBIDDEN)
 
     signals = read_signals(run)
@@ -196,9 +192,7 @@ async def project_run(run_id: str, identity: CurrentIdentity) -> dict[str, Any]:
     projection actually wrote.
     """
     r = repos()
-    from foldfront.api.mcp import _may_see_run
-
-    if not await _may_see_run(identity, run_id):
+    if not await may_see_run(identity, run_id):
         raise ApiError(E.AUTH_FORBIDDEN)
     from foldfront.engine.legacy_view import ProjectionError
 
