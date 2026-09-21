@@ -63,3 +63,77 @@ async def test_search_rejects_an_empty_query():
 async def test_search_rejects_an_unknown_source():
     with pytest.raises(ReferenceError):
         await references.search("wikipedia", "lysozyme", limit=5)
+
+
+# ---------------------------------------------------------------- 다른 소스 파서
+
+
+def test_uniprot_parser():
+    from foldfront.engine.references import _uniprot
+
+    payload = {
+        "results": [
+            {
+                "primaryAccession": "P00698",
+                "entryType": "UniProtKB reviewed (Swiss-Prot)",
+                "organism": {"scientificName": "Gallus gallus"},
+                "proteinDescription": {"recommendedName": {"fullName": {"value": "Lysozyme C"}}},
+            }
+        ]
+    }
+    hits = _uniprot(payload)
+    assert len(hits) == 1
+    h = hits[0]
+    assert h.source == "protein" and h.id == "P00698" and h.title == "Lysozyme C"
+    assert h.url == "https://www.uniprot.org/uniprotkb/P00698"
+    assert h.extra["organism"] == "Gallus gallus" and h.extra["reviewed"] is True
+
+
+def test_uniref_parser():
+    from foldfront.engine.references import _uniref
+
+    payload = {
+        "results": [
+            {
+                "id": "UniRef100_A0A011NRN3",
+                "name": "Cluster: Lysozyme",
+                "memberCount": 3,
+                "representativeMember": {"organismName": "Candidatus Accumulibacter"},
+            }
+        ]
+    }
+    hits = _uniref(payload)
+    assert hits[0].source == "cluster" and hits[0].id == "UniRef100_A0A011NRN3"
+    assert hits[0].url == "https://www.uniprot.org/uniref/UniRef100_A0A011NRN3"
+    assert hits[0].extra["members"] == 3
+
+
+def test_interpro_parser():
+    from foldfront.engine.references import _interpro
+
+    payload = {
+        "results": [
+            {"metadata": {"accession": "IPR000974", "name": "Glycoside hydrolase",
+                          "type": "family", "source_database": "interpro"}}
+        ]
+    }
+    hits = _interpro(payload)
+    assert hits[0].source == "family" and hits[0].id == "IPR000974"
+    assert hits[0].url == "https://www.ebi.ac.uk/interpro/entry/interpro/IPR000974/"
+    assert hits[0].extra["type"] == "family"
+
+
+def test_rcsb_parser_uses_titles_when_present():
+    from foldfront.engine.references import _rcsb
+
+    hits = _rcsb(["168L", "169L"], {"168L": "T4 lysozyme"})
+    assert hits[0].source == "structure" and hits[0].title == "T4 lysozyme"
+    assert hits[0].url == "https://www.rcsb.org/structure/168L"
+    #  A missing title falls back to the id, never blank.
+    assert hits[1].title == "169L"
+
+
+def test_every_source_has_a_handler():
+    from foldfront.engine import references
+
+    assert set(references.SOURCES) == set(references._HANDLERS)

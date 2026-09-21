@@ -6,6 +6,20 @@ import { useAsync } from '../hooks/useAsync'
 import { Panel, Empty, ErrorBox } from './Common'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
+
+//  The reference sources, with the label the panel shows for each.
+const SOURCES: { value: string; label: string }[] = [
+  { value: 'literature', label: '문헌' },
+  { value: 'structure', label: '구조' },
+  { value: 'protein', label: '단백질' },
+  { value: 'family', label: '도메인' },
+  { value: 'cluster', label: '군집' },
+]
+
+function sourceLabel(value: string): string {
+  return SOURCES.find((s) => s.value === value)?.label ?? value
+}
 
 /**
  * Search external references and pin them to a run as evidence.
@@ -16,6 +30,7 @@ import { Input } from '@/components/ui/input'
  */
 export function EvidencePanel({ runId, canRun }: { runId: string; canRun: boolean }) {
   const [q, setQ] = useState('')
+  const [source, setSource] = useState('literature')
   const [hits, setHits] = useState<ReferenceHit[] | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -27,7 +42,7 @@ export function EvidencePanel({ runId, canRun }: { runId: string; canRun: boolea
     setBusy(true)
     setError(null)
     try {
-      const res = await api.searchReferences(query)
+      const res = await api.searchReferences(query, source)
       setHits(res.items)
     } catch (e) {
       setError((e as Error).message)
@@ -67,7 +82,9 @@ export function EvidencePanel({ runId, canRun }: { runId: string; canRun: boolea
         <ul className="mb-4 flex flex-col gap-1.5">
           {pinned.data.items.map((e) => (
             <li key={e.evidence_id} className="flex items-start gap-2 text-[13px]">
-              <span className="bg-muted mt-0.5 rounded px-1.5 py-0.5 text-[11px]">{e.source}</span>
+              <span className="bg-muted mt-0.5 rounded px-1.5 py-0.5 text-[11px]">
+                {sourceLabel(e.source)}
+              </span>
               <span className="min-w-0 flex-1">
                 {e.hit.url ? (
                   <a
@@ -103,13 +120,26 @@ export function EvidencePanel({ runId, canRun }: { runId: string; canRun: boolea
       {canRun && (
         <>
           <div className="mt-3 flex gap-2">
+            <div className="w-[92px] shrink-0">
+              <Select
+                value={source}
+                onChange={(e) => setSource(e.target.value)}
+                aria-label="참조 소스"
+              >
+                {SOURCES.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
             <Input
               value={q}
               onChange={(e) => setQ(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') search()
               }}
-              placeholder="문헌 검색어 (예: lysozyme solubility)"
+              placeholder="검색어 (예: lysozyme)"
             />
             <Button variant="outline" size="sm" onClick={search} disabled={busy || !q.trim()}>
               <Search />
