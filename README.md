@@ -150,7 +150,15 @@ DOI [10.5281/zenodo.20619413](https://doi.org/10.5281/zenodo.20619413)
 기능 대조용으로 남겨 두었습니다.
 
 ```bash
+#  기준 커밋에 태그를 붙입니다. 원본 이력은 이 저장소에 복제하지 않습니다.
+git remote add upstream https://github.com/sblabkribb/protein_pipeline.git
+git fetch upstream df2140a84012c280a8d967535a5343fa020d3964
+git tag upstream-v1.0.29 df2140a84012c280a8d967535a5343fa020d3964
+```
+
+```bash
 git diff upstream-v1.0.29 --stat        # 원본 대비 변경 요약
+git show upstream-v1.0.29:README.md     # 원본 README
 ```
 
 승계 기록은 [`UPSTREAM.md`](UPSTREAM.md) 에 있습니다.

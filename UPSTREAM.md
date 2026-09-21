@@ -16,10 +16,19 @@
 ## 라이선스 준수
 
 MIT License 조건에 따라 **원본 저작권 고지와 라이선스 사본을 `LICENSE` 에 그대로 유지**한다.
-원본 `README.md` 는 `docs/UPSTREAM-README.md` 에 보존한다.
+원본 `README.md` 는 `upstream-v1.0.29` 태그에 그대로 남아 있다 — `git show upstream-v1.0.29:README.md`.
 `CITATION.cff` 의 인용 요청에 따라 산출물과 문서에서 원본을 인용한다.
 
 ## 원본과의 차이를 확인하는 방법
+
+태그는 원격에 없다. 원본 이력을 이 저장소에 복제하지 않기 때문이다. 처음 한 번 붙인다.
+
+```bash
+#  기준 커밋에 태그를 붙입니다. 원본 이력은 이 저장소에 복제하지 않습니다.
+git remote add upstream https://github.com/sblabkribb/protein_pipeline.git
+git fetch upstream df2140a84012c280a8d967535a5343fa020d3964
+git tag upstream-v1.0.29 df2140a84012c280a8d967535a5343fa020d3964
+```
 
 ```bash
 git diff upstream-v1.0.29 --stat        # 변경 요약
