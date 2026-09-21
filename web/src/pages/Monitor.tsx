@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Download, RefreshCw, X, Play, Pause, RotateCcw, Check, Ban } from 'lucide-react'
 
 import { useProject } from '@/lib/project'
@@ -27,8 +28,26 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 /** Run status, artifacts and the event log. */
 export function Monitor() {
-  const [selected, setSelected] = useState<string | null>(null)
+  //  A run is a thing people discuss - "the one that stalled" - so it has to
+  //  be linkable, the same way the studio makes a node linkable. The address
+  //  is also the only way a headless capture can open one, since it cannot
+  //  click a table row.
+  const [params, setParams] = useSearchParams()
+  const [selected, setSelectedState] = useState<string | null>(() => params.get('run'))
   const { filter } = useProject()
+
+  function setSelected(runId: string | null) {
+    setSelectedState(runId)
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        if (runId) next.set('run', runId)
+        else next.delete('run')
+        return next
+      },
+      { replace: true },
+    )
+  }
   const runs = usePolling(() => api.listRuns({ project_id: filter, limit: 50 }), 4000, [filter])
   const jobs = usePolling(() => api.jobStats(), 4000, [])
 

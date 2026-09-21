@@ -48,6 +48,22 @@ const SHOTS = [
   { file: 'operations.png', path: '/operations', budget: 6000 },
   { file: 'users.png', path: '/users', budget: 6000 },
   { file: 'copilot.png', path: '/copilot', budget: 6000 },
+  //  External GPU. Without credentials this is the unconfigured state, which
+  //  is what the screen is for: an operator has to be able to tell "not set
+  //  up" from "set up and empty".
+  { file: 'gpu.png', path: '/gpu', budget: 6000 },
+  //  A run held at a review gate. Reached by address because Chrome's
+  //  --screenshot cannot click the row open; SHOT_HELD_RUN is set by the
+  //  seeding step that creates it.
+  {
+    file: 'monitor-review.png',
+    path: `/monitor?run=${process.env.SHOT_HELD_RUN ?? ''}`,
+    budget: 8000,
+    //  The gate sits under the run list, and Chrome's --screenshot cannot
+    //  scroll. A taller window is the only way to get both in one frame.
+    height: 2000,
+    skip: !process.env.SHOT_HELD_RUN,
+  },
 ]
 
 async function capture(shot) {
@@ -71,7 +87,7 @@ async function capture(shot) {
       '--hide-scrollbars',
       '--default-background-color=FFFFFFFF',
       `--user-data-dir=${profile}`,
-      `--window-size=${WIDTH},${HEIGHT}`,
+      `--window-size=${WIDTH},${shot.height ?? HEIGHT}`,
       `--force-device-scale-factor=${SCALE}`,
       `--virtual-time-budget=${shot.budget}`,
       `--screenshot=${out}`,
@@ -103,9 +119,13 @@ async function main() {
 
   //  An argument narrows it to one screen; re-running all six to fix one is waste
   const only = process.argv.slice(2)
-  const targets = only.length
-    ? SHOTS.filter((s) => only.some((o) => s.file.startsWith(o) || s.path === `/${o}`))
-    : SHOTS
+  const targets = (
+    only.length
+      ? SHOTS.filter((s) => only.some((o) => s.file.startsWith(o) || s.path === `/${o}`))
+      : SHOTS
+  //  A shot whose data was not seeded is left out rather than captured
+  //  blank. A blank screenshot in the docs reads as a broken screen.
+  ).filter((s) => !s.skip)
   if (targets.length === 0) throw new Error(`해당하는 화면이 없다 — ${only.join(' ')}`)
 
   for (const shot of targets) {

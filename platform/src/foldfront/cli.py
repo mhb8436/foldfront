@@ -2,6 +2,7 @@
 
     uv run python -m foldfront.cli seed          register default models and workflows
     uv run python -m foldfront.cli demo          produce a set of mock runs
+    uv run python -m foldfront.cli demo-gate     one run, held at a review gate
     uv run python -m foldfront.cli worker        start a worker
     uv run python -m foldfront.cli migrate PATH  import an existing output directory
 """
@@ -23,6 +24,7 @@ from foldfront.db.models import (
     ModelVersion,
     NodeKind,
     ResourceSpec,
+    RunStatus,
     Workflow,
     WorkflowEdge,
     WorkflowNode,
@@ -180,6 +182,68 @@ async def cmd_demo(count: int = 3) -> None:
     print("⚠️ 지표는 모의 어댑터 값이다. 붙은 PDB 는 원본 RAPID 사례연구의 실제 산출물이다.")
 
 
+async def cmd_demo_gate() -> None:
+    """A run held at a review gate, so the screen has one to show.
+
+    Not a fixture written into the database: the workflow is saved, the run
+    is started, the worker drains what it can, and the engine stops at the
+    checkpoint by itself. What the screen then shows is the feature working,
+    not a record shaped to look like it.
+
+    The metrics are still the mock adapter's, and the screen says so.
+    """
+    repos = Repos()
+    svc = ExecutionService(repos)
+    worker = Worker(repos=repos, adapters=AdapterRegistry(mock=True))
+
+    wf = await repos.workflows.save(Workflow(
+        workflow_id="review-gated",
+        name="검토 지점이 있는 설계",
+        description="용해도 결과를 사람이 확인한 뒤에야 구조 예측으로 넘어간다",
+        is_template=True,
+        nodes=[
+            WorkflowNode(node_id="msa", kind=NodeKind.MODEL, model_id="msa",
+                         position={"x": 0, "y": 0}),
+            WorkflowNode(node_id="design", kind=NodeKind.MODEL, model_id="design",
+                         position={"x": 180, "y": 0}),
+            WorkflowNode(node_id="soluprot", kind=NodeKind.MODEL, model_id="soluprot",
+                         position={"x": 360, "y": 0}),
+            WorkflowNode(
+                node_id="review", kind=NodeKind.CHECKPOINT,
+                params={"instructions":
+                        "용해도 통과율을 확인하십시오. 구조 예측은 GPU 시간을 크게 쓰므로, "
+                        "통과 서열이 충분할 때만 넘어갑니다."},
+                position={"x": 540, "y": 0},
+            ),
+            WorkflowNode(node_id="af2", kind=NodeKind.MODEL, model_id="af2",
+                         position={"x": 720, "y": 0}),
+        ],
+        edges=[
+            WorkflowEdge(source="msa", target="design"),
+            WorkflowEdge(source="design", target="soluprot"),
+            WorkflowEdge(source="soluprot", target="review"),
+            WorkflowEdge(source="review", target="af2"),
+        ],
+    ))
+
+    run = await svc.start(wf, request={
+        "target_fasta": "/data/targets/sample1.fasta",
+        "design_chains": ["A"],
+    })
+    await worker.drain()
+
+    final = await repos.runs.get(run.run_id)
+    if final is None:
+        print("실행을 찾지 못했다")
+        return
+    print(f"  {run.run_id} · {final.status} · 멈춘 자리 {final.paused_at_node}")
+    if final.status is not RunStatus.PAUSED:
+        print("⚠️ 검토 지점에서 멈추지 않았다. 모델이 등록되어 있는지 확인한다(seed).")
+        return
+    #  Printed on its own line so a capture script can read it back.
+    print(f"SHOT_HELD_RUN={run.run_id}")
+
+
 async def cmd_worker(mock: bool = False) -> None:
     #  The dedupe that keeps a node from being queued twice is an index. The
     #  worker is where reconcile runs unattended, so it makes sure of it.
@@ -231,6 +295,8 @@ def main() -> None:
         asyncio.run(cmd_seed())
     elif cmd == "demo":
         asyncio.run(cmd_demo(int(rest[0]) if rest else 3))
+    elif cmd == "demo-gate":
+        asyncio.run(cmd_demo_gate())
     elif cmd == "worker":
         try:
             asyncio.run(cmd_worker(mock="--mock" in rest))
