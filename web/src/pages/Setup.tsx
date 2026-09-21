@@ -57,6 +57,11 @@ export function Setup() {
   const round = roundId === null ? latest : roundId
 
   const selected = workflowId || workflows.data?.items[0]?.workflow_id || ''
+  //  A workflow that triages carries a surrogate node. Only then does a
+  //  Top-K make sense, so the field appears only for those workflows.
+  const selectedWf = workflows.data?.items.find((w) => w.workflow_id === selected)
+  const hasTriage = !!selectedWf?.nodes.some((n) => n.model_id === 'surrogate')
+  const [topK, setTopK] = useState('12')
 
   async function runPreflight() {
     setError(null)
@@ -92,6 +97,9 @@ export function Setup() {
           //  Only sent when residues were actually picked; an empty map would
           //  read at the endpoint as "hold nothing", which is already the default.
           ...(Object.keys(fixed).length ? { fixed_positions: fixed } : {}),
+          //  How many candidates survive triage. Sent only for a workflow that
+          //  triages; elsewhere it means nothing.
+          ...(hasTriage && topK.trim() ? { triage_top_k: Number(topK) } : {}),
         },
       })
       setMessage(
@@ -180,6 +188,28 @@ export function Setup() {
               </p>
             )}
           </div>
+
+          {/*  Triage keeps this many candidates; the rest never reach the
+              expensive predictors. Shown only when the workflow triages. */}
+          {hasTriage && (
+            <div className="mt-3.5">
+              <Field>
+                <Label htmlFor="topk">선별 Top-K (남길 후보 수)</Label>
+                <Input
+                  id="topk"
+                  type="number"
+                  min={1}
+                  value={topK}
+                  onChange={(e) => setTopK(e.target.value)}
+                  disabled={!canRun}
+                />
+                <p className="text-muted-foreground text-[11.5px]">
+                  대리모델이 용해도·pLDDT 로 점수를 매겨 상위 {topK || '?'}개만 SoluProt·AF2
+                  로 보냅니다. 나머지는 값비싼 예측을 거치지 않습니다.
+                </p>
+              </Field>
+            </div>
+          )}
         </Panel>
 
         <Panel title="입력">
