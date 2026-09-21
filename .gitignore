@@ -134,3 +134,8 @@ web/*.tsbuildinfo
 # playwright
 web/test-results/
 web/playwright-report/
+
+#  사업·제안 관련 작업 지시서. 저장소가 공개 대상이므로 들어오면 안 된다
+#  — 배점·금액·경쟁 상황은 별도 저장소에서 다룬다 (CLAUDE.md 제1원칙 머리말).
+작업지시-*.md
+제안-*.md
