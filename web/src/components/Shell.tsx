@@ -2,6 +2,7 @@ import { useEffect, useState, type ComponentType, type ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import {
   BarChart3,
+  ChevronDown,
   Cpu,
   Dna,
   FolderOpen,
@@ -162,6 +163,92 @@ function NavItem({ item, collapsed }: { item: Item; collapsed: boolean }) {
   )
 }
 
+/**
+ * A nav header that folds its children away. The header is not a page - it
+ * groups the ones under it - so a click opens or closes the group rather than
+ * navigating. Navigating into a child opens the group, so the current page is
+ * never hidden, and the open/closed choice is remembered per group.
+ */
+function NavGroup({ item, collapsed }: { item: Item; collapsed: boolean }) {
+  const { pathname } = useLocation()
+  const children = item.children ?? []
+  const childActive = children.some((c) => c.to && pathname.startsWith(c.to))
+
+  const [open, setOpen] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem(`nav-group:${item.label}`)
+      if (v != null) return v === '1'
+    } catch {
+      //  Private mode or blocked storage: fall back to open.
+    }
+    return true
+  })
+
+  //  A navigation into a child opens the group, so the active page is visible.
+  useEffect(() => {
+    if (childActive) setOpen(true)
+  }, [childActive])
+
+  //  Icon-only sidebar: the header would have nothing to show, so the children
+  //  stand on their own as icons, as before.
+  if (collapsed) {
+    return (
+      <div className="flex flex-col gap-0.5">
+        {children.map((child) => (
+          <NavItem key={child.to} item={{ ...child, icon: item.icon }} collapsed />
+        ))}
+      </div>
+    )
+  }
+
+  const Icon = item.icon
+  function toggle() {
+    setOpen((v) => {
+      const next = !v
+      try {
+        localStorage.setItem(`nav-group:${item.label}`, next ? '1' : '0')
+      } catch {
+        //  Storage unavailable: the toggle still works for this session.
+      }
+      return next
+    })
+  }
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={open}
+        className="text-muted-foreground hover:bg-accent/60 hover:text-foreground flex h-9 w-full items-center gap-2.5 rounded-md px-2.5 text-[13.5px] transition-colors"
+      >
+        {Icon && <Icon className="size-4 shrink-0" />}
+        <span className="truncate">{item.label}</span>
+        <ChevronDown
+          className={cn('ml-auto size-3.5 shrink-0 transition-transform', open ? '' : '-rotate-90')}
+        />
+      </button>
+      {open &&
+        children.map((child) => (
+          <NavLink
+            key={child.to}
+            to={child.to!}
+            className={({ isActive }) =>
+              cn(
+                'flex h-8 items-center rounded-md pr-2.5 pl-9 text-[13px] transition-colors',
+                isActive
+                  ? 'bg-accent text-accent-foreground font-semibold'
+                  : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
+              )
+            }
+          >
+            {child.label}
+          </NavLink>
+        ))}
+    </div>
+  )
+}
+
 export function Shell({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false)
   const [dark, setDark] = useDarkMode()
@@ -259,34 +346,7 @@ export function Shell({ children }: { children: ReactNode }) {
                   .filter((item) => !item.roles || is(...item.roles))
                   .map((item) =>
                   item.children ? (
-                    <div key={item.label} className="flex flex-col gap-0.5">
-                      <NavItem item={{ ...item, to: undefined, badge: undefined }} collapsed={collapsed} />
-                      {!collapsed &&
-                        item.children.map((child) => (
-                          <NavLink
-                            key={child.to}
-                            to={child.to!}
-                            className={({ isActive }) =>
-                              cn(
-                                'flex h-8 items-center rounded-md pr-2.5 pl-9 text-[13px] transition-colors',
-                                isActive
-                                  ? 'bg-accent text-accent-foreground font-semibold'
-                                  : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
-                              )
-                            }
-                          >
-                            {child.label}
-                          </NavLink>
-                        ))}
-                      {collapsed &&
-                        item.children.map((child) => (
-                          <NavItem
-                            key={child.to}
-                            item={{ ...child, icon: item.icon }}
-                            collapsed={collapsed}
-                          />
-                        ))}
-                    </div>
+                    <NavGroup key={item.label} item={item} collapsed={collapsed} />
                   ) : (
                     <NavItem key={item.label} item={item} collapsed={collapsed} />
                   ),
