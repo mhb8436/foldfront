@@ -1427,3 +1427,27 @@ async def test_새_토큰이_오면_로그인을_한_번_기록한다(client):
                                issued_at=issued + timedelta(minutes=10)))
     again = [a for a in await Repos().audit.search(action="auth.login") if a.actor_id == "사람2"]
     assert len(again) == 2
+
+
+async def test_자리표시자_주소를_쓰는_모델을_알린다(client):
+    """모의 어댑터의 수치를 실측처럼 읽게 두지 않는다."""
+    await _seed_models(client, ["msa"])   # endpoint_id = "ep-msa"
+
+    items = (await client.get("/api/v1/notices")).json()["items"]
+
+    notice = next((i for i in items if i["kind"] == "model.placeholder"), None)
+    assert notice is not None, [i["kind"] for i in items]
+    assert "msa:v1" in notice["detail"]
+    assert "실측이 아닙니다" in notice["detail"]
+
+
+async def test_실주소가_있는_모델은_알리지_않는다(client):
+    await client.post("/api/v1/models", json={
+        "model_id": "soluprot", "version": "local", "kind": "solubility",
+        "base_url": "http://127.0.0.1:18110/score", "active": True, "is_default": True,
+        "resources": {"gpu_count": 0},
+    })
+
+    items = (await client.get("/api/v1/notices")).json()["items"]
+
+    assert not [i for i in items if i["kind"] == "model.placeholder"]

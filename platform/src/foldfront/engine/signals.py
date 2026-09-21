@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Iterable
 
 from foldfront.db.models import Run, RunStatus, StageState
+from foldfront.engine.verify import PLDDT_TOLERANCE
 
 #  The original's cutoffs, kept as named constants so a reader can see at a
 #  glance what was inherited and check it against agent_panel.py.
@@ -81,6 +82,29 @@ Rule = Callable[[StageState, dict[str, Any]], Iterable[Signal]]
 
 
 def _msa(stage: StageState, m: dict[str, Any]) -> Iterable[Signal]:
+    #  The design stage honours the fixed positions, so none of them means
+    #  nothing is held and every conserved residue is free to change.
+    fixed = m.get("fixed_positions")
+    query_len = _num(m, "query_length")
+    if isinstance(fixed, dict) and fixed:
+        counts = [v for v in fixed.values() if isinstance(v, int)]
+        if counts and all(c == 0 for c in counts):
+            yield Signal(
+                stage.name, "warning",
+                "보존 위치를 하나도 찾지 못했습니다.",
+                "정렬 품질을 확인하십시오. 고정할 잔기가 없으면 설계가 전부 자유롭게 바뀝니다.",
+                {"fixed_positions": fixed},
+                "agent_panel._interpret_conservation",
+            )
+        elif query_len and any(c >= 0.8 * query_len for c in counts):
+            yield Signal(
+                stage.name, "warning",
+                "고정된 위치가 너무 많습니다. 설계 여지가 거의 없습니다.",
+                "보존도 tier 를 낮추십시오.",
+                {"fixed_positions": fixed, "query_length": query_len},
+                "agent_panel._interpret_conservation",
+            )
+
     depth = _num(m, "depth", "usable_hits", "hits")
     if depth is not None:
         if depth < MSA_DEPTH_LOW:
@@ -137,6 +161,23 @@ def _soluprot(stage: StageState, m: dict[str, Any]) -> Iterable[Signal]:
 
 
 def _af2(stage: StageState, m: dict[str, Any]) -> Iterable[Signal]:
+    #  Checked first, and loudest. A reported pLDDT the returned structure
+    #  does not support travels through every screen downstream, and the
+    #  screens all show the reported one - so if it is not caught here it
+    #  is not caught. Everything after this reads a number in doubt.
+    if m.get("plddt_agrees") is False:
+        reported = _num(m, "plddt_reported")
+        measured = _num(m, "plddt_measured")
+        yield Signal(
+            stage.name, "error",
+            f"보고된 pLDDT 와 구조 파일이 맞지 않습니다 "
+            f"(보고 {reported}, 파일에서 잰 값 {measured}).",
+            "이 실행의 pLDDT 를 근거로 쓰지 마십시오. 엔드포인트 응답 규격을 확인해야 합니다.",
+            {"plddt_reported": reported, "plddt_measured": measured,
+             "gap": _num(m, "plddt_gap"), "tolerance": PLDDT_TOLERANCE},
+            "foldfront",
+        )
+
     plddt = _num(m, "plddt", "avg_plddt", "mean_plddt")
     if plddt is not None and plddt < AF2_PLDDT_LOW:
         yield Signal(

@@ -989,6 +989,24 @@ def _notice(
     }
 
 
+def _is_placeholder_endpoint(model: Any) -> bool:
+    """Whether this registration points at nothing.
+
+    `ep-<model_id>` is the shape the seed data uses and is not a RunPod
+    endpoint id, which is an opaque alphanumeric string the provider issues.
+    A registration with neither an endpoint nor a URL nor an image points
+    nowhere at all.
+    """
+    base_url = str(getattr(model, "base_url", "") or "").strip()
+    image = str(getattr(model, "container_image", "") or "").strip()
+    endpoint = str(getattr(model, "endpoint_id", "") or "").strip()
+    if base_url or image:
+        return False
+    if not endpoint:
+        return True
+    return endpoint == f"ep-{model.model_id}"
+
+
 @router.get("/notices", dependencies=[Depends(require_signed_in())], tags=["Operations"], summary="What is waiting for a person")
 async def notices(identity: CurrentIdentity) -> dict[str, Any]:
     """Things someone has to do something about.
@@ -1024,6 +1042,29 @@ async def notices(identity: CurrentIdentity) -> dict[str, Any]:
                 detail=f"{m.model_id}:{m.version}",
                 href="/models",
                 at=m.updated_at,
+            ))
+
+        #  A model whose endpoint is a placeholder will route, queue and
+        #  fail at the call - or, under the mock adapter, come back with
+        #  numbers that look like results. The proposal rule is that mock
+        #  output is never reported as working, and this is what makes the
+        #  difference visible on the screen rather than only in a document.
+        placeholders = [
+            f"{m.model_id}:{m.version}"
+            for m in await r.models.list(active_only=True)
+            if _is_placeholder_endpoint(m)
+        ]
+        if placeholders:
+            items.append(_notice(
+                "model.placeholder", "",
+                severity="warning",
+                title=f"실제 주소가 없는 모델 {len(placeholders)}건",
+                detail=(
+                    f"{', '.join(placeholders[:4])}"
+                    f"{' 외 ' + str(len(placeholders) - 4) + '건' if len(placeholders) > 4 else ''}"
+                    " — 자리표시자입니다. 이 모델의 결과는 실측이 아닙니다."
+                ),
+                href="/models",
             ))
 
         #  Not a defect in itself - it is how the development stack runs - but

@@ -60,12 +60,81 @@ def _count(key: str, metric: str) -> Callable[[dict[str, Any]], dict[str, Any]]:
     return read
 
 
+def _msa(reply: dict[str, Any]) -> dict[str, Any]:
+    """Depth, coverage and conserved positions, computed from the alignment.
+
+    The endpoint returns A3M text and, usually, a depth it counted itself.
+    Everything here is recomputed from the text with the original's own
+    functions - which is the point: the conservation tiers and the fixed
+    residues were a parameter nobody applied until this ran.
+    """
+    from foldfront.engine.verify import Unavailable, read_msa
+
+    a3m = _first_text(reply, "a3m", "msa_a3m", "alignment", "msa")
+    if not a3m:
+        return {}
+    tiers = reply.get("conservation_tiers")
+    tiers = [float(t) for t in tiers] if isinstance(tiers, list) else []
+    try:
+        return read_msa(a3m, tiers=tiers)
+    except Unavailable:  # pragma: no cover - 원본을 뗀 구성
+        return {}
+
+
+def _structure(reply: dict[str, Any]) -> dict[str, Any]:
+    """Check the predictor's own numbers against the structure it returned.
+
+    Reported and measured are both kept, under names that say which is
+    which. Everything downstream reads `plddt`, so that stays the reported
+    value where there is one - replacing it silently would mean a screen
+    showing a number no one can find in the model's reply.
+    """
+    from foldfront.engine.verify import Unavailable, check_structure
+
+    pdb = _first_text(reply, "pdb", "ranked_0_pdb", "structure", "unrelaxed_pdb")
+    if not pdb:
+        return {}
+    reported = reply.get("plddt")
+    if not isinstance(reported, (int, float)):
+        reported = reply.get("mean_plddt")
+    try:
+        checked = check_structure(
+            pdb,
+            reported_plddt=reported if isinstance(reported, (int, float)) else None,
+            reference_pdb=_first_text(reply, "reference_pdb", "backbone_pdb", "input_pdb"),
+        )
+    except Unavailable:  # pragma: no cover - 원본을 뗀 구성
+        return {}
+
+    out = dict(checked)
+    #  No reported value: the measured one is the only one there is.
+    if reported is None and isinstance(checked.get("plddt_measured"), (int, float)):
+        out["plddt"] = checked["plddt_measured"]
+    if isinstance(checked.get("rmsd_measured"), (int, float)) and "rmsd" not in reply:
+        out["rmsd"] = checked["rmsd_measured"]
+    return out
+
+
+def _first_text(reply: dict[str, Any], *keys: str) -> str | None:
+    """The first of these keys holding text worth parsing."""
+    for key in keys:
+        value = reply.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    return None
+
+
 INTERPRETERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "soluprot": _soluprot,
     "rfd3": _count("backbones", "backbones"),
     "bioemu": _count("structures", "structures"),
     "design": _count("sequences", "sequences"),
     "proteinmpnn": _count("sequences", "sequences"),
+    "msa": _msa,
+    "mmseqs": _msa,
+    "af2": _structure,
+    "colabfold": _structure,
+    "esmfold": _structure,
 }
 
 

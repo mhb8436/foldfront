@@ -117,3 +117,44 @@ def test_노드_이름이_아니라_모델로_판정한다():
 
     assert [s.stage for s in signals] == ["1차정렬"]
     assert signals[0].source == "agent_panel._interpret_msa"
+
+
+def test_보고된_pLDDT_와_파일이_어긋나면_중대로_본다():
+    """아래 화면이 전부 보고된 값을 그린다. 여기서 잡지 않으면 아무도 안 잡는다."""
+    signals = read_signals(_run(_ok(
+        "af2", "af2", plddt=92.0, plddt_reported=92.0,
+        plddt_measured=40.0, plddt_gap=52.0, plddt_agrees=False,
+    )))
+
+    assert signals[0].level == "error"
+    assert "근거로 쓰지 마십시오" in signals[0].advice
+    assert signals[0].evidence["plddt_measured"] == 40.0
+
+
+def test_일치하면_그것으로_경고하지_않는다():
+    signals = read_signals(_run(_ok(
+        "af2", "af2", plddt=88.0, plddt_reported=88.0,
+        plddt_measured=88.0, plddt_gap=0.0, plddt_agrees=True,
+    )))
+
+    assert signals == []
+
+
+def test_보존_위치가_하나도_없으면_경고한다():
+    signals = read_signals(_run(_ok(
+        "msa", "msa", depth=400, coverage=0.9, query_length=100,
+        fixed_positions={"0.1": 0, "0.3": 0},
+    )))
+
+    assert [s.level for s in signals] == ["warning"]
+    assert "보존 위치" in signals[0].message
+
+
+def test_거의_전부_고정되면_설계_여지가_없다고_한다():
+    signals = read_signals(_run(_ok(
+        "msa", "msa", depth=400, coverage=0.9, query_length=100,
+        fixed_positions={"0.9": 92},
+    )))
+
+    assert [s.level for s in signals] == ["warning"]
+    assert "설계 여지" in signals[0].message
