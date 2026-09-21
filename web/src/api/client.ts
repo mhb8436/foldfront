@@ -193,6 +193,21 @@ export interface Evidence {
   created_at: string
 }
 
+export interface PaperMask {
+  chain: string
+  residue_index: number
+  residue_name: string | null
+  label: string | null
+  evidence: string | null
+  confidence: 'high' | 'low'
+}
+
+export interface PaperConstraints {
+  masks: PaperMask[]
+  fixed_positions: Record<string, number[]>
+  paper_chars: number
+}
+
 export interface WorkflowNode {
   node_id: string
   kind: NodeKind
@@ -469,6 +484,18 @@ export const api = {
 
   /** The skill package download, opened directly by the browser. */
   mcpSkillUrl: () => `${BASE}/mcp/skill`,
+
+  // ------------------------------------------------------------ paper constraints
+  paperConstraints: (file: File, targetSequence?: string) => {
+    const form = new FormData()
+    form.append('file', file, file.name)
+    if (targetSequence) form.append('target_sequence', targetSequence)
+    return request<PaperConstraints>('/references/paper-constraints', {
+      method: 'POST',
+      body: form,
+      headers: {},
+    })
+  },
 
   startRun: (body: {
     workflow_id: string

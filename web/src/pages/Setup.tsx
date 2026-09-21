@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
-import { CheckCircle2, Play } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { CheckCircle2, FileText, Loader2, Play } from 'lucide-react'
 
-import { api } from '../api/client'
+import { api, type PaperMask } from '../api/client'
 import { useAsync } from '../hooks/useAsync'
 import { PageHeader } from '../components/Shell'
 import { Empty, ErrorBox, Notice, Panel, formatBytes } from '../components/Common'
@@ -30,6 +30,34 @@ export function Setup() {
   //  3D. Kept here so the picker shows only when there is a structure to draw.
   const [pdbSummary, setPdbSummary] = useState<PdbSummary | null>(null)
   const [fixed, setFixed] = useState<FixedPositions>({})
+  //  Residue constraints the LLM read out of a paper, shown with their evidence
+  //  for review. They are merged into `fixed`, which the picker then displays.
+  const [paperMasks, setPaperMasks] = useState<PaperMask[]>([])
+  const [paperBusy, setPaperBusy] = useState(false)
+  const [paperError, setPaperError] = useState<string | null>(null)
+  const paperInput = useRef<HTMLInputElement>(null)
+
+  async function extractFromPaper(file: File) {
+    setPaperBusy(true)
+    setPaperError(null)
+    try {
+      const res = await api.paperConstraints(file, targetFasta.trim() || undefined)
+      setPaperMasks(res.masks)
+      //  Union the paper's residues into whatever is already picked.
+      setFixed((prev) => {
+        const next: FixedPositions = {}
+        for (const [c, list] of Object.entries(prev)) next[c] = [...list]
+        for (const [c, list] of Object.entries(res.fixed_positions)) {
+          next[c] = [...new Set([...(next[c] ?? []), ...list])].sort((a, b) => a - b)
+        }
+        return next
+      })
+    } catch (e) {
+      setPaperError((e as Error).message)
+    } finally {
+      setPaperBusy(false)
+    }
+  }
   const [preflight, setPreflight] = useState<Awaited<ReturnType<typeof api.preflight>> | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -281,6 +309,63 @@ export function Setup() {
                   onChange={setFixed}
                   disabled={!canRun}
                 />
+                {/*  Read residues to hold fixed out of a paper. The LLM's picks
+                    are merged into the 3D selection above and listed here with
+                    their evidence, for the researcher to review before running. */}
+                <div className="mt-1.5 flex flex-col gap-2">
+                  <input
+                    ref={paperInput}
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0]
+                      if (f) extractFromPaper(f)
+                      e.target.value = ''
+                    }}
+                  />
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={!canRun || paperBusy}
+                      onClick={() => paperInput.current?.click()}
+                    >
+                      {paperBusy ? <Loader2 className="animate-spin" /> : <FileText />}
+                      논문 PDF에서 제약 추출
+                    </Button>
+                    <span className="text-muted-foreground text-[11.5px]">
+                      논문에서 고정할 잔기를 LLM 이 제안합니다. 검토 후 실행에 씁니다.
+                    </span>
+                  </div>
+                  <ErrorBox message={paperError} />
+                  {paperMasks.length > 0 && (
+                    <ul className="flex flex-col gap-1 text-[12.5px]">
+                      {paperMasks.map((m, i) => (
+                        <li key={`${m.chain}:${m.residue_index}:${i}`} className="flex gap-2">
+                          <span className="shrink-0 font-mono">
+                            {m.chain}:{m.residue_index}
+                            {m.residue_name ? ` ${m.residue_name}` : ''}
+                          </span>
+                          <span className="min-w-0">
+                            {m.label && <span className="font-medium">{m.label}</span>}
+                            {m.confidence === 'low' && (
+                              <span className="text-muted-foreground"> · 낮은 신뢰</span>
+                            )}
+                            {m.evidence && (
+                              <span
+                                className="text-muted-foreground block truncate"
+                                title={m.evidence}
+                              >
+                                “{m.evidence}”
+                              </span>
+                            )}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </Field>
             ) : null}
           </div>

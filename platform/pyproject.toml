@@ -19,6 +19,9 @@ dependencies = [
     #  version skew - which matters for a certification-target build.
     "numpy>=1.26,<3",
     "scikit-learn>=1.9,<2",
+    #  Reads a paper's text so the LLM can suggest residues to hold fixed
+    #  (engine/paper.py), the same reader the original uses.
+    "pypdf>=4",
 ]
 
 [project.optional-dependencies]

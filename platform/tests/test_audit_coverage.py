@@ -30,6 +30,7 @@ EXEMPT: dict[str, str] = {
     "review_checkpoint": "ExecutionService.decide_checkpoint records run.review one layer down",
     "rerun_stage": "ExecutionService.rerun_stage records run.rerun one layer down",
     "copilot_chat": "Reads and answers; changes nothing",
+    "paper_constraints": "Reads a PDF and asks the LLM for suggestions; stores nothing",
 }
 
 

@@ -227,6 +227,42 @@ async def reference_search(
     return {"items": [h.as_dict() for h in hits], "count": len(hits), "source": source}
 
 
+@router.post("/references/paper-constraints", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))],
+             tags=["References"], summary="Suggest residues to hold fixed from a paper (PDF)")
+async def paper_constraints(identity: CurrentIdentity, request: Request) -> dict[str, Any]:
+    """Read a paper and let the LLM suggest residues to hold fixed. Read-only:
+    it stores nothing. The masks are suggestions the researcher reviews in the
+    residue picker before any run uses them."""
+    from foldfront.engine import paper
+
+    declared = request.headers.get("content-length")
+    if declared is None or not declared.isdigit():
+        raise ApiError(E.INPUT_LENGTH_REQUIRED)
+    if int(declared) > MAX_INPUT_BYTES + MULTIPART_OVERHEAD:
+        raise ApiError(E.INPUT_TOO_LARGE, limit_mb=MAX_INPUT_BYTES // (1024 * 1024))
+
+    form = await request.form(max_files=1, max_fields=2)
+    file = form.get("file")
+    if not isinstance(file, FormFile):
+        raise ApiError(E.INPUT_MISSING)
+    target_sequence = str(form.get("target_sequence") or "").strip() or None
+
+    body = await file.read(MAX_INPUT_BYTES + 1)
+    if len(body) > MAX_INPUT_BYTES:
+        raise ApiError(E.INPUT_TOO_LARGE, limit_mb=MAX_INPUT_BYTES // (1024 * 1024))
+
+    try:
+        text = paper.extract_text(body)
+        result = await paper.extract_constraints(text, target_sequence=target_sequence)
+    except paper.PaperError as exc:
+        raise ApiError(E.UPSTREAM_REFUSED, tool="PDF 분석", reason=str(exc))
+    except (httpx.HTTPError, RuntimeError) as exc:
+        #  The LLM is how a paper becomes constraints; if it cannot be reached,
+        #  say so plainly rather than return an empty, misleading result.
+        raise ApiError(E.COPILOT_UNAVAILABLE, reason=str(exc))
+    return {**result, "paper_chars": len(text)}
+
+
 @router.get("/runs/{run_id}/evidence", dependencies=[Depends(require_signed_in())], tags=["References"],
             summary="List evidence pinned to a run")
 async def list_evidence(run_id: str, identity: CurrentIdentity) -> dict[str, Any]:
