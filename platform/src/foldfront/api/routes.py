@@ -630,6 +630,51 @@ async def copilot_chat(turn: CopilotTurn, identity: CurrentIdentity) -> dict[str
         raise ApiError(E.COPILOT_UNAVAILABLE, reason=str(exc) or type(exc).__name__) from exc
 
 
+class PlanRequest(BaseModel):
+    """What to plan from, plus whatever inputs are already in hand."""
+
+    prompt: str
+    target_fasta: str | None = None
+    target_pdb: str | None = None
+    rfd3_input_pdb: str | None = None
+    rfd3_contig: str | None = None
+    diffdock_ligand_smiles: str | None = None
+    diffdock_ligand_sdf: str | None = None
+
+
+@router.post("/copilot/plan",
+             dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))],
+             tags=["Copilot"], summary="Draft a workflow from a sentence")
+async def copilot_plan(body: PlanRequest, identity: CurrentIdentity) -> dict[str, Any]:
+    """Route a request with the original's own router and draft a DAG from it.
+
+    Drafts only. Nothing is saved and nothing is started: the answer is nodes
+    and edges for the studio to open, plus the questions the router thinks
+    are worth settling first. Requiring the run role even so, because this is
+    the door to composing work rather than reading it.
+    """
+    from foldfront.engine.planner import PlannerUnavailable, plan as make_plan
+
+    try:
+        drafted = await asyncio.to_thread(
+            make_plan, body.prompt,
+            **body.model_dump(exclude={"prompt"}, exclude_none=True),
+        )
+    except ValueError as exc:
+        raise ApiError(E.COPILOT_EMPTY) from exc
+    except PlannerUnavailable as exc:
+        raise ApiError(E.UPSTREAM_UNAVAILABLE, reason=str(exc)) from exc
+
+    #  Recorded even though nothing changed: what people asked the planner
+    #  for is how anyone later learns which prompts the router handles badly.
+    await repos().audit.record(
+        "copilot.plan", actor_id=identity.user_id, target_type="workflow",
+        detail={"prompt": body.prompt[:200], "stages": drafted["stages"],
+                "missing": drafted["missing"]},
+    )
+    return drafted
+
+
 # ---------------------------------------------------------------- users
 
 

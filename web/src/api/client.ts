@@ -110,6 +110,30 @@ export interface QualityReport {
   recorded_events: Array<Record<string, unknown>>
 }
 
+/** One thing the router wants settled before GPU time is spent. */
+export interface PlanQuestion {
+  id: string
+  question: string
+  required: boolean
+  default?: unknown
+}
+
+export interface Plan {
+  prompt: string
+  /*  The original router's own three answers, unchanged. */
+  routed_request: Record<string, unknown>
+  missing: string[]
+  questions: PlanQuestion[]
+  errors: string[]
+  /*  What we made of them: a draft the studio can open. */
+  stages: string[]
+  workflow: Workflow
+  ready: boolean
+  /*  True when nothing in the sentence steered the plan. */
+  defaulted: boolean
+  note: string
+}
+
 export interface RunEvent {
   run_id: string
   seq: number
@@ -410,6 +434,14 @@ export const api = {
       `/runs/${encodeURIComponent(runId)}/nodes/${encodeURIComponent(nodeId)}/rerun`,
       { method: 'POST' },
     ),
+
+  copilotPlan: (body: {
+    prompt: string
+    target_fasta?: string
+    target_pdb?: string
+    rfd3_input_pdb?: string
+    rfd3_contig?: string
+  }) => request<Plan>('/copilot/plan', { method: 'POST', body: JSON.stringify(body) }),
 
   // ------------------------------------------------------------ analysis
   /*  The ranking, the WT difference and the comparison metrics are the

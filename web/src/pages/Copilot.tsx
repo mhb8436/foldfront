@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { SendHorizontal } from 'lucide-react'
 
 import { api } from '../api/client'
@@ -9,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Field, Label } from '@/components/ui/label'
 import { useProject } from '@/lib/project'
+import { Planner } from './copilot/Planner'
 import { cn } from '@/lib/utils'
 
 /**
@@ -52,6 +54,19 @@ export function Copilot() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const bottom = useRef<HTMLDivElement>(null)
+  const navigate = useNavigate()
+
+  /** Hand a draft to the studio, which is where a workflow is edited and
+      saved. Carried in session storage rather than the address bar: a DAG
+      does not fit in a URL, and the draft is this person's, not a link. */
+  function openInStudio(plan: { workflow: unknown }) {
+    try {
+      window.sessionStorage.setItem('foldfront.draft', JSON.stringify(plan.workflow))
+    } catch {
+      //  Storage refused. The studio opens empty and says so.
+    }
+    navigate('/studio?draft=1')
+  }
 
   useEffect(() => {
     //  Optional call: jsdom has no scrollIntoView, and a test is not a place to scroll.
@@ -103,6 +118,11 @@ export function Copilot() {
         }
       />
       <ErrorBox message={error ?? status.error} />
+
+      {/*  Planning first: it is the thing that produces work, and it does
+           not need the local model - the routing is the original's, so it
+           answers whether or not the box has a model loaded. */}
+      <Planner onOpen={openInStudio} />
 
       <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
         <Panel

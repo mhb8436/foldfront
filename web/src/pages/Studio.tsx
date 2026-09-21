@@ -246,6 +246,29 @@ export function Studio() {
   const pointer = useRef<{ x: number; y: number } | undefined>(undefined)
   useEffect(() => {
     if (autoLoaded.current) return
+
+    //  A draft handed over from the copilot's planner. Taken before the
+    //  saved workflows, and only once: it is a one-time handoff, and
+    //  leaving it in storage would reopen it on every later visit.
+    if (params.get('draft')) {
+      autoLoaded.current = true
+      let drafted: Workflow | null = null
+      try {
+        const raw = window.sessionStorage.getItem('foldfront.draft')
+        window.sessionStorage.removeItem('foldfront.draft')
+        drafted = raw ? (JSON.parse(raw) as Workflow) : null
+      } catch {
+        drafted = null
+      }
+      if (drafted?.nodes?.length) {
+        load({ ...drafted, workflow_id: drafted.workflow_id || `wf-${Date.now()}` })
+        setMessage('계획 초안을 열었습니다. 손본 뒤 저장하십시오. 아직 저장되지 않았습니다.')
+      } else {
+        setError('넘겨받을 초안이 없습니다. Copilot 에서 다시 만들어 주십시오.')
+      }
+      return
+    }
+
     const items = workflows.data?.items ?? []
     if (items.length === 0) return
     autoLoaded.current = true
