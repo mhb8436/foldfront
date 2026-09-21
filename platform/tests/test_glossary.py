@@ -64,12 +64,21 @@ def _console_labels() -> dict[str, str]:
 
 
 def test_용어집_문서를_읽어낸다():
-    """읽지 못하면 아래 대조가 공허하게 참이 된다."""
+    """읽지 못하면 아래 대조가 공허하게 참이 된다.
+
+    `docs/` 는 원격에 두지 않으므로 문서가 없는 복제본이 있을 수 있다.
+    그때는 건너뛴다 — 문서가 없는 것과 형식이 깨진 것은 다른 일이고,
+    없는 파일로 시험을 실패시키면 진짜 어긋남을 가린다.
+    """
+    if not DOC.is_file():
+        pytest.skip("docs/용어집.md 가 없는 복제본이다")
     assert len(_doc_labels()) >= 10, "용어집에서 용어를 뽑지 못했다 — 표 형식이 바뀌었는가"
 
 
 @pytest.mark.parametrize("key", sorted(STAGE_TERMS))
 def test_단계_용어가_문서와_같은_이름을_쓴다(key: str):
+    if not DOC.is_file():
+        pytest.skip("docs/용어집.md 가 없는 복제본이다")
     doc = _doc_labels()
     if key not in doc:
         pytest.skip(f"{key} 는 용어집 표에 없다")
