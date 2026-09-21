@@ -65,7 +65,8 @@ async def test_현황은_이_설치의_사실로_이뤄진다(repos):
     assert run.run_id in text and '"name": "msa", "status": "succeeded"' in text and '"depth": 120' in text
     assert '"results": "2개"' in text     # a list becomes a count
     assert "_mock" not in text            # private metrics stay private
-    assert used == ["프로젝트 리소자임 · 회차 1개", f"실행 {run.run_id} 의 단계·지표·사건 2건", "최근 실행 1건", "워크플로 1종"]
+    assert used == ["프로젝트 리소자임 · 회차 1개", f"실행 {run.run_id} 의 단계·지표·사건 2건",
+                    "품질 신호 1건", "최근 실행 1건", "워크플로 1종", "용어 8건"]
 
 
 async def test_현황은_길이가_묶여_있고_참고_목록은_실제로_넣은_것만_말한다(repos):
@@ -216,3 +217,82 @@ async def test_보통_목표는_제거되지_않는다(repos):
     for ok in ("용해도 통과율 0.3 이상", "소수성 표면 잔기 치환", "Improve solubility of T4 lysozyme in E. coli",
                "기준선 확보 — 용해도 통과율 측정"):
         assert copilot._clip(ok) == ok
+
+
+# ---------------------------------------------------------------- 용어 · 추천
+
+
+async def test_실행에_나온_용어를_함께_넣는다(repos):
+    """「pLDDT 가 뭡니까」에 「현황에 없어 알 수 없습니다」로 답하면 참이지만 쓸모없다."""
+    run = await seed(repos)
+
+    text, used = copilot.render(await copilot.gather(repos, project_id="proj-a", run_id=run.run_id))
+
+    assert "### 용어" in text
+    assert "다중서열정렬" in text and "정렬 깊이" in text
+    assert any(u.startswith("용어 ") for u in used)
+
+
+async def test_그_실행에_없던_용어는_넣지_않는다(repos):
+    """사전을 통째로 주면 모델이 그 실행에 없던 단계를 끌어다 쓴다."""
+    run = await seed(repos)
+
+    text, _ = copilot.render(await copilot.gather(repos, project_id="proj-a", run_id=run.run_id))
+
+    assert "도킹" not in text          # diffdock 은 이 워크플로에 없다
+    assert "서열 임베딩" not in text   # esm 도 없다
+
+
+async def test_품질_신호를_권고와_함께_넣는다(repos):
+    """다음에 무엇을 할지는 판정기의 것이고, Copilot 은 그것을 옮긴다."""
+    from foldfront.engine.service import ExecutionService
+
+    run = await seed(repos)
+    await ExecutionService(repos).complete_node(
+        run.run_id, "rfd3", succeeded=True, result={"backbones": 0},
+    )
+
+    text, used = copilot.render(await copilot.gather(repos, project_id="proj-a", run_id=run.run_id))
+
+    assert "### 품질 신호" in text
+    assert "백본을 하나도 내지 못했습니다" in text
+    assert "rfd3 입력과 엔드포인트를 확인하십시오" in text   # 권고
+    assert any(u.startswith("품질 신호 ") for u in used)
+
+
+async def test_지적할_것이_없으면_없다고_적는다(repos):
+    """빈 절을 빼면 모델이 권고를 지어낸다."""
+    from foldfront.db.models import RunStatus, StageState
+
+    run = await seed(repos)
+    #  모의 표시를 지운 깨끗한 지표로 바꾼다 — 판정할 것이 없는 상태
+    await repos.runs.upsert_stage(run.run_id, StageState(
+        name="msa", status=RunStatus.SUCCEEDED, model_id="msa",
+        metrics={"depth": 800, "coverage": 0.91},
+    ))
+
+    text, used = copilot.render(await copilot.gather(repos, project_id="proj-a", run_id=run.run_id))
+
+    assert "지적할 것이 없다" in text
+    assert "품질 신호 없음" in used
+
+
+async def test_내부_지표는_품질_신호로도_새지_않는다(repos):
+    """단계 지표에서 막아 둔 것을 근거로 흘려보내면 막은 뜻이 없다."""
+    run = await seed(repos)
+
+    text, _ = copilot.render(await copilot.gather(repos, project_id="proj-a", run_id=run.run_id))
+
+    assert "_mock" not in text
+    #  다만 모의라는 사실 자체는 말한다 — 그것이 판정의 내용이다
+    assert "모의 어댑터" in text
+
+
+async def test_실행을_지정하지_않으면_품질_신호를_넣지_않는다(repos):
+    """어느 실행에 대한 권고인지 없으면 권고도 없다."""
+    await seed(repos)
+
+    text, used = copilot.render(await copilot.gather(repos, project_id="proj-a", run_id=None))
+
+    assert "### 품질 신호" not in text
+    assert not any(u.startswith("품질 신호") for u in used)

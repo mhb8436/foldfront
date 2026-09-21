@@ -32,6 +32,47 @@ const DEFAULTS = { soluprot: 0.4, plddt: 0.3, rmsd: 0.2, novelty: 0.1 }
 
 type Weights = typeof DEFAULTS
 
+/** Which backbone the design came from, as the original classifies it. */
+const SOURCE_LABEL: Record<string, string> = {
+  rfd3: 'RFD3 백본',
+  bioemu: 'BioEmu 백본',
+  target: '대상 구조',
+  other: '기타',
+}
+
+interface SourceTally {
+  source: string
+  rows: number
+  best: number | null
+  passed: number
+}
+
+/**
+ * Candidates grouped by the backbone that produced them.
+ *
+ * Nothing new is computed. These are counts and a maximum over the rows the
+ * original already returned, which is what keeps the screen and the file
+ * saying the same thing - a fresh calculation here would be a second answer
+ * to a question the original has already answered.
+ *
+ * It is worth having because "did the diffusion backbones beat the sampled
+ * ones" is a question about the campaign that the ranking alone cannot
+ * answer: the best row says which design won, not which approach did.
+ */
+function tallyBySource(rows: HitRow[]): SourceTally[] {
+  const by = new Map<string, SourceTally>()
+  for (const r of rows) {
+    const source = r.source ?? 'other'
+    const t = by.get(source) ?? { source, rows: 0, best: null, passed: 0 }
+    t.rows += 1
+    if (typeof r.score === 'number' && (t.best === null || r.score > t.best)) t.best = r.score
+    if (r.soluprot_passed) t.passed += 1
+    by.set(source, t)
+  }
+  //  Best first, so the strip reads as a ranking of approaches.
+  return [...by.values()].sort((a, b) => (b.best ?? -Infinity) - (a.best ?? -Infinity))
+}
+
 /** Fixed width and alignment, so a column of numbers can be read down. */
 function Num({ value, digits = 2, suffix }: { value: number | null; digits?: number; suffix?: string }) {
   if (value === null || value === undefined || Number.isNaN(value)) {
@@ -69,12 +110,18 @@ function Passed({ yes, label }: { yes: boolean; label: string }) {
 export function HitList({ runId }: { runId: string }) {
   const [weights, setWeights] = useState<Weights>(DEFAULTS)
   const [applied, setApplied] = useState<Weights>(DEFAULTS)
+  const [onlySource, setOnlySource] = useState<string | null>(null)
   const list = useAsync<HitListData>(
     () => api.hitList(runId, { ...applied, limit: 200 }),
     [runId, applied],
   )
 
-  const rows = list.data?.rows ?? []
+  const all = list.data?.rows ?? []
+  const tallies = tallyBySource(all)
+  //  Filtered in the browser rather than re-asked, so the ranks stay the
+  //  ranks of the whole list. A rank that renumbered on filtering would
+  //  mean two screens disagreeing about which design came first.
+  const rows = onlySource ? all.filter((r) => (r.source ?? 'other') === onlySource) : all
   const dirty = (Object.keys(DEFAULTS) as Array<keyof Weights>).some(
     (k) => weights[k] !== applied[k],
   )
@@ -84,7 +131,8 @@ export function HitList({ runId }: { runId: string }) {
       title={`후보군 순위 — ${runId}`}
       description={
         list.data
-          ? `전체 ${list.data.total_rows}건 중 ${rows.length}건 표시`
+          ? `전체 ${list.data.total_rows}건 중 ${rows.length}건 표시` +
+            (onlySource ? ` · ${SOURCE_LABEL[onlySource] ?? onlySource} 만` : '')
           : undefined
       }
       bodyClassName={rows.length ? 'p-0' : undefined}
@@ -123,6 +171,35 @@ export function HitList({ runId }: { runId: string }) {
 
       <ErrorBox message={list.error} />
 
+      {/*  source 간 비교. 순위표는 어느 «설계» 가 이겼는지 말하지만
+           어느 «접근» 이 이겼는지는 말하지 않는다. */}
+      {tallies.length > 1 && (
+        <div className="flex flex-wrap items-center gap-2 border-b px-4 pb-3">
+          <span className="text-muted-foreground text-[12px]">백본 출처</span>
+          <Button
+            variant={onlySource === null ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setOnlySource(null)}
+          >
+            전체 {all.length}
+          </Button>
+          {tallies.map((t) => (
+            <Button
+              key={t.source}
+              variant={onlySource === t.source ? 'default' : 'outline'}
+              size="sm"
+              title={`용해도 통과 ${t.passed}건`}
+              onClick={() => setOnlySource(onlySource === t.source ? null : t.source)}
+            >
+              {SOURCE_LABEL[t.source] ?? t.source} {t.rows}
+              <span className="tabular ml-1 font-mono opacity-70">
+                {t.best === null ? '—' : t.best.toFixed(3)}
+              </span>
+            </Button>
+          ))}
+        </div>
+      )}
+
       {rows.length === 0 ? (
         <Empty>
           {list.data?.empty_reason ??
@@ -135,6 +212,9 @@ export function HitList({ runId }: { runId: string }) {
               <TableHead className="w-[54px]">순위</TableHead>
               <TableHead className="w-[210px]">서열 식별자</TableHead>
               <TableHead className="w-[70px]">tier</TableHead>
+              <TableHead className="w-[96px]" title="이 설계를 만든 백본의 출처">
+                출처
+              </TableHead>
               <TableHead className="w-[78px]" title="가중 합산 점수">
                 점수
               </TableHead>
@@ -184,6 +264,9 @@ function Row({ row }: { row: HitRow }) {
       </TableCell>
       <TableCell className="tabular font-mono text-[12.5px]">
         {row.tier === null ? '—' : row.tier}
+      </TableCell>
+      <TableCell className="text-[12px]">
+        {row.source ? (SOURCE_LABEL[row.source] ?? row.source) : '—'}
       </TableCell>
       <TableCell className="font-semibold">
         <Num value={row.score} digits={3} />

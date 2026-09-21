@@ -17,7 +17,7 @@ function row(over: Partial<HitRow> = {}): HitRow {
     rank: 1,
     seq_id: 'rfd3_spec-1_0_model_0:187',
     tier: 0.5,
-    source: 'proteinmpnn',
+    source: 'rfd3',
     sequence: 'MKT',
     soluprot: 0.7338,
     plddt: 89.524,
@@ -142,5 +142,67 @@ describe('후보군 순위', () => {
     render(<HitList runId="run-0001" />)
 
     expect(await screen.findByText('실행을 찾지 못했습니다')).toBeInTheDocument()
+  })
+
+  it('백본 출처를 열로 낸다', async () => {
+    vi.spyOn(api, 'hitList').mockResolvedValue(list() as never)
+
+    render(<HitList runId="run-0001" />)
+
+    expect(await screen.findByText('RFD3 백본')).toBeInTheDocument()
+  })
+
+  it('출처가 여럿이면 출처끼리 견줄 수 있게 한다', async () => {
+    //  순위표는 어느 설계가 이겼는지 말하지만 어느 접근이 이겼는지는
+    //  말하지 않는다. 그것이 source 간 비교다.
+    vi.spyOn(api, 'hitList').mockResolvedValue(
+      list({
+        total_rows: 3,
+        rows: [
+          row({ rank: 1, seq_id: 'a', source: 'rfd3', score: 0.81 }),
+          row({ rank: 2, seq_id: 'b', source: 'bioemu', score: 0.64 }),
+          row({ rank: 3, seq_id: 'c', source: 'rfd3', score: 0.52 }),
+        ],
+      }) as never,
+    )
+
+    render(<HitList runId="run-0001" />)
+
+    //  출처마다 후보 수와 최고 점수
+    const rfd3 = await screen.findByRole('button', { name: /RFD3 백본 2/ })
+    const bioemu = screen.getByRole('button', { name: /BioEmu 백본 1/ })
+    //  출처마다 그 출처의 최고 점수를 함께 낸다
+    expect(rfd3).toHaveTextContent('0.810')
+    expect(bioemu).toHaveTextContent('0.640')
+  })
+
+  it('출처를 고르면 그 출처만 남기고 순위는 그대로 둔다', async () => {
+    //  거르면서 순위를 다시 매기면 두 화면이 「1위」를 다르게 말한다.
+    vi.spyOn(api, 'hitList').mockResolvedValue(
+      list({
+        total_rows: 2,
+        rows: [
+          row({ rank: 1, seq_id: 'rfd3-win', source: 'rfd3', score: 0.81 }),
+          row({ rank: 2, seq_id: 'bioemu-one', source: 'bioemu', score: 0.64 }),
+        ],
+      }) as never,
+    )
+    render(<HitList runId="run-0001" />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /BioEmu 백본 1/ }))
+
+    expect(screen.getByText('bioemu-one')).toBeInTheDocument()
+    expect(screen.queryByText('rfd3-win')).not.toBeInTheDocument()
+    //  걸러도 원래 순위 2 를 유지한다
+    expect(screen.getByText('2')).toBeInTheDocument()
+  })
+
+  it('출처가 하나뿐이면 견줄 것이 없으므로 띠를 두지 않는다', async () => {
+    vi.spyOn(api, 'hitList').mockResolvedValue(list() as never)
+
+    render(<HitList runId="run-0001" />)
+
+    await screen.findByText('0.813')
+    expect(screen.queryByRole('button', { name: /전체 1/ })).not.toBeInTheDocument()
   })
 })
