@@ -190,6 +190,24 @@ class Artifact(Doc):
     meta: dict[str, Any] = Field(default_factory=dict)
 
 
+class Evidence(Doc):
+    """A reference pinned to a run as evidence for a design decision.
+
+    Bound to the run (and optionally a node), so it travels with the run and can
+    be compared across runs - unlike the original console, where a reference
+    search stood apart from the work. The hit is stored as the source returned
+    it, normalised to the shape engine/references.Hit produces.
+    """
+
+    evidence_id: str
+    run_id: str
+    node_id: str | None = None
+    source: str            # literature ...
+    query: str
+    hit: dict[str, Any] = Field(default_factory=dict)  # id · title · url · extra
+    attached_by: str | None = None
+
+
 # ---------------------------------------------------------------- Model Registry
 
 

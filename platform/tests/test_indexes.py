@@ -16,6 +16,7 @@ import pytest
 from foldfront.db.client import C, INDEXES
 from foldfront.db.models import (
     Artifact,
+    Evidence,
     AuditLog,
     Doc,
     Experiment,
@@ -38,6 +39,7 @@ SCHEMA: dict[str, type[Doc]] = {
     C.RUNS: Run,
     C.RUN_EVENTS: RunEvent,
     C.ARTIFACTS: Artifact,
+    C.EVIDENCE: Evidence,
     C.MODELS: ModelVersion,
     C.WORKFLOWS: Workflow,
     C.JOBS: Job,

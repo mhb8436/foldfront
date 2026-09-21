@@ -23,6 +23,7 @@ from foldfront.db.models import (
     InputFile,
     Artifact,
     AuditLog,
+    Evidence,
     Job,
     JobStatus,
     ModelVersion,
@@ -378,6 +379,28 @@ class ArtifactRepo(BaseRepo):
         """Find intermediate artifacts whose retention has passed."""
         cur = self.col.find({"retain_until": {"$ne": None, "$lt": now or utcnow()}})
         return [Artifact(**_clean(d)) for d in await cur.to_list(length=1000)]
+
+
+class EvidenceRepo(BaseRepo):
+    """References pinned to a run. Bound to the run, so they travel with it."""
+
+    @property
+    def col(self):
+        return self.db[C.EVIDENCE]
+
+    async def add(self, ev: Evidence) -> Evidence:
+        if not ev.evidence_id:
+            ev.evidence_id = new_id("ev")
+        await self.col.insert_one(ev.model_dump())
+        return ev
+
+    async def list(self, run_id: str, *, limit: int = 200) -> list[Evidence]:
+        cur = self.col.find({"run_id": run_id}).sort("created_at", DESCENDING).limit(limit)
+        return [Evidence(**_clean(d)) for d in await cur.to_list(length=limit)]
+
+    async def delete(self, run_id: str, evidence_id: str) -> bool:
+        res = await self.col.delete_one({"run_id": run_id, "evidence_id": evidence_id})
+        return res.deleted_count > 0
 
 
 # ---------------------------------------------------------------- Model Registry
@@ -1026,6 +1049,7 @@ class Repos:
         self.runs = RunRepo(db)
         self.events = RunEventRepo(db)
         self.artifacts = ArtifactRepo(db)
+        self.evidence = EvidenceRepo(db)
         self.models = ModelRepo(db)
         self.workflows = WorkflowRepo(db)
         self.jobs = JobRepo(db)

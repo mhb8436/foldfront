@@ -221,7 +221,7 @@ def test_인덱스가_모든_컬렉션에_정의되어_있다():
     declared = {
         C.RUNS, C.RUN_EVENTS, C.ARTIFACTS, C.MODELS, C.WORKFLOWS, C.JOBS,
         C.PROJECTS, C.ROUNDS, C.TASKS, C.FEEDBACK, C.EXPERIMENTS,
-        C.REPORTS, C.AUDIT, C.USERS, C.INPUTS,
+        C.REPORTS, C.AUDIT, C.USERS, C.INPUTS, C.EVIDENCE,
     }
 
     assert set(INDEXES) == declared

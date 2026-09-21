@@ -41,6 +41,7 @@ from foldfront.core.auth import (
 from foldfront.core.config import get_settings
 from foldfront.core.errors import ApiError, E
 from foldfront.db.models import (
+    Evidence,
     InputFile,
     ModelVersion,
     Project,
@@ -51,6 +52,7 @@ from foldfront.db.models import (
     utcnow,
 )
 from foldfront.db.repositories import Repos, new_id
+from foldfront.engine import references
 from foldfront.engine.dag import (
     GraphError,
     build_graph,
@@ -193,6 +195,78 @@ async def list_artifacts(
         "count": len(items),
         "total_bytes": sum(i.size_bytes for i in items),
     }
+
+
+# ---------------------------------------------------------------- references / evidence
+
+
+class AttachEvidenceBody(BaseModel):
+    source: str
+    query: str = ""
+    hit: dict[str, Any] = Field(default_factory=dict)
+    node_id: str | None = None
+
+
+@router.get("/references/search", dependencies=[Depends(require_signed_in())], tags=["References"],
+            summary="Search an external reference source")
+async def reference_search(
+    identity: CurrentIdentity,
+    source: str = Query(default="literature"),
+    q: str = Query(..., min_length=1),
+    limit: int = Query(default=10, le=references.MAX_LIMIT),
+) -> dict[str, Any]:
+    try:
+        hits = await references.search(source, q, limit=limit)
+    except references.ReferenceError as exc:
+        #  A bad source or empty query is the caller's fault; a failed upstream
+        #  call is not. Both carry the message straight through.
+        code = E.UPSTREAM_UNAVAILABLE if "호출 실패" in str(exc) else E.UPSTREAM_REFUSED
+        raise ApiError(code, tool="참조 검색", reason=str(exc))
+    return {"items": [h.as_dict() for h in hits], "count": len(hits), "source": source}
+
+
+@router.get("/runs/{run_id}/evidence", dependencies=[Depends(require_signed_in())], tags=["References"],
+            summary="List evidence pinned to a run")
+async def list_evidence(run_id: str, identity: CurrentIdentity) -> dict[str, Any]:
+    if not await may_see_run(identity, run_id):
+        raise ApiError(E.AUTH_FORBIDDEN)
+    items = await repos().evidence.list(run_id)
+    return {"items": [e.model_dump() for e in items], "count": len(items)}
+
+
+@router.post("/runs/{run_id}/evidence", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))],
+             tags=["References"], summary="Pin a reference to a run")
+async def attach_evidence(
+    run_id: str, body: AttachEvidenceBody, identity: CurrentIdentity
+) -> dict[str, Any]:
+    r = repos()
+    if await r.runs.get(run_id) is None:
+        raise ApiError(E.RUN_NOT_FOUND, run_id=run_id)
+    ev = await r.evidence.add(
+        Evidence(
+            evidence_id="", run_id=run_id, node_id=body.node_id,
+            source=body.source, query=body.query, hit=body.hit,
+            attached_by=identity.user_id,
+        )
+    )
+    await r.audit.record(
+        "evidence.attach", actor_id=identity.user_id, target_type="run", target_id=run_id,
+        detail={"evidence_id": ev.evidence_id, "source": body.source, "hit_id": body.hit.get("id")},
+    )
+    return ev.model_dump()
+
+
+@router.delete("/runs/{run_id}/evidence/{evidence_id}",
+               dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))],
+               tags=["References"], summary="Unpin a reference from a run")
+async def delete_evidence(run_id: str, evidence_id: str, identity: CurrentIdentity) -> dict[str, Any]:
+    r = repos()
+    removed = await r.evidence.delete(run_id, evidence_id)
+    await r.audit.record(
+        "evidence.detach", actor_id=identity.user_id, target_type="run", target_id=run_id,
+        detail={"evidence_id": evidence_id, "removed": removed},
+    )
+    return {"deleted": removed}
 
 
 @router.get("/runs/{run_id}/artifacts/content", dependencies=[Depends(require_signed_in())], tags=["Runs"], summary="Fetch an artifact")

@@ -423,3 +423,37 @@ async def test_프로젝트로_거른_워크플로에_공용_템플릿이_남는
     found = {w.workflow_id for w in await repos.workflows.list(project_id="proj-a")}
 
     assert found == {"wf-shared", "wf-mine"}
+
+
+# ---------------------------------------------------------------- 근거(evidence)
+
+
+async def test_근거를_run_에_붙이고_읽고_뗀다(repos: Repos):
+    from foldfront.db.models import Evidence
+
+    await repos.runs.create(Run(run_id="run-ev"))
+    ev = await repos.evidence.add(
+        Evidence(
+            evidence_id="", run_id="run-ev", source="literature",
+            query="lysozyme solubility",
+            hit={"id": "42578672", "title": "T", "url": "https://europepmc.org/article/MED/99"},
+            attached_by="u1",
+        )
+    )
+    #  add 는 id 를 채운다
+    assert ev.evidence_id.startswith("ev-")
+
+    listed = await repos.evidence.list("run-ev")
+    assert len(listed) == 1
+    assert listed[0].hit["id"] == "42578672"
+    assert listed[0].attached_by == "u1"
+
+    #  다른 run 의 근거와 섞이지 않는다
+    await repos.runs.create(Run(run_id="run-other"))
+    assert await repos.evidence.list("run-other") == []
+
+    removed = await repos.evidence.delete("run-ev", ev.evidence_id)
+    assert removed is True
+    assert await repos.evidence.list("run-ev") == []
+    #  없는 것을 지우면 False
+    assert await repos.evidence.delete("run-ev", "ev-nope") is False

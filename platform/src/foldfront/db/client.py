@@ -37,6 +37,7 @@ class C:
     AUDIT = "audit_logs"
     USERS = "users"
     INPUTS = "inputs"
+    EVIDENCE = "evidence"
 
 
 #  Indexes follow the paths the console actually queries by.
@@ -67,6 +68,11 @@ INDEXES: dict[str, list[IndexModel]] = {
         IndexModel([("kind", ASCENDING)], name="ix_kind"),
         #  Finds intermediate artifacts whose retention has passed
         IndexModel([("retain_until", ASCENDING)], name="ix_retain", sparse=True),
+    ],
+    C.EVIDENCE: [
+        IndexModel([("evidence_id", ASCENDING)], unique=True, name="uq_evidence_id"),
+        #  The panel lists a run's evidence, newest first
+        IndexModel([("run_id", ASCENDING), ("created_at", DESCENDING)], name="ix_run_created"),
     ],
     C.MODELS: [
         IndexModel([("model_id", ASCENDING), ("version", ASCENDING)], unique=True, name="uq_model_version"),
