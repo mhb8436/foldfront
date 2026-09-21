@@ -3,28 +3,17 @@ import { Loader2 } from 'lucide-react'
 
 import { api } from '../api/client'
 import { cn } from '@/lib/utils'
+import { load3Dmol, type Viewer } from '@/lib/mol'
 
 /**
  * Three-dimensional structure viewing.
  *
  * 3Dmol.js, as the original console used, but bundled rather than pulled from
- * a CDN. Installed on an isolated network the CDN is unreachable and the
- * viewer never appears at all - the same trap as the webfonts.
+ * a CDN (see lib/mol).
  *
  * The cartoon is coloured by B-factor, read as pLDDT, which makes confidence
  * the one thing a structure says in colour on an otherwise greyscale screen.
  */
-
-type Mol = typeof import('3dmol')
-type Viewer = ReturnType<Mol['createViewer']>
-
-let loader: Promise<Mol> | null = null
-
-/** 3Dmol is large. Split out so it arrives only when a structure is opened. */
-function load3Dmol(): Promise<Mol> {
-  loader ??= import('3dmol').then((m) => (m.default ?? m) as Mol)
-  return loader
-}
 
 export function StructureViewer({
   runId,

@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Field, Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { InputField } from '../components/InputField'
+import { ResiduePicker, type FixedPositions } from '../components/ResiduePicker'
 import type { PdbSummary } from '@/lib/bio'
 import { useIdentity } from '@/lib/identity'
 import { roundLabel, useProject } from '@/lib/project'
@@ -25,6 +26,10 @@ export function Setup() {
   const [targetFasta, setTargetFasta] = useState('')
   const [targetPdb, setTargetPdb] = useState('')
   const [chains, setChains] = useState('A')
+  //  A parseable structure lets the researcher pick residues to hold fixed in
+  //  3D. Kept here so the picker shows only when there is a structure to draw.
+  const [pdbSummary, setPdbSummary] = useState<PdbSummary | null>(null)
+  const [fixed, setFixed] = useState<FixedPositions>({})
   const [preflight, setPreflight] = useState<Awaited<ReturnType<typeof api.preflight>> | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -84,6 +89,9 @@ export function Setup() {
             .split(',')
             .map((c) => c.trim())
             .filter(Boolean),
+          //  Only sent when residues were actually picked; an empty map would
+          //  read at the endpoint as "hold nothing", which is already the default.
+          ...(Object.keys(fixed).length ? { fixed_positions: fixed } : {}),
         },
       })
       setMessage(
@@ -191,13 +199,20 @@ export function Setup() {
               kind="pdb"
               label="대상 구조"
               value={targetPdb}
-              onChange={setTargetPdb}
+              onChange={(v) => {
+                setTargetPdb(v)
+                //  Residue numbers belong to one structure. Swap the structure
+                //  and any picks made against the old one no longer mean the
+                //  same residue, so they are cleared.
+                setFixed({})
+              }}
               onUploaded={() => setUploads((n) => n + 1)}
               onSummary={(s) => {
                 //  A structure says which chains it has. Filling them in
                 //  saves typing and, more to the point, saves typing a chain
                 //  the file does not contain.
                 const p = s as PdbSummary | null
+                setPdbSummary(p)
                 if (!chainsTouched && p?.ok && !p.cif && p.chains.length) {
                   setChains(p.chains.join(', '))
                 }
@@ -223,6 +238,21 @@ export function Setup() {
                 disabled={!canRun}
               />
             </Field>
+
+            {/*  A structure that parsed to real chains can be shown in 3D to
+                pick residues to hold fixed. mmCIF is not drawn here yet, and a
+                path (not inline text) has no atoms to render. */}
+            {targetPdb.trim() && pdbSummary?.ok && !pdbSummary.cif ? (
+              <Field>
+                <Label>고정할 잔기 (선택)</Label>
+                <ResiduePicker
+                  pdb={targetPdb}
+                  value={fixed}
+                  onChange={setFixed}
+                  disabled={!canRun}
+                />
+              </Field>
+            ) : null}
           </div>
         </Panel>
       </div>

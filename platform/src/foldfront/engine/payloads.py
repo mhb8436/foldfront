@@ -147,6 +147,19 @@ def _proteinmpnn(si: StageInput) -> dict[str, Any]:
     chains = si.request.get("design_chains")
     if chains:
         payload["pdb_path_chains"] = " ".join(str(c) for c in chains)
+    #  Residues the researcher picked to hold fixed, {chain: [resi, ...]}. The
+    #  design endpoint keeps these at their native identity (clients/proteinmpnn.py
+    #  takes fixed_positions: dict[str, list[int]]). Conservation tiers are a
+    #  separate, automatic source; an explicit pick is passed through as given.
+    fixed = si.request.get("fixed_positions")
+    if isinstance(fixed, dict) and fixed:
+        picked = {
+            str(chain): sorted({int(p) for p in positions})
+            for chain, positions in fixed.items()
+            if positions
+        }
+        if picked:
+            payload["fixed_positions"] = picked
     return payload
 
 

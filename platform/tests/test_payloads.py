@@ -47,6 +47,32 @@ def test_설계_체인을_주지_않으면_해당_필드를_넣지_않는다():
     assert "pdb_path_chains" not in p
 
 
+def test_설계는_사용자가_지정한_고정_잔기를_넘긴다():
+    """잔기 선택기가 찍은 {체인: [잔기]} 를 원본 필드 이름 그대로 넘긴다."""
+    p = build_payload(
+        "proteinmpnn",
+        {
+            "target_pdb": "ATOM      1  N\n",
+            "design_chains": ["A"],
+            #  중복·문자열·역순도 정규화된다: 정렬·중복 제거·정수화.
+            "fixed_positions": {"A": [10, 6, 6], "B": ["120"]},
+        },
+    )
+
+    assert p["fixed_positions"] == {"A": [6, 10], "B": [120]}
+
+
+def test_고정_잔기가_없거나_비어_있으면_필드를_넣지_않는다():
+    """아무 잔기도 고정하지 않으면 필드 자체를 빼, 엔드포인트가 전 고정으로 오해하지 않게 한다."""
+    without = build_payload("proteinmpnn", {"target_pdb": "ATOM      1  N\n"})
+    empty = build_payload(
+        "proteinmpnn", {"target_pdb": "ATOM      1  N\n", "fixed_positions": {"A": []}}
+    )
+
+    assert "fixed_positions" not in without
+    assert "fixed_positions" not in empty
+
+
 def test_가용성은_서열_전부를_한_번에_보낸다():
     p = build_payload("soluprot", {"designed_fasta": ">d1\nMKV\n>d2\nAAG\n"})
 
