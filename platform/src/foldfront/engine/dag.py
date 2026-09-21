@@ -37,9 +37,16 @@ class GraphError(ValueError):
 class NodeOutcome(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
+    AWAITING = "awaiting"   # A checkpoint that has been reached, waiting on a person
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     SKIPPED = "skipped"
+
+
+#  Outcomes that mean "more may still happen here". A node in one of these
+#  holds its descendants and keeps the plan from being done. AWAITING belongs
+#  with them: a checkpoint nobody has answered is not a finished node.
+UNSETTLED = (NodeOutcome.PENDING, NodeOutcome.RUNNING, NodeOutcome.AWAITING)
 
 
 # ---------------------------------------------------------------- graph
@@ -281,9 +288,11 @@ class ExecutionPlan:
 
         is_join = self.graph.nodes[node_id].kind is NodeKind.JOIN
 
-        #  Either way, a parent still running means wait
+        #  Either way, a parent still running means wait - and a checkpoint
+        #  nobody has answered is exactly that: not failed, not passed, so its
+        #  descendants wait rather than being skipped as though it had died.
         for edge in edges:
-            if self.states[edge.source].outcome in (NodeOutcome.PENDING, NodeOutcome.RUNNING):
+            if self.states[edge.source].outcome in UNSETTLED:
                 return True
 
         if is_join:
@@ -304,9 +313,13 @@ class ExecutionPlan:
         return True
 
     def done(self) -> bool:
-        return all(
-            s.outcome not in (NodeOutcome.PENDING, NodeOutcome.RUNNING)
-            for s in self.states.values()
+        return all(s.outcome not in UNSETTLED for s in self.states.values())
+
+    def awaiting(self) -> tuple[str, ...]:
+        """Checkpoints that have been reached and not yet answered."""
+        return tuple(
+            n for n in self.graph.order
+            if self.states[n].outcome is NodeOutcome.AWAITING
         )
 
     def succeeded(self) -> bool:
@@ -374,6 +387,12 @@ class ExecutionPlan:
         state.reason = reason
         self._cascade_skips()
 
+    def mark_awaiting(self, node_id: str, reason: str | None = None) -> None:
+        """A checkpoint was reached. Hold here until a person decides."""
+        state = self.states[node_id]
+        state.outcome = NodeOutcome.AWAITING
+        state.reason = reason
+
     def mark_skipped(self, node_id: str, reason: str | None = None) -> None:
         state = self.states[node_id]
         state.outcome = NodeOutcome.SKIPPED
@@ -409,11 +428,9 @@ class ExecutionPlan:
                 if not edges:
                     continue
 
-                #  A parent still running means the decision can wait
-                if any(
-                    self.states[e.source].outcome in (NodeOutcome.PENDING, NodeOutcome.RUNNING)
-                    for e in edges
-                ):
+                #  A parent still running - or a checkpoint nobody has
+                #  answered - means the decision can wait
+                if any(self.states[e.source].outcome in UNSETTLED for e in edges):
                     continue
 
                 is_join = self.graph.nodes[node_id].kind is NodeKind.JOIN

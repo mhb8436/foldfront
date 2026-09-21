@@ -6,8 +6,8 @@
  * the shape of a response, so changing either is one file.
  */
 
-export type RunStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled'
-export type NodeKind = 'model' | 'transform' | 'branch' | 'fanout' | 'join'
+export type RunStatus = 'pending' | 'running' | 'paused' | 'succeeded' | 'failed' | 'cancelled'
+export type NodeKind = 'model' | 'transform' | 'branch' | 'fanout' | 'join' | 'checkpoint'
 
 export interface StageState {
   name: string
@@ -18,6 +18,12 @@ export interface StageState {
   model_version: string | null
   error: string | null
   metrics: Record<string, unknown>
+  /*  Raised by a rerun, so a metric can be shown as the second attempt's. */
+  attempt: number
+  /*  kind=checkpoint only: who answered the gate, and what they wrote. */
+  reviewed_by: string | null
+  reviewed_at: string | null
+  review_note: string | null
 }
 
 export interface Run {
@@ -30,6 +36,12 @@ export interface Run {
   stages: StageState[]
   forked_from_run_id: string | null
   forked_from_stage: string | null
+  /*  Set while the run is held. `paused_at_node` names the checkpoint that
+      is holding it; empty means a person paused it by hand. */
+  paused_at: string | null
+  paused_by: string | null
+  paused_reason: string | null
+  paused_at_node: string | null
   workflow_id: string | null
   workflow_version: number | null
   created_at: string
@@ -318,6 +330,26 @@ export const api = {
     request<Run>(`/runs/${encodeURIComponent(runId)}/cancel${query({ reason })}`, {
       method: 'POST',
     }),
+
+  pauseRun: (runId: string, reason?: string) =>
+    request<Run>(`/runs/${encodeURIComponent(runId)}/pause${query({ reason })}`, {
+      method: 'POST',
+    }),
+
+  resumeRun: (runId: string) =>
+    request<Run>(`/runs/${encodeURIComponent(runId)}/resume`, { method: 'POST' }),
+
+  reviewCheckpoint: (runId: string, nodeId: string, approved: boolean, note?: string) =>
+    request<{ ok: boolean; approved: boolean; queued?: string[]; status: string }>(
+      `/runs/${encodeURIComponent(runId)}/nodes/${encodeURIComponent(nodeId)}/review${query({ approved, note })}`,
+      { method: 'POST' },
+    ),
+
+  rerunStage: (runId: string, nodeId: string) =>
+    request<{ ok: boolean; reset: string[]; queued: string[]; status: string }>(
+      `/runs/${encodeURIComponent(runId)}/nodes/${encodeURIComponent(nodeId)}/rerun`,
+      { method: 'POST' },
+    ),
 
   // ------------------------------------------------------------ workflows
   listWorkflows: (params: { templates_only?: boolean; project_id?: string } = {}) =>

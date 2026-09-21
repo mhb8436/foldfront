@@ -269,6 +269,94 @@ async def test_실행_전체_흐름(client: AsyncClient):
     assert final.json()["status"] == "succeeded"
 
 
+async def test_검토지점_경로가_실행을_멈추고_승인으로_풀린다(client: AsyncClient):
+    """화면이 쓰는 경로 그대로 — 멈춤 · 승인 · 재개."""
+    await _seed_models(client, ["msa", "design"])
+    await client.post("/api/v1/workflows", json={
+        "workflow_id": "wf-gate-api", "name": "검토",
+        "nodes": [
+            {"node_id": "msa", "kind": "model", "model_id": "msa"},
+            {"node_id": "review", "kind": "checkpoint",
+             "params": {"instructions": "정렬 깊이를 확인하십시오"}},
+            {"node_id": "design", "kind": "model", "model_id": "design"},
+        ],
+        "edges": [
+            {"source": "msa", "target": "review"},
+            {"source": "review", "target": "design"},
+        ],
+    })
+    run_id = (await client.post("/api/v1/runs", json={"workflow_id": "wf-gate-api"})).json()["run_id"]
+    await client.post(f"/api/v1/runs/{run_id}/nodes/msa/complete", json={"succeeded": True})
+
+    held = (await client.get(f"/api/v1/runs/{run_id}")).json()
+    assert held["status"] == "paused"
+    assert held["paused_at_node"] == "review"
+
+    ok = await client.post(
+        f"/api/v1/runs/{run_id}/nodes/review/review",
+        params={"approved": True, "note": "확인했습니다"},
+    )
+    assert ok.status_code == 200 and ok.json()["queued"] == ["design"]
+    assert (await client.get(f"/api/v1/runs/{run_id}")).json()["status"] == "running"
+
+
+async def test_검토_대기중에는_그냥_재개할_수_없다(client: AsyncClient):
+    await _seed_models(client, ["msa", "design"])
+    await client.post("/api/v1/workflows", json={
+        "workflow_id": "wf-gate-api2", "name": "검토2",
+        "nodes": [
+            {"node_id": "msa", "kind": "model", "model_id": "msa"},
+            {"node_id": "review", "kind": "checkpoint"},
+            {"node_id": "design", "kind": "model", "model_id": "design"},
+        ],
+        "edges": [
+            {"source": "msa", "target": "review"},
+            {"source": "review", "target": "design"},
+        ],
+    })
+    run_id = (await client.post("/api/v1/runs", json={"workflow_id": "wf-gate-api2"})).json()["run_id"]
+    await client.post(f"/api/v1/runs/{run_id}/nodes/msa/complete", json={"succeeded": True})
+
+    r = await client.post(f"/api/v1/runs/{run_id}/resume")
+
+    assert r.status_code == 409
+
+
+async def test_중지와_재개_경로(client: AsyncClient):
+    await _seed_models(client)
+    await client.post("/api/v1/workflows/builtin", json=["msa", "design"])
+    run_id = (await client.post("/api/v1/runs", json={"workflow_id": "builtin-pipeline"})).json()["run_id"]
+
+    #  워커가 첫 작업을 들고 있는 중에 중지한다 — 나간 작업은 건드리지 않는다
+    assert (await client.post("/api/v1/jobs/lease", json={"worker_id": "w1"})).json()["node_id"] == "msa"
+    paused = await client.post(f"/api/v1/runs/{run_id}/pause", params={"reason": "장비 점검"})
+    assert paused.status_code == 200 and paused.json()["status"] == "paused"
+
+    #  들고 있던 작업은 끝까지 가되, 다음 노드는 큐에 들어가지 않는다
+    done = await client.post(f"/api/v1/runs/{run_id}/nodes/msa/complete", json={"succeeded": True})
+    assert done.json()["queued"] == []
+    assert (await client.post("/api/v1/jobs/lease", json={"worker_id": "w1"})).json() is None
+
+    resumed = await client.post(f"/api/v1/runs/{run_id}/resume")
+    assert resumed.status_code == 200 and resumed.json()["status"] == "running"
+    assert (await client.post("/api/v1/jobs/lease", json={"worker_id": "w1"})).json()["node_id"] == "design"
+
+
+async def test_단계_재실행_경로(client: AsyncClient):
+    await _seed_models(client)
+    await client.post("/api/v1/workflows/builtin", json=["msa", "design"])
+    run_id = (await client.post("/api/v1/runs", json={"workflow_id": "builtin-pipeline"})).json()["run_id"]
+    for node in ("msa", "design"):
+        await client.post(f"/api/v1/runs/{run_id}/nodes/{node}/complete", json={"succeeded": True})
+    assert (await client.get(f"/api/v1/runs/{run_id}")).json()["status"] == "succeeded"
+
+    again = await client.post(f"/api/v1/runs/{run_id}/nodes/msa/rerun")
+
+    assert again.status_code == 200
+    assert again.json()["reset"] == ["design", "msa"]
+    assert (await client.get(f"/api/v1/runs/{run_id}")).json()["status"] == "running"
+
+
 async def test_없는_워크플로로_시작하면_404(client: AsyncClient):
     r = await client.post("/api/v1/runs", json={"workflow_id": "없는것"})
 

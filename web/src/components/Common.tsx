@@ -9,6 +9,7 @@ import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/componen
 const STATUS_LABEL: Record<string, string> = {
   pending: '대기',
   running: '실행 중',
+  paused: '멈춤',
   succeeded: '성공',
   failed: '실패',
   cancelled: '취소',
@@ -27,11 +28,24 @@ const STATUS_DOT: Record<string, string> = {
   cancelled: 'bg-status-cancelled',
 }
 
+/*  A held run needs to stand out, and a sixth colour is not available: the
+    palette carries five statuses and nothing else on the screen has any. So
+    it is told apart by shape - a ring rather than a disc - which is also what
+    survives the black-and-white printing these screens are read on. */
+const STATUS_RING: Record<string, string> = {
+  paused: 'border-status-running',
+}
+
 export function StatusDot({ status, className }: { status: string; className?: string }) {
+  const ring = STATUS_RING[status]
   return (
     <span
       aria-hidden
-      className={cn('size-1.5 shrink-0 rounded-full', STATUS_DOT[status] ?? 'bg-muted-foreground', className)}
+      className={cn(
+        'size-1.5 shrink-0 rounded-full',
+        ring ? cn('border-2 bg-transparent', ring) : STATUS_DOT[status] ?? 'bg-muted-foreground',
+        className,
+      )}
     />
   )
 }

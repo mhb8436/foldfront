@@ -9,6 +9,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { IdentityProvider } from '@/lib/identity'
 import { ApiError, api } from '../../api/client'
 import { Monitor } from '../Monitor'
 import { Models } from '../Models'
@@ -48,6 +49,10 @@ function run(overrides: Partial<Parameters<typeof Object.assign>[0]> = {}) {
     ],
     forked_from_run_id: null,
     forked_from_stage: null,
+    paused_at: null,
+    paused_by: null,
+    paused_reason: null,
+    paused_at_node: null,
     workflow_id: 'builtin-pipeline',
     workflow_version: 1,
     created_at: '2026-09-16T01:00:00Z',
@@ -116,6 +121,104 @@ describe('Monitor', () => {
     render(<MemoryRouter><Monitor /></MemoryRouter>)
 
     expect(await screen.findByText('연결할 수 없습니다')).toBeInTheDocument()
+  })
+})
+
+/** A run stopped at a review gate, with the gate's instructions on the stage. */
+function held() {
+  return run({
+    status: 'paused',
+    paused_at: '2026-09-16T01:05:00Z',
+    paused_at_node: 'review',
+    paused_reason: '정렬 깊이를 확인하십시오',
+    finished_at: null,
+    stages: [
+      {
+        name: 'msa', status: 'succeeded', started_at: '2026-09-16T01:00:00Z',
+        finished_at: '2026-09-16T01:05:00Z', model_id: 'mmseqs', model_version: 'v2',
+        error: null, metrics: { depth: 120 }, attempt: 1,
+        reviewed_by: null, reviewed_at: null, review_note: null,
+      },
+      {
+        name: 'review', status: 'paused', started_at: null, finished_at: null,
+        model_id: null, model_version: null, error: null,
+        metrics: {}, attempt: 1, reviewed_by: null, reviewed_at: null, review_note: null,
+      },
+    ],
+  })
+}
+
+async function openHeld({ canRun = true }: { canRun?: boolean } = {}) {
+  vi.spyOn(api, 'listRuns').mockResolvedValue({ items: [held()], count: 1 } as never)
+  vi.spyOn(api, 'jobStats').mockResolvedValue({ by_status: {}, total: 0 } as never)
+  vi.spyOn(api, 'getRun').mockResolvedValue(held() as never)
+  vi.spyOn(api, 'listEvents').mockResolvedValue({ items: [], count: 0 } as never)
+  vi.spyOn(api, 'listArtifacts').mockResolvedValue({ items: [], count: 0, total_bytes: 0 } as never)
+  vi.spyOn(api, 'me').mockResolvedValue({
+    user_id: 'dev', email: '', roles: [canRun ? 'researcher' : 'viewer'],
+    authenticated: false, auth_mode: 'disabled',
+  } as never)
+
+  render(
+    <MemoryRouter>
+      <IdentityProvider>
+        <Monitor />
+      </IdentityProvider>
+    </MemoryRouter>,
+  )
+  fireEvent.click(await screen.findByText('run-0001'))
+  await screen.findByText(/검토 지점/)
+}
+
+describe('검토 지점', () => {
+  it('멈춘 실행에 지시문과 승인·반려를 낸다', async () => {
+    await openHeld()
+
+    expect(screen.getByText('정렬 깊이를 확인하십시오')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: '승인' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '반려' })).toBeInTheDocument()
+  })
+
+  it('실행 권한이 없으면 승인 단추를 두지 않는다', async () => {
+    await openHeld({ canRun: false })
+
+    expect(await screen.findByText(/승인 권한이 없습니다/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '승인' })).not.toBeInTheDocument()
+  })
+
+  it('승인하면 그 단계를 지정해 보낸다', async () => {
+    const review = vi.spyOn(api, 'reviewCheckpoint').mockResolvedValue(
+      { ok: true, approved: true, queued: ['design'], status: 'running' } as never,
+    )
+    await openHeld()
+
+    fireEvent.change(await screen.findByLabelText('검토 의견'), {
+      target: { value: '충분합니다' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '승인' }))
+
+    await waitFor(() =>
+      expect(review).toHaveBeenCalledWith('run-0001', 'review', true, '충분합니다'),
+    )
+  })
+
+  it('사유 없는 반려는 보내지 않는다', async () => {
+    //  Rejecting cancels the run. A cancellation nobody can account for
+    //  later is worse than a second click.
+    const review = vi.spyOn(api, 'reviewCheckpoint')
+    await openHeld()
+
+    fireEvent.click(await screen.findByRole('button', { name: '반려' }))
+
+    expect(await screen.findByText(/사유를 적으십시오/)).toBeInTheDocument()
+    expect(review).not.toHaveBeenCalled()
+  })
+
+  it('검토로 멈춘 실행에는 재개 단추를 두지 않는다', async () => {
+    //  It is released by answering the gate, not by resuming past it.
+    await openHeld()
+
+    expect(screen.queryByRole('button', { name: '재개' })).not.toBeInTheDocument()
   })
 })
 

@@ -36,13 +36,29 @@ class Doc(BaseModel):
 
 
 class RunStatus(StrEnum):
-    """The status values the original writes to status.json, unchanged."""
+    """The status values the original writes to status.json, plus one.
+
+    PAUSED is ours. The original has no way to hold a run open with nothing
+    running - it either finishes or it does not - so a review gate had nowhere
+    to sit. It is projected back to the original as `running`, because to
+    anything reading status.json a paused run is one that has not finished.
+    """
 
     PENDING = "pending"
     RUNNING = "running"
+    PAUSED = "paused"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
+    @property
+    def is_final(self) -> bool:
+        return self in (RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.CANCELLED)
+
+    @property
+    def is_live(self) -> bool:
+        """Still going, in the sense that more work may yet be queued."""
+        return self in (RunStatus.PENDING, RunStatus.RUNNING, RunStatus.PAUSED)
 
 
 class StageName(StrEnum):
@@ -72,6 +88,15 @@ class StageState(Doc):
     request_hash: str | None = None
     error: str | None = None
     metrics: dict[str, Any] = Field(default_factory=dict)
+
+    #  How many times this stage has been run. A rerun raises it, so a screen
+    #  can say a number came from the second attempt rather than the first.
+    attempt: int = 1
+
+    #  kind=CHECKPOINT only: who decided, when, and what they wrote
+    reviewed_by: str | None = None
+    reviewed_at: datetime | None = None
+    review_note: str | None = None
 
 
 class Run(Doc):
@@ -107,6 +132,14 @@ class Run(Doc):
     #  Fork lineage: which run, and which stage it branched from
     forked_from_run_id: str | None = None
     forked_from_stage: str | None = None
+
+    #  Why the run is holding. A checkpoint sets `paused_at_node`; a person
+    #  pausing by hand leaves it empty. Both are cleared on resume, so these
+    #  describe the current hold and not the last one.
+    paused_at: datetime | None = None
+    paused_by: str | None = None
+    paused_reason: str | None = None
+    paused_at_node: str | None = None
 
     #  Points at the workflow definition when the run came from a DAG
     workflow_id: str | None = None
@@ -230,6 +263,7 @@ class NodeKind(StrEnum):
     BRANCH = "branch"        # Conditional branch
     FANOUT = "fanout"        # Parallel split
     JOIN = "join"            # Parallel join
+    CHECKPOINT = "checkpoint"  # Review gate: holds the run until a person decides
 
 
 class WorkflowNode(BaseModel):

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Download, RefreshCw, X, Play } from 'lucide-react'
+import { Download, RefreshCw, X, Play, Pause, RotateCcw, Check, Ban } from 'lucide-react'
 
 import { useProject } from '@/lib/project'
 import { api } from '../api/client'
@@ -21,6 +21,7 @@ import {
   formatTime,
 } from '../components/Common'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 /** Run status, artifacts and the event log. */
@@ -169,6 +170,18 @@ function RunDetail({
     }
   }
 
+  /** Wraps the calls that change a run, so one report line covers them all. */
+  async function control(what: string, call: () => Promise<unknown>) {
+    setRepair(null)
+    try {
+      await call()
+      run.reload()
+      events.reload()
+    } catch (e) {
+      setRepair(`${what} — ${(e as Error).message}`)
+    }
+  }
+
   return (
     <Panel
       title={`실행 상세 — ${runId}`}
@@ -182,8 +195,29 @@ function RunDetail({
           )}
           {run.data?.status === 'running' && canRun && (
             <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => control('중지', () => api.pauseRun(runId, '화면에서 중지'))}
+              >
+                <Pause />
+                중지
+              </Button>
               <Button variant="outline" size="sm" onClick={reconcile}>
                 정합성 점검
+              </Button>
+              <Button variant="outline" size="sm" onClick={cancel}>
+                취소
+              </Button>
+            </>
+          )}
+          {/*  A run held at a checkpoint is released by answering it, not by
+               this button, so it is only offered for a hand-placed hold. */}
+          {run.data?.status === 'paused' && !run.data?.paused_at_node && canRun && (
+            <>
+              <Button size="sm" onClick={() => control('재개', () => api.resumeRun(runId))}>
+                <Play />
+                재개
               </Button>
               <Button variant="outline" size="sm" onClick={cancel}>
                 취소
@@ -200,6 +234,27 @@ function RunDetail({
       <div className="px-4 pt-4">
         <ErrorBox message={run.error} />
         {repair && <Notice message={repair} />}
+        {run.data?.status === 'paused' && run.data?.paused_at_node && (
+          <ReviewGate
+            runId={runId}
+            node={run.data.paused_at_node}
+            instructions={run.data.paused_reason}
+            canRun={canRun}
+            onDone={() => control('검토', async () => {})}
+            onError={setRepair}
+            reload={() => {
+              run.reload()
+              events.reload()
+            }}
+          />
+        )}
+        {run.data?.status === 'paused' && !run.data?.paused_at_node && (
+          <Notice
+            message={`실행을 멈춰 두었습니다${
+              run.data.paused_reason ? ` — ${run.data.paused_reason}` : ''
+            }. 나간 작업은 끝까지 가고, 다음 단계는 재개해야 움직입니다.`}
+          />
+        )}
         {run.data?.forked_from_run_id && (
           <p className="text-muted-foreground text-[13px]">
             <code className="font-mono">{run.data.forked_from_run_id}</code> 의{' '}
@@ -223,7 +278,14 @@ function RunDetail({
           {run.data?.stages.map((s) => (
             <TableRow key={s.name}>
               <TableCell>
-                <div className="font-medium">{s.name}</div>
+                <div className="font-medium">
+                  {s.name}
+                  {s.attempt > 1 && (
+                    <span className="text-muted-foreground ml-1.5 font-mono text-[11.5px]">
+                      {s.attempt}차
+                    </span>
+                  )}
+                </div>
                 {stageTerm(s.name) && (
                   <div className="text-muted-foreground text-[11.5px]" title={stageTerm(s.name)!.hint}>
                     {stageTerm(s.name)!.label}
@@ -234,6 +296,12 @@ function RunDetail({
                 <StatusBadge status={s.status} />
                 {s.error && (
                   <div className="text-destructive mt-1 text-[12px]">{s.error}</div>
+                )}
+                {s.reviewed_at && (
+                  <div className="text-muted-foreground mt-1 text-[11.5px]">
+                    {s.reviewed_by ?? '알 수 없음'} 검토 · {formatTime(s.reviewed_at)}
+                    {s.review_note && ` — ${s.review_note}`}
+                  </div>
                 )}
               </TableCell>
               <TableCell className="text-muted-foreground font-mono text-[12.5px]">
@@ -252,9 +320,26 @@ function RunDetail({
               </TableCell>
               <TableCell>
                 {canRun && (
-                  <Button variant="outline" size="sm" onClick={() => fork(s.name)}>
-                    여기서 fork
-                  </Button>
+                  <div className="flex flex-wrap gap-1.5">
+                    <Button variant="outline" size="sm" onClick={() => fork(s.name)}>
+                      여기서 fork
+                    </Button>
+                    {/*  A stage that never ran has nothing to redo. Its
+                         descendants come along, so the button says so. */}
+                    {s.status !== 'pending' && s.status !== 'paused' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        title="이 단계와 이후 단계를 되돌려 다시 실행합니다"
+                        onClick={() =>
+                          control('재실행', () => api.rerunStage(runId, s.name))
+                        }
+                      >
+                        <RotateCcw />
+                        다시 실행
+                      </Button>
+                    )}
+                  </div>
                 )}
               </TableCell>
             </TableRow>
@@ -345,5 +430,85 @@ function RunDetail({
         </div>
       </div>
     </Panel>
+  )
+}
+
+
+/**
+ * The review gate, where a person decides whether the run carries on.
+ *
+ * Rejecting cancels the run, so it asks for a reason and will not send an
+ * empty one: a cancelled run with no note recorded is one nobody can account
+ * for later. Approving does not, because carrying on is what the run was
+ * going to do anyway.
+ */
+function ReviewGate({
+  runId,
+  node,
+  instructions,
+  canRun,
+  onError,
+  reload,
+}: {
+  runId: string
+  node: string
+  instructions: string | null
+  canRun: boolean
+  onDone: () => void
+  onError: (message: string) => void
+  reload: () => void
+}) {
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function decide(approved: boolean) {
+    if (!approved && !note.trim()) {
+      onError('반려하려면 사유를 적으십시오. 실행이 취소됩니다.')
+      return
+    }
+    setBusy(true)
+    try {
+      await api.reviewCheckpoint(runId, node, approved, note.trim() || undefined)
+      setNote('')
+      reload()
+    } catch (e) {
+      onError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mb-3 rounded-md border border-foreground/25 border-l-2 border-l-foreground p-3.5">
+      <h3 className="text-[13.5px] font-semibold">
+        검토 지점 — <code className="font-mono">{node}</code>
+      </h3>
+      <p className="text-muted-foreground mt-1 text-[13px]">
+        {instructions ?? '이 지점에서 실행이 멈췄습니다. 승인해야 다음 단계로 넘어갑니다.'}
+      </p>
+      {canRun ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="검토 의견 (반려하려면 필수)"
+            className="h-8 max-w-sm text-[13px]"
+            aria-label="검토 의견"
+          />
+          <Button size="sm" disabled={busy} onClick={() => decide(true)}>
+            <Check />
+            승인
+          </Button>
+          <Button variant="outline" size="sm" disabled={busy} onClick={() => decide(false)}>
+            <Ban />
+            반려
+          </Button>
+        </div>
+      ) : (
+        <p className="text-muted-foreground mt-2 text-[12.5px]">
+          승인 권한이 없습니다. 실행 권한을 가진 이용자가 처리해야 합니다.
+        </p>
+      )}
+    </div>
   )
 }

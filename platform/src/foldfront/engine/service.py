@@ -26,6 +26,7 @@ from foldfront.db.models import (
     Workflow,
     WorkflowNode,
 )
+from foldfront.db.models import utcnow
 from foldfront.db.repositories import Repos, new_id
 from foldfront.engine.dag import (
     ExecutionPlan,
@@ -105,11 +106,9 @@ class ExecutionService:
         await self._enqueue_ready(run.run_id, graph, plan, request=dict(run.request or {}))
 
         #  When the first node cannot be routed the run is already over. Close
-        #  it rather than leave it sitting in RUNNING with nothing to do.
-        if plan.done():
-            final = RunStatus.SUCCEEDED if plan.succeeded() else RunStatus.FAILED
-            await self.repos.runs.set_status(run.run_id, final)
-            await self.repos.events.append(run.run_id, f"실행이 끝났습니다 ({final})")
+        #  it rather than leave it sitting in RUNNING with nothing to do. A
+        #  checkpoint at the front holds it instead, which _settle decides.
+        await self._settle(run.run_id, plan)
 
         return await self.repos.runs.get(run.run_id) or run
 
@@ -184,11 +183,8 @@ class ExecutionService:
         await self._link_inputs(run_id, run.request)
 
         queued = await self._enqueue_ready(run_id, graph, plan, request=dict(run.request or {}))
-        if plan.done():
-            final = RunStatus.SUCCEEDED if plan.succeeded() else RunStatus.FAILED
-            await self.repos.runs.set_status(run_id, final)
-            await self.repos.events.append(run_id, f"실행이 끝났습니다 ({final})")
-        elif not queued:
+        settled = await self._settle(run_id, plan)
+        if settled == str(RunStatus.RUNNING) and not queued:
             #  Nothing ready and nothing running is a run that will never move.
             #  Closing it here is better than a stalled notice in half an hour.
             await self.repos.runs.set_status(run_id, RunStatus.FAILED, error="시작할 수 있는 노드가 없습니다")
@@ -259,6 +255,12 @@ class ExecutionService:
                 state.reason = stage.error
             elif stage.status is RunStatus.RUNNING:
                 state.outcome = NodeOutcome.RUNNING
+            elif stage.status is RunStatus.PAUSED:
+                #  A checkpoint that was reached and not yet answered. Without
+                #  this the plan would rebuild it as PENDING and queue the
+                #  review a second time on every reconcile.
+                state.outcome = NodeOutcome.AWAITING
+                state.reason = stage.error
 
         return graph, plan
 
@@ -275,7 +277,7 @@ class ExecutionService:
         run = await self.repos.runs.get(run_id)
         if run is None:
             return {"ok": False, "error": "실행을 찾지 못했습니다"}
-        if run.status not in (RunStatus.PENDING, RunStatus.RUNNING):
+        if not run.status.is_live:
             #  A worker can finish a job after its run was cancelled, or after
             #  a reconcile closed the run because the lease had expired. What
             #  was reported stays reported; the late result is noted, not applied.
@@ -315,18 +317,222 @@ class ExecutionService:
                 ))
 
         queued = await self._enqueue_ready(run_id, graph, plan)
-
-        if plan.done():
-            final = RunStatus.SUCCEEDED if plan.succeeded() else RunStatus.FAILED
-            await self.repos.runs.set_status(run_id, final)
-            await self.repos.events.append(run_id, f"실행이 끝났다 ({final})")
+        status = await self._settle(run_id, plan)
 
         return {
             "ok": True,
             "queued": queued,
             "done": plan.done(),
+            "status": status,
+            "awaiting": list(plan.awaiting()),
             "summary": plan.summary(),
         }
+
+    async def _settle(self, run_id: str, plan: ExecutionPlan) -> str:
+        """Set the run's status from the plan, after work was queued.
+
+        Three outcomes, and they are checked in this order. A plan holding at
+        a checkpoint is not done even though nothing is running, so asking
+        `done()` first would close a run that is waiting for a person.
+        """
+        waiting = plan.awaiting()
+        if waiting:
+            #  What the reviewer is asked to look at is why the run is held,
+            #  so it belongs on the run rather than in the stage's error -
+            #  a checkpoint being reached is not a stage failing.
+            node = plan.graph.nodes[waiting[0]]
+            asked = str(node.params.get("instructions") or "").strip()
+            held = await self.repos.runs.hold(
+                run_id, node_id=waiting[0],
+                reason=asked or "검토 지점에서 멈췄습니다",
+            )
+            if held is not None:
+                for node_id in waiting:
+                    await self.repos.events.append(
+                        run_id, f"{node_id} 검토 지점에서 멈췄습니다. 승인해야 다음으로 넘어갑니다",
+                        stage=node_id, level="warning",
+                    )
+            return str(RunStatus.PAUSED)
+
+        if plan.done():
+            final = RunStatus.SUCCEEDED if plan.succeeded() else RunStatus.FAILED
+            await self.repos.runs.set_status(run_id, final)
+            await self.repos.events.append(run_id, f"실행이 끝났습니다 ({final})")
+            return str(final)
+
+        return str(RunStatus.RUNNING)
+
+    # ------------------------------------------------------------ hold and release
+
+    async def pause(self, run_id: str, *, actor_id: str | None = None,
+                    reason: str = "사용자 중지") -> Run | None:
+        """Hold a run by hand.
+
+        What is already on the queue is left alone. A worker holding a lease
+        is mid-call to a GPU endpoint that has been paid for either way, so
+        cancelling it would buy nothing and lose the result. The hold takes
+        effect at the next node.
+        """
+        held = await self.repos.runs.hold(run_id, actor_id=actor_id, reason=reason)
+        if held is None:
+            return await self.repos.runs.get(run_id)
+        await self.repos.events.append(run_id, f"실행을 중지했습니다: {reason}", level="warning")
+        await self.repos.audit.record(
+            "run.pause", actor_id=actor_id, target_type="run", target_id=run_id,
+            detail={"reason": reason},
+        )
+        return held
+
+    async def unpause(self, run_id: str, *, actor_id: str | None = None) -> Run | None:
+        """Release a hold and queue whatever became ready while it was held.
+
+        A run held at a checkpoint is not released here - the checkpoint is
+        still unanswered, so `_settle` would put the hold straight back. Those
+        go through `decide_checkpoint`.
+        """
+        run = await self.repos.runs.get(run_id)
+        if run is None:
+            return None
+        if run.status is not RunStatus.PAUSED:
+            return run
+        if run.paused_at_node:
+            raise ValueError(
+                f"{run.paused_at_node} 검토 지점을 승인하거나 반려해야 다시 움직입니다"
+            )
+
+        released = await self.repos.runs.release(run_id)
+        if released is None:
+            return await self.repos.runs.get(run_id)
+        await self.repos.events.append(run_id, "실행을 다시 시작했습니다")
+        await self.repos.audit.record(
+            "run.resume", actor_id=actor_id, target_type="run", target_id=run_id,
+        )
+
+        loaded = await self.load_plan(run_id)
+        if loaded is None:
+            return released
+        graph, plan = loaded
+        await self._enqueue_ready(run_id, graph, plan)
+        await self._settle(run_id, plan)
+        return await self.repos.runs.get(run_id)
+
+    async def decide_checkpoint(
+        self, run_id: str, node_id: str, *, approved: bool,
+        actor_id: str | None = None, note: str | None = None,
+    ) -> dict[str, Any]:
+        """Answer a review gate. Approving carries on; rejecting stops the run."""
+        run = await self.repos.runs.get(run_id)
+        if run is None:
+            return {"ok": False, "error": "실행을 찾지 못했습니다"}
+
+        stage = next((st for st in run.stages if st.name == node_id), None)
+        if stage is None or stage.status is not RunStatus.PAUSED:
+            return {"ok": False, "error": f"{node_id} 은(는) 검토를 기다리고 있지 않습니다"}
+
+        decided = StageState(
+            name=node_id,
+            status=RunStatus.SUCCEEDED if approved else RunStatus.CANCELLED,
+            attempt=stage.attempt,
+            finished_at=utcnow(),
+            reviewed_by=actor_id,
+            reviewed_at=utcnow(),
+            review_note=note,
+            error=None if approved else (note or "검토에서 반려했습니다"),
+        )
+        await self.repos.runs.upsert_stage(run_id, decided)
+        await self.repos.audit.record(
+            "run.review", actor_id=actor_id, target_type="run", target_id=run_id,
+            detail={"node_id": node_id, "approved": approved, "note": note},
+        )
+
+        if not approved:
+            await self.repos.events.append(
+                run_id, f"{node_id} 검토에서 반려했습니다: {note or '사유 없음'}",
+                stage=node_id, level="warning",
+            )
+            await self.cancel(run_id, reason=f"{node_id} 검토 반려")
+            return {"ok": True, "approved": False, "status": str(RunStatus.CANCELLED)}
+
+        await self.repos.events.append(
+            run_id, f"{node_id} 검토를 승인했습니다", stage=node_id,
+        )
+        #  Release before replanning: _enqueue_ready queues nothing while the
+        #  run is held, so the order here is what makes the run move at all.
+        await self.repos.runs.release(run_id)
+
+        loaded = await self.load_plan(run_id)
+        if loaded is None:
+            return {"ok": False, "error": "실행 계획을 복원하지 못했습니다"}
+        graph, plan = loaded
+        queued = await self._enqueue_ready(run_id, graph, plan)
+        status = await self._settle(run_id, plan)
+        return {"ok": True, "approved": True, "queued": queued, "status": status}
+
+    async def rerun_stage(
+        self, run_id: str, node_id: str, *, actor_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Run one stage again, and everything that depended on it.
+
+        A rerun of one node alone would leave its descendants holding results
+        derived from the attempt being thrown away - the screen would show a
+        new soluprot score beside an af2 number computed from the old one. So
+        the node and its descendants reset together, and the descendants are
+        re-derived rather than reused.
+
+        A finished run can be rerun; that is most of the point, since a stage
+        is usually rerun because its result was wrong. It reopens as RUNNING.
+        """
+        run = await self.repos.runs.get(run_id)
+        if run is None:
+            return {"ok": False, "error": "실행을 찾지 못했습니다"}
+        if not run.workflow_id:
+            return {"ok": False, "error": "워크플로에서 시작한 실행이 아니라 단계를 다시 실행할 수 없습니다"}
+        workflow = await self.repos.workflows.get(run.workflow_id, run.workflow_version)
+        if workflow is None:
+            return {"ok": False, "error": "워크플로를 찾지 못했습니다"}
+        graph = build_graph(workflow)
+        if node_id not in graph.nodes:
+            return {"ok": False, "error": f"그래프에 없는 노드입니다: {node_id}"}
+
+        #  The node and everything reachable from it
+        affected: set[str] = set()
+        frontier = [node_id]
+        while frontier:
+            current = frontier.pop()
+            if current in affected:
+                continue
+            affected.add(current)
+            frontier.extend(graph.children(current))
+
+        #  Drop the old jobs, or the unique index on (run_id, node_id) refuses
+        #  the new one and the stage sits PENDING with nothing to run it.
+        for job in await self.repos.jobs.list_for_run(run_id):
+            if job.node_id in affected:
+                await self.repos.jobs.finish(
+                    job.job_id, status="cancelled", error="단계를 다시 실행합니다",
+                )
+
+        await self.repos.runs.reset_stages(run_id, sorted(affected))
+        await self.repos.runs.set_status(run_id, RunStatus.RUNNING)
+        await self.repos.events.append(
+            run_id,
+            f"{node_id} 부터 다시 실행합니다 (함께 되돌린 단계 {len(affected)}개)",
+            stage=node_id, level="warning",
+        )
+        await self.repos.audit.record(
+            "run.rerun", actor_id=actor_id, target_type="run", target_id=run_id,
+            detail={"node_id": node_id, "reset": sorted(affected)},
+        )
+
+        loaded = await self.load_plan(run_id)
+        if loaded is None:
+            return {"ok": False, "error": "실행 계획을 복원하지 못했습니다"}
+        graph, plan = loaded
+        queued = await self._enqueue_ready(run_id, graph, plan)
+        status = await self._settle(run_id, plan)
+        return {"ok": True, "reset": sorted(affected), "queued": queued, "status": status}
+
+    # ------------------------------------------------------------ queueing
 
     async def _enqueue_ready(
         self, run_id: str, graph: Graph, plan: ExecutionPlan,
@@ -342,8 +548,20 @@ class ExecutionService:
             stored = await self.repos.runs.get(run_id)
             request = dict(stored.request) if stored else {}
 
+        #  A held run queues nothing. Jobs already out keep going and report
+        #  back - stopping them would throw away GPU time already paid for -
+        #  but nothing new leaves until someone resumes.
+        held = await self.repos.runs.get(run_id)
+        if held is not None and held.status is RunStatus.PAUSED:
+            return []
+
+        #  Only a live job blocks a node, which is what the partial unique
+        #  index on (run_id, node_id) already says. Counting settled jobs too
+        #  would mean a stage could never be run a second time: the job from
+        #  the attempt being replaced would keep the replacement out.
         existing = {
-            j.node_id for j in await self.repos.jobs.list_for_run(run_id) if j.node_id
+            j.node_id for j in await self.repos.jobs.list_for_run(run_id)
+            if j.node_id and str(j.status) in ("queued", "leased", "running")
         }
         queued: list[str] = []
         handled: set[str] = set()
@@ -358,6 +576,17 @@ class ExecutionService:
                 if node_id in existing or node_id in handled:
                     continue
                 node = graph.nodes[node_id]
+
+                #  A checkpoint is the one control node that does not pass.
+                #  Reaching it is the whole point: the run holds here, and the
+                #  descendants wait, until a person answers.
+                if node.kind is NodeKind.CHECKPOINT:
+                    plan.mark_awaiting(node_id)
+                    await self.repos.runs.upsert_stage(run_id, StageState(
+                        name=node_id, status=RunStatus.PAUSED,
+                    ))
+                    handled.add(node_id)
+                    continue
 
                 #  Nodes with no external call pass immediately. A BRANCH only
                 #  evaluates a condition; FANOUT and JOIN only shape the flow.

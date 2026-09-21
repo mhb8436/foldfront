@@ -66,9 +66,10 @@ const KIND_LABEL: Record<NodeKind, string> = {
   branch: '조건 분기',
   fanout: '병렬 분기',
   join: '합류',
+  checkpoint: '검토 지점',
 }
 
-const KINDS = ['model', 'transform', 'branch', 'fanout', 'join'] as const
+const KINDS = ['model', 'transform', 'branch', 'fanout', 'join', 'checkpoint'] as const
 
 /** Kept in step with the panel's own width in Inspector.tsx. */
 const PANEL_WIDTH = 300
@@ -95,6 +96,16 @@ function nodeStyle(kind: NodeKind): React.CSSProperties {
       return { ...base, borderStyle: 'dashed', minWidth: 104 }
     case 'join':
       return { ...base, minWidth: 104 }
+    //  Doubled border and square corners: the one node that stops the run,
+    //  and the only one that looks like a barrier rather than a step.
+    case 'checkpoint':
+      return {
+        ...base,
+        borderRadius: 0,
+        borderWidth: 2,
+        borderStyle: 'double',
+        minWidth: 104,
+      }
   }
 }
 
@@ -168,6 +179,10 @@ export function Studio() {
   const [kinds, setKinds] = useState<Record<string, NodeKind>>({})
   const [models, setModels] = useState<Record<string, string>>({})
   const [conditions, setConditions] = useState<Record<string, string>>({})
+  //  kind=checkpoint: what the reviewer is being asked to look at. Kept
+  //  beside conditions because it plays the same part - the one free-text
+  //  field a control node carries - and rides in params on save.
+  const [instructions, setInstructions] = useState<Record<string, string>>({})
   const [name, setName] = useState('')
   const [workflowId, setWorkflowId] = useState('')
   const [message, setMessage] = useState<string | null>(null)
@@ -202,6 +217,9 @@ export function Studio() {
       setKinds(Object.fromEntries(wf.nodes.map((n) => [n.node_id, n.kind])))
       setModels(Object.fromEntries(wf.nodes.map((n) => [n.node_id, n.model_id ?? ''])))
       setConditions(Object.fromEntries(wf.nodes.map((n) => [n.node_id, n.condition ?? ''])))
+      setInstructions(Object.fromEntries(
+        wf.nodes.map((n) => [n.node_id, String(n.params?.instructions ?? '')]),
+      ))
       setSelected(null)
       setEditing(null)
       setParams(
@@ -310,7 +328,9 @@ export function Studio() {
     //  A node arrives with nothing set, so open it rather than making someone
     //  find it again to say what it is.
     setSelected(id)
-    if (kind === 'model' || kind === 'branch') open(id, kind === 'model' ? 'model' : 'condition')
+    if (kind === 'model' || kind === 'branch' || kind === 'checkpoint') {
+      open(id, kind === 'model' ? 'model' : 'condition')
+    }
   }
 
   async function save() {
@@ -325,7 +345,9 @@ export function Studio() {
         label: null,
         model_id: models[n.id] || null,
         model_version: null,
-        params: {},
+        params: instructions[n.id]?.trim()
+          ? { instructions: instructions[n.id].trim() }
+          : {},
         condition: conditions[n.id] || null,
         position: { x: n.position.x, y: n.position.y },
       })),
@@ -415,6 +437,12 @@ export function Studio() {
   function setNodeCondition(nodeId: string, condition: string) {
     setConditions((c) => ({ ...c, [nodeId]: condition }))
     redraw(nodeId, { condition })
+  }
+
+  function setNodeInstructions(nodeId: string, text: string) {
+    //  No redraw: the canvas label shows the model id and the condition, and
+    //  a sentence of review prose would not fit in a node.
+    setInstructions((c) => ({ ...c, [nodeId]: text }))
   }
 
   function removeNode(nodeId: string) {
@@ -772,6 +800,8 @@ export function Studio() {
               onModel={(v) => setNodeModel(editingNode.id, v)}
               condition={conditions[editingNode.id] ?? ''}
               onCondition={(v) => setNodeCondition(editingNode.id, v)}
+              instructions={instructions[editingNode.id] ?? ''}
+              onInstructions={(v) => setNodeInstructions(editingNode.id, v)}
               outgoing={edges.filter((e) => e.source === editingNode.id).map(asEdge)}
               incoming={edges.filter((e) => e.target === editingNode.id).map(asEdge)}
               onEdgeBranch={setEdgeBranch}

@@ -2,7 +2,7 @@
  * The node editor that floats over the canvas.
  *
  * What it owes the canvas is that it shows the right controls for the kind of
- * node it was opened on - five kinds share one panel, and offering a model
+ * node it was opened on - six kinds share one panel, and offering a model
  * picker on a join would be worse than offering nothing.
  */
 
@@ -29,6 +29,8 @@ function show(over: Partial<Parameters<typeof Inspector>[0]> = {}) {
     onModel: vi.fn(),
     condition: '',
     onCondition: vi.fn(),
+    instructions: '',
+    onInstructions: vi.fn(),
     outgoing: [] as InspectorEdge[],
     incoming: [] as InspectorEdge[],
     onEdgeBranch: vi.fn(),
@@ -125,5 +127,21 @@ describe('노드 편집 패널', () => {
   it('고칠 항목을 지정해 열면 그 칸에 초점을 준다', () => {
     show({ nodeId: 'branch-1', kind: 'branch', focus: 'condition' })
     expect(screen.getByLabelText('조건식')).toHaveFocus()
+  })
+
+  it('검토 지점은 지시문을 편집하게 한다', () => {
+    const props = show({ kind: 'checkpoint' as NodeKind })
+
+    fireEvent.change(screen.getByLabelText('검토 지시문'), {
+      target: { value: '정렬 깊이를 확인하십시오' },
+    })
+
+    expect(props.onInstructions).toHaveBeenCalledWith('정렬 깊이를 확인하십시오')
+  })
+
+  it('검토 지점에는 모델 선택이 없다', () => {
+    show({ kind: 'checkpoint' as NodeKind })
+
+    expect(screen.queryByLabelText('실행할 모델')).not.toBeInTheDocument()
   })
 })

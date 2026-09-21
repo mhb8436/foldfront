@@ -892,3 +892,224 @@ async def test_중첩된_값은_실행에_묶이지_않는다(seeded: Repos, tmp
 
     assert (await seeded.inputs.by_paths([str(f.resolve())]))[0].run_ids == []
     get_settings.cache_clear()
+
+
+# ---------------------------------------------------------------- 검토 지점 · 중지 · 재실행
+
+
+async def _gated(repos: Repos) -> Workflow:
+    """msa → 검토 지점 → rfd3. 승인해야 rfd3 가 움직인다."""
+    return await repos.workflows.save(Workflow(
+        workflow_id="wf-gate", name="검토 지점",
+        nodes=[
+            WorkflowNode(node_id="msa", kind=NodeKind.MODEL, model_id="msa"),
+            WorkflowNode(node_id="review", kind=NodeKind.CHECKPOINT,
+                         params={"instructions": "정렬 깊이를 확인하십시오"}),
+            WorkflowNode(node_id="rfd3", kind=NodeKind.MODEL, model_id="rfd3"),
+        ],
+        edges=[
+            WorkflowEdge(source="msa", target="review"),
+            WorkflowEdge(source="review", target="rfd3"),
+        ],
+    ))
+
+
+async def test_검토지점에_닿으면_실행이_멈춘다(seeded: Repos):
+    """제어노드 중 유일하게 통과하지 않는다. 다음 노드는 큐에 들어가지 않는다."""
+    svc = ExecutionService(seeded)
+    run = await svc.start(await _gated(seeded))
+
+    res = await svc.complete_node(run.run_id, "msa", succeeded=True)
+
+    assert res["queued"] == []
+    assert res["awaiting"] == ["review"]
+    held = await seeded.runs.get(run.run_id)
+    assert held.status is RunStatus.PAUSED
+    assert held.paused_at_node == "review"
+    stages = {s.name: s.status for s in held.stages}
+    assert stages["review"] is RunStatus.PAUSED
+    assert stages["rfd3"] is RunStatus.PENDING
+
+
+async def test_검토지점은_멈춘_실행을_끝난_것으로_닫지_않는다(seeded: Repos):
+    """돌아가는 것이 없다고 끝난 것은 아니다. done() 이 참이면 run 이 성공으로 닫힌다."""
+    svc = ExecutionService(seeded)
+    run = await svc.start(await _gated(seeded))
+    await svc.complete_node(run.run_id, "msa", succeeded=True)
+
+    _, plan = await svc.load_plan(run.run_id)
+    assert not plan.done()
+    assert plan.awaiting() == ("review",)
+
+
+async def test_승인하면_다음_노드가_큐에_들어간다(seeded: Repos):
+    svc = ExecutionService(seeded)
+    run = await svc.start(await _gated(seeded))
+    await svc.complete_node(run.run_id, "msa", succeeded=True)
+
+    res = await svc.decide_checkpoint(
+        run.run_id, "review", approved=True, actor_id="u-1", note="깊이 충분합니다",
+    )
+
+    assert res["ok"] and res["queued"] == ["rfd3"]
+    moved = await seeded.runs.get(run.run_id)
+    assert moved.status is RunStatus.RUNNING
+    assert moved.paused_at_node is None
+    review = next(s for s in moved.stages if s.name == "review")
+    assert review.status is RunStatus.SUCCEEDED
+    assert review.reviewed_by == "u-1"
+    assert review.review_note == "깊이 충분합니다"
+
+
+async def test_반려하면_실행이_취소된다(seeded: Repos):
+    svc = ExecutionService(seeded)
+    run = await svc.start(await _gated(seeded))
+    await svc.complete_node(run.run_id, "msa", succeeded=True)
+
+    res = await svc.decide_checkpoint(
+        run.run_id, "review", approved=False, actor_id="u-1", note="정렬이 얕습니다",
+    )
+
+    assert res["ok"] and res["approved"] is False
+    stopped = await seeded.runs.get(run.run_id)
+    assert stopped.status is RunStatus.CANCELLED
+    assert not [j for j in await seeded.jobs.list_for_run(run.run_id)
+                if j.node_id == "rfd3" and str(j.status) == "queued"]
+
+
+async def test_검토를_기다리지_않는_단계는_승인할_수_없다(seeded: Repos):
+    svc = ExecutionService(seeded)
+    run = await svc.start(await _gated(seeded))
+
+    res = await svc.decide_checkpoint(run.run_id, "msa", approved=True)
+
+    assert res["ok"] is False
+
+
+async def test_검토지점_승인은_감사에_남는다(seeded: Repos):
+    svc = ExecutionService(seeded)
+    run = await svc.start(await _gated(seeded))
+    await svc.complete_node(run.run_id, "msa", succeeded=True)
+    await svc.decide_checkpoint(run.run_id, "review", approved=True, actor_id="u-1")
+
+    logged = await seeded.audit.search(action="run.review")
+    assert logged and logged[0].detail["approved"] is True
+
+
+async def test_중지하면_다음_노드가_큐에_들어가지_않는다(seeded: Repos):
+    """이미 나간 작업은 건드리지 않고, 새 작업만 막는다."""
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(Workflow(
+        workflow_id="wf-hold", name="중지",
+        nodes=[
+            WorkflowNode(node_id="msa", kind=NodeKind.MODEL, model_id="msa"),
+            WorkflowNode(node_id="rfd3", kind=NodeKind.MODEL, model_id="rfd3"),
+        ],
+        edges=[WorkflowEdge(source="msa", target="rfd3")],
+    ))
+    run = await svc.start(wf)
+    await svc.pause(run.run_id, actor_id="u-1", reason="장비 점검")
+
+    res = await svc.complete_node(run.run_id, "msa", succeeded=True)
+
+    assert res["queued"] == []
+    stages = {s.name: s.status for s in (await seeded.runs.get(run.run_id)).stages}
+    assert stages["msa"] is RunStatus.SUCCEEDED
+    assert stages["rfd3"] is RunStatus.PENDING
+
+
+async def test_재개하면_밀린_노드가_큐에_들어간다(seeded: Repos):
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(Workflow(
+        workflow_id="wf-hold2", name="재개",
+        nodes=[
+            WorkflowNode(node_id="msa", kind=NodeKind.MODEL, model_id="msa"),
+            WorkflowNode(node_id="rfd3", kind=NodeKind.MODEL, model_id="rfd3"),
+        ],
+        edges=[WorkflowEdge(source="msa", target="rfd3")],
+    ))
+    run = await svc.start(wf)
+    await svc.pause(run.run_id, actor_id="u-1")
+    await svc.complete_node(run.run_id, "msa", succeeded=True)
+
+    resumed = await svc.unpause(run.run_id, actor_id="u-1")
+
+    assert resumed.status is RunStatus.RUNNING
+    queued = {j.node_id for j in await seeded.jobs.list_for_run(run.run_id)
+              if str(j.status) == "queued"}
+    assert "rfd3" in queued
+
+
+async def test_재개는_시작시각을_다시_찍지_않는다(seeded: Repos):
+    """중지한 실행을 풀었더니 그 순간 시작한 것으로 보이면 이력이 거짓이 된다."""
+    svc = ExecutionService(seeded)
+    run = await svc.start(await _gated(seeded))
+    began = (await seeded.runs.get(run.run_id)).started_at
+    await svc.pause(run.run_id)
+
+    await svc.unpause(run.run_id)
+
+    assert (await seeded.runs.get(run.run_id)).started_at == began
+
+
+async def test_검토_대기중인_실행은_그냥_재개할_수_없다(seeded: Repos):
+    """승인·반려로만 풀린다. 그러지 않으면 검토를 건너뛰는 길이 생긴다."""
+    svc = ExecutionService(seeded)
+    run = await svc.start(await _gated(seeded))
+    await svc.complete_node(run.run_id, "msa", succeeded=True)
+
+    with pytest.raises(ValueError, match="review"):
+        await svc.unpause(run.run_id)
+
+
+async def test_단계를_다시_실행하면_후속_단계도_되돌린다(seeded: Repos):
+    """버린 시도에서 나온 값을 후속 단계가 그대로 들고 있으면 화면이 거짓을 말한다."""
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(Workflow(
+        workflow_id="wf-rerun", name="재실행",
+        nodes=[
+            WorkflowNode(node_id="msa", kind=NodeKind.MODEL, model_id="msa"),
+            WorkflowNode(node_id="rfd3", kind=NodeKind.MODEL, model_id="rfd3"),
+            WorkflowNode(node_id="design", kind=NodeKind.MODEL, model_id="design"),
+        ],
+        edges=[
+            WorkflowEdge(source="msa", target="rfd3"),
+            WorkflowEdge(source="rfd3", target="design"),
+        ],
+    ))
+    run = await svc.start(wf)
+    await svc.complete_node(run.run_id, "msa", succeeded=True, result={"depth": 120})
+    await svc.complete_node(run.run_id, "rfd3", succeeded=True, result={"backbones": 8})
+    await svc.complete_node(run.run_id, "design", succeeded=True, result={"sequences": 40})
+    assert (await seeded.runs.get(run.run_id)).status is RunStatus.SUCCEEDED
+
+    res = await svc.rerun_stage(run.run_id, "rfd3", actor_id="u-1")
+
+    assert res["ok"] and res["reset"] == ["design", "rfd3"]
+    again = await seeded.runs.get(run.run_id)
+    assert again.status is RunStatus.RUNNING
+    stages = {s.name: s for s in again.stages}
+    assert stages["msa"].status is RunStatus.SUCCEEDED     # 앞은 그대로 둔다
+    assert stages["msa"].metrics == {"depth": 120}
+    assert stages["design"].status is RunStatus.PENDING
+    assert stages["design"].metrics == {}                  # 버린 시도의 값은 지운다
+    assert stages["rfd3"].attempt == 2                     # 몇 번째 시도인지 남긴다
+    assert res["queued"] == ["rfd3"]
+
+
+async def test_다시_실행한_단계는_큐에_다시_들어간다(seeded: Repos):
+    """옛 작업을 거두지 않으면 (run_id, node_id) 유일 색인이 새 작업을 거부한다."""
+    svc = ExecutionService(seeded)
+    wf = await seeded.workflows.save(Workflow(
+        workflow_id="wf-rerun2", name="재실행 큐",
+        nodes=[WorkflowNode(node_id="msa", kind=NodeKind.MODEL, model_id="msa")],
+        edges=[],
+    ))
+    run = await svc.start(wf)
+    await svc.complete_node(run.run_id, "msa", succeeded=True, result={"depth": 10})
+
+    await svc.rerun_stage(run.run_id, "msa")
+
+    jobs = [j for j in await seeded.jobs.list_for_run(run.run_id) if j.node_id == "msa"]
+    assert len(jobs) == 2
+    assert sorted(str(j.status) for j in jobs) == ["cancelled", "queued"]

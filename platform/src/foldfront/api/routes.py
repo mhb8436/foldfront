@@ -276,6 +276,71 @@ async def reconcile_runs(identity: CurrentIdentity) -> dict[str, Any]:
     return report
 
 
+@router.post("/runs/{run_id}/pause", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["Runs"],
+             summary="Hold a run at its next node")
+async def pause_run(
+    run_id: str, identity: CurrentIdentity, reason: str = "사용자 중지",
+) -> dict[str, Any]:
+    """Stop queueing new work. Jobs already out finish and report back.
+
+    Recorded inside the service, next to the event, so a pause from MCP or the
+    CLI leaves the same trail as one from this route.
+    """
+    run = await service().pause(run_id, actor_id=identity.user_id, reason=reason)
+    if run is None:
+        raise ApiError(E.RUN_NOT_FOUND, run_id=run_id)
+    if run.status is not RunStatus.PAUSED:
+        raise ApiError(E.RUN_CONTROL_REFUSED, reason=f"실행이 {run.status} 상태입니다")
+    return run.model_dump()
+
+
+@router.post("/runs/{run_id}/resume", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["Runs"],
+             summary="Release a held run")
+async def resume_run(run_id: str, identity: CurrentIdentity) -> dict[str, Any]:
+    """Release a hand-placed hold. A run held at a checkpoint goes through
+    the review route instead, which is what the refusal says."""
+    try:
+        run = await service().unpause(run_id, actor_id=identity.user_id)
+    except ValueError as exc:
+        raise ApiError(E.RUN_CONTROL_REFUSED, reason=str(exc)) from exc
+    if run is None:
+        raise ApiError(E.RUN_NOT_FOUND, run_id=run_id)
+    return run.model_dump()
+
+
+@router.post("/runs/{run_id}/nodes/{node_id}/review",
+             dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["Runs"],
+             summary="Approve or reject a review gate")
+async def review_checkpoint(
+    run_id: str, node_id: str, identity: CurrentIdentity,
+    approved: bool = True, note: str | None = None,
+) -> dict[str, Any]:
+    """Answer a checkpoint. Approving carries on; rejecting cancels the run."""
+    report = await service().decide_checkpoint(
+        run_id, node_id, approved=approved, actor_id=identity.user_id, note=note,
+    )
+    if not report.get("ok"):
+        raise ApiError(E.RUN_NOT_HELD, reason=str(report.get("error")))
+    return report
+
+
+@router.post("/runs/{run_id}/nodes/{node_id}/rerun",
+             dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["Runs"],
+             summary="Run a stage again, with everything downstream of it")
+async def rerun_stage(
+    run_id: str, node_id: str, identity: CurrentIdentity,
+) -> dict[str, Any]:
+    """Reset this stage and its descendants, then queue what that makes ready.
+
+    Descendants go too because their results were derived from the attempt
+    being discarded.
+    """
+    report = await service().rerun_stage(run_id, node_id, actor_id=identity.user_id)
+    if not report.get("ok"):
+        raise ApiError(E.RUN_CONTROL_REFUSED, reason=str(report.get("error")))
+    return report
+
+
 @router.post("/runs/{run_id}/cancel", dependencies=[Depends(require(Role.RESEARCHER, Role.ADMIN))], tags=["Runs"], summary="Cancel a run")
 async def cancel_run(
     run_id: str, identity: CurrentIdentity, reason: str = "사용자 취소",

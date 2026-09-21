@@ -30,6 +30,7 @@ const KIND_LABEL: Record<NodeKind, string> = {
   branch: '조건 분기',
   fanout: '병렬 분기',
   join: '합류',
+  checkpoint: '검토 지점',
 }
 
 /** The legend swatch for a kind, so the header says which shape this is. */
@@ -40,6 +41,7 @@ export function KindMark({ kind, className }: { kind: NodeKind; className?: stri
     branch: 'border-foreground rounded-full border-2',
     fanout: 'border-foreground border border-dashed',
     join: 'border-foreground border',
+    checkpoint: 'border-foreground rounded-none border-2 border-double',
   }
   return (
     <span
@@ -71,6 +73,8 @@ export function Inspector({
   model,
   onModel,
   condition,
+  instructions,
+  onInstructions,
   onCondition,
   outgoing,
   incoming,
@@ -88,6 +92,8 @@ export function Inspector({
   onModel: (modelId: string) => void
   condition: string
   onCondition: (condition: string) => void
+  instructions: string
+  onInstructions: (text: string) => void
   outgoing: InspectorEdge[]
   incoming: InspectorEdge[]
   onEdgeBranch: (edgeId: string, branch: 'true' | 'false' | null) => void
@@ -177,6 +183,24 @@ export function Inspector({
               <p className="text-muted-foreground text-[11.5px]">
                 <code className="font-mono">노드.지표 &gt; 값</code> 형태로 씁니다. 앞선 단계가
                 낸 지표를 읽습니다.
+              </p>
+            </Field>
+          )}
+
+          {kind === 'checkpoint' && (
+            <Field>
+              <Label htmlFor="ins-instructions">검토 지시문</Label>
+              <Input
+                id="ins-instructions"
+                value={instructions}
+                disabled={readOnly}
+                onChange={(e) => onInstructions(e.target.value)}
+                placeholder="정렬 깊이가 충분한지 확인하십시오"
+                className="text-[13px]"
+              />
+              <p className="text-muted-foreground text-[11.5px]">
+                실행이 이 지점에서 멈추고, 감시 화면에 이 문장이 그대로 나옵니다. 승인해야 다음
+                단계로 넘어가고, 반려하면 실행이 취소됩니다.
               </p>
             </Field>
           )}

@@ -109,6 +109,71 @@ class RunRepo(BaseRepo):
         )
         return Run(**_clean(doc)) if doc else None
 
+    async def hold(
+        self, run_id: str, *, actor_id: str | None = None,
+        reason: str | None = None, node_id: str | None = None,
+    ) -> Run | None:
+        """RUNNING -> PAUSED, once.
+
+        Conditional on the current status for the same reason claim_start is:
+        two people pressing pause, or a pause racing the last node's
+        completion, must not both take effect. The loser gets None and the
+        caller reports the run as it actually is.
+        """
+        now = utcnow()
+        doc = await self.col.find_one_and_update(
+            {"run_id": run_id, "status": RunStatus.RUNNING},
+            {"$set": {
+                "status": RunStatus.PAUSED, "updated_at": now,
+                "paused_at": now, "paused_by": actor_id,
+                "paused_reason": reason, "paused_at_node": node_id,
+            }},
+            return_document=ReturnDocument.AFTER,
+        )
+        return Run(**_clean(doc)) if doc else None
+
+    async def release(self, run_id: str) -> Run | None:
+        """PAUSED -> RUNNING, once, keeping the original start time.
+
+        set_status(RUNNING) would stamp started_at again and the run would
+        report having begun at the moment it was resumed. What is cleared is
+        the hold itself, so these fields always describe the current hold
+        rather than the last one.
+        """
+        doc = await self.col.find_one_and_update(
+            {"run_id": run_id, "status": RunStatus.PAUSED},
+            {"$set": {"status": RunStatus.RUNNING, "updated_at": utcnow()},
+             "$unset": {"paused_at": "", "paused_by": "",
+                        "paused_reason": "", "paused_at_node": ""}},
+            return_document=ReturnDocument.AFTER,
+        )
+        return Run(**_clean(doc)) if doc else None
+
+    async def reset_stages(self, run_id: str, names: Sequence[str]) -> Run | None:
+        """Put stages back to PENDING so they can be run again.
+
+        The attempt count is the one thing carried over: a screen showing a
+        metric from the third try should be able to say so. Everything else -
+        result, error, timings, a review decision - belonged to the attempt
+        being discarded.
+        """
+        if not names:
+            return await self.get(run_id)
+        run = await self.get(run_id)
+        if run is None:
+            return None
+        wanted = set(names)
+        stages = [
+            StageState(name=st.name, attempt=st.attempt + 1) if st.name in wanted else st
+            for st in run.stages
+        ]
+        doc = await self.col.find_one_and_update(
+            {"run_id": run_id},
+            {"$set": {"stages": [st.model_dump() for st in stages], "updated_at": utcnow()}},
+            return_document=ReturnDocument.AFTER,
+        )
+        return Run(**_clean(doc)) if doc else None
+
     async def set_status(
         self, run_id: str, status: RunStatus, *, error: str | None = None
     ) -> Run | None:
@@ -125,14 +190,27 @@ class RunRepo(BaseRepo):
         return Run(**_clean(doc)) if doc else None
 
     async def upsert_stage(self, run_id: str, stage: StageState) -> Run | None:
-        """Update a stage, appending it if this is the first time."""
+        """Update a stage, appending it if this is the first time.
+
+        The stage is replaced rather than merged, so that moving it to a new
+        status clears the error and metrics of the status it left. The one
+        exception is `attempt`: it counts reruns, not anything about the
+        current attempt, and callers build a StageState with name and status
+        alone. Letting it be replaced would reset the count to 1 on the first
+        write after a rerun, which is the write a rerun always makes.
+        """
         existing = await self.col.find_one(
-            {"run_id": run_id, "stages.name": stage.name}, {"_id": 1}
+            {"run_id": run_id, "stages.name": stage.name},
+            {"_id": 1, "stages.$": 1},
         )
         if existing:
+            kept = (existing.get("stages") or [{}])[0].get("attempt")
+            patch = stage.model_dump()
+            if isinstance(kept, int) and kept > patch.get("attempt", 1):
+                patch["attempt"] = kept
             doc = await self.col.find_one_and_update(
                 {"run_id": run_id, "stages.name": stage.name},
-                {"$set": {"stages.$": stage.model_dump(), "updated_at": utcnow()}},
+                {"$set": {"stages.$": patch, "updated_at": utcnow()}},
                 return_document=ReturnDocument.AFTER,
             )
         else:
