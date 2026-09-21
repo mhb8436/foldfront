@@ -4,6 +4,7 @@ import { Download, RefreshCw, X, Play, Pause, RotateCcw, Check, Ban } from 'luci
 import { useProject } from '@/lib/project'
 import { api } from '../api/client'
 import { StructureViewer } from '../components/StructureViewer'
+import { QualityPanel } from '../components/QualityPanel'
 import { metricTerm, stageTerm } from '@/lib/glossary'
 import { useIdentity } from '@/lib/identity'
 import { usePolling, useAsync } from '../hooks/useAsync'
@@ -346,6 +347,12 @@ function RunDetail({
           ))}
         </TableBody>
       </Table>
+
+      {/*  After the stages, because it reads them; before the artifacts,
+           because it is what decides whether they are worth opening. */}
+      <div className="border-t px-4 pt-4">
+        <QualityPanel runId={runId} />
+      </div>
 
       <div className="border-t px-4 pt-4">
         <h3 className="mb-2 text-[13.5px] font-semibold">

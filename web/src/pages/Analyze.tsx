@@ -10,6 +10,7 @@ import { metricTerm, stageTerm } from '@/lib/glossary'
 import { Field, Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { HitList } from './analyze/HitList'
 
 /** Comparison between runs, and ranking of the candidates they produced. */
 export function Analyze() {
@@ -66,6 +67,11 @@ export function Analyze() {
           </Field>
         </div>
       </Panel>
+
+      {/*  The ranking is about one run, not the pair, so it sits on the
+           run being examined rather than inside the comparison. */}
+      {a && <HitList runId={a.run_id} />}
+      {b && b.run_id !== a?.run_id && <HitList runId={b.run_id} />}
 
       <Panel title="구조 비교">
         {a && b ? <Structures a={a} b={b} /> : <Empty>실행 둘을 고르면 구조를 나란히 놓습니다.</Empty>}

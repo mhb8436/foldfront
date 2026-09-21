@@ -50,6 +50,66 @@ export interface Run {
   error: string | null
 }
 
+/** One ranked candidate. The original computes every number here. */
+export interface HitRow {
+  rank: number
+  seq_id: string
+  tier: number | null
+  source: string | null
+  sequence: string | null
+  soluprot: number | null
+  plddt: number | null
+  rmsd: number | null
+  rmsd_target: number | null
+  relax: number | null
+  /*  WT Diff — how far this design has moved from the wild type. */
+  wt_identity: number | null
+  wt_identity_pct: number | null
+  wt_diff_count: number | null
+  wt_compare_len: number | null
+  wt_diff_ratio: number | null
+  wt_diff_pct: number | null
+  novelty: number | null
+  soluprot_passed: boolean
+  af2_candidate: boolean
+  af2_selected: boolean
+  score: number | null
+  af2_ranked_pdb_path: string | null
+}
+
+export interface HitList {
+  run_id: string
+  generated_at: string
+  weights: Record<string, number>
+  min_score: number
+  rmsd_ref: number
+  relax_enabled: boolean
+  total_rows: number
+  filtered_rows: number
+  rows: HitRow[]
+  stats: Record<string, unknown>
+  completeness?: Record<string, unknown>
+  /*  Set when there is nothing to rank, so the screen can say which. */
+  empty_reason?: string
+}
+
+/** One reading of one stage, with the original's threshold behind it. */
+export interface QualitySignal {
+  stage: string
+  level: 'info' | 'warning' | 'error'
+  message: string
+  advice: string | null
+  evidence: Record<string, unknown>
+  source: string | null
+}
+
+export interface QualityReport {
+  run_id: string
+  signals: QualitySignal[]
+  counts: Record<string, number>
+  recorded_events: Array<Record<string, unknown>>
+}
+
 export interface RunEvent {
   run_id: string
   seq: number
@@ -350,6 +410,30 @@ export const api = {
       `/runs/${encodeURIComponent(runId)}/nodes/${encodeURIComponent(nodeId)}/rerun`,
       { method: 'POST' },
     ),
+
+  // ------------------------------------------------------------ analysis
+  /*  The ranking, the WT difference and the comparison metrics are the
+      original's own functions. These paths carry them, and compute none. */
+  hitList: (
+    runId: string,
+    params: {
+      limit?: number
+      min_score?: number
+      rmsd_ref?: number
+      soluprot?: number
+      plddt?: number
+      rmsd?: number
+      novelty?: number
+    } = {},
+  ) => request<HitList>(`/runs/${encodeURIComponent(runId)}/hit-list${query(params)}`),
+
+  compareRuns: (runId: string, baselineRunId: string) =>
+    request<Record<string, unknown>>(
+      `/runs/${encodeURIComponent(runId)}/compare${query({ baseline_run_id: baselineRunId })}`,
+    ),
+
+  quality: (runId: string) =>
+    request<QualityReport>(`/runs/${encodeURIComponent(runId)}/quality`),
 
   // ------------------------------------------------------------ workflows
   listWorkflows: (params: { templates_only?: boolean; project_id?: string } = {}) =>
