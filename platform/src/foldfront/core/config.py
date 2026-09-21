@@ -38,8 +38,25 @@ class Settings(BaseSettings):
             path = Path(__file__).resolve().parents[3] / path
         return str(path.resolve())
 
+    @field_validator("surrogate_model_dir")
+    @classmethod
+    def _absolute_model_dir(cls, v: str) -> str:
+        #  Anchored at the repo root, where pipeline-mcp/models sits - one level
+        #  above the platform directory the output root is anchored at.
+        path = Path(v).expanduser()
+        if not path.is_absolute():
+            path = Path(__file__).resolve().parents[4] / path
+        return str(path.resolve())
+
     #  Remote GPUs. The key comes from the environment only
     runpod_api_key: str | None = Field(default=None, alias="RUNPOD_API_KEY")
+
+    #  Surrogate triage. The two MLPs (soluprot, pLDDT) that meta_surrogate_prototype
+    #  exported live here; they run locally on the CPU. Their input embedding comes
+    #  from an ESM endpoint (cheap - ESM-2 8M, not a GPU-heavy predictor), named
+    #  here so triage never falls back to guessing where to embed.
+    surrogate_model_dir: str = Field(default="pipeline-mcp/models", alias="SURROGATE_MODEL_DIR")
+    esm_endpoint_id: str | None = Field(default=None, alias="ESM_ENDPOINT_ID")
 
     api_host: str = Field(default="127.0.0.1", alias="API_HOST")
     api_port: int = Field(default=18090, alias="API_PORT")

@@ -67,6 +67,10 @@ def choose_transport(mv: ModelVersion) -> tuple[str, str]:
     never touches RunPod, which is what keeps an on-premises deployment from
     depending on a third party.
     """
+    #  A local runner wins: it needs no endpoint and is how cheap in-process
+    #  work (surrogate triage) reaches its adapter without a GPU.
+    if mv.local_runner:
+        return "local", mv.local_runner
     if mv.endpoint_id:
         return "runpod", mv.endpoint_id
     if mv.base_url:
@@ -74,7 +78,8 @@ def choose_transport(mv: ModelVersion) -> tuple[str, str]:
     if mv.container_image:
         return "container", mv.container_image
     raise RoutingError(
-        f"{mv.model_id}:{mv.version} 에 실행 위치가 없습니다. 엔드포인트·URL·이미지 가운데 하나가 필요합니다"
+        f"{mv.model_id}:{mv.version} 에 실행 위치가 없습니다. "
+        f"엔드포인트·URL·이미지·로컬러너 가운데 하나가 필요합니다"
     )
 
 

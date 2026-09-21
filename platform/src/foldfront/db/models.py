@@ -201,6 +201,7 @@ class ModelKind(StrEnum):
     DOCKING = "docking"          # DiffDock
     MSA = "msa"                  # MMseqs2
     EMBEDDING = "embedding"      # ESM
+    SURROGATE = "surrogate"      # Cheap triage predictor (soluprot · pLDDT)
     OTHER = "other"
 
 
@@ -227,10 +228,11 @@ class ModelVersion(Doc):
     kind: ModelKind = ModelKind.OTHER
     display_name: str | None = None
 
-    #  Where it runs - at least one of the three
+    #  Where it runs - at least one of the four
     endpoint_id: str | None = None      # RunPod serverless endpoint
     base_url: str | None = None         # Self-hosted HTTP worker
     container_image: str | None = None  # Container image, tag included
+    local_runner: str | None = None     # Runs in-process on this host (e.g. surrogate)
 
     #  Input and output schemas; the router validates requests against them
     input_schema: dict[str, Any] = Field(default_factory=dict)

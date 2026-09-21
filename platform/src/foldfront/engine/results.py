@@ -139,8 +139,28 @@ def _first_text(reply: dict[str, Any], *keys: str) -> str | None:
     return None
 
 
+def _surrogate(reply: dict[str, Any]) -> dict[str, Any]:
+    """Triage metrics: how many candidates were kept and pruned, and the mean
+    predicted quality of the pool. Means are computed from the per-candidate
+    scores when they are present, and otherwise taken as the reply gave them."""
+    out: dict[str, Any] = {}
+    for key in ("kept_count", "pruned_count"):
+        if isinstance(reply.get(key), int):
+            out[key] = reply[key]
+    scored = reply.get("scored")
+    if isinstance(scored, list) and scored:
+        solu = [s["soluprot"] for s in scored if isinstance(s.get("soluprot"), (int, float))]
+        plddt = [s["plddt"] for s in scored if isinstance(s.get("plddt"), (int, float))]
+        if solu:
+            out["mean_soluprot"] = round(sum(solu) / len(solu), 3)
+        if plddt:
+            out["mean_plddt"] = round(sum(plddt) / len(plddt), 1)
+    return out
+
+
 INTERPRETERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "soluprot": _soluprot,
+    "surrogate": _surrogate,
     "rfd3": _count("backbones", "backbones"),
     "bioemu": _count("structures", "structures"),
     "design": _count("sequences", "sequences"),

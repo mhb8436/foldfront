@@ -172,6 +172,19 @@ def _soluprot(si: StageInput) -> dict[str, Any]:
     return {"sequences": [{"id": r.id, "sequence": r.sequence} for r in records]}
 
 
+def _surrogate(si: StageInput) -> dict[str, Any]:
+    """Triage. The designed sequences and how many of them to keep. The adapter
+    embeds each, scores it and passes the Top-K on to the expensive predictors."""
+    fasta = _require(si.text("designed_fasta", "target_fasta", "fasta"), "설계 서열")
+    records = _records(fasta)
+    if not records:
+        raise PayloadError("FASTA 에서 서열을 찾지 못했습니다")
+    return {
+        "items": [{"id": r.id, "sequence": r.sequence} for r in records],
+        "top_k": int(si.request.get("triage_top_k") or 0),
+    }
+
+
 def _af2(si: StageInput) -> dict[str, Any]:
     """Structure prediction. The MSA travels with it when there is one."""
     fasta = _require(si.text("designed_fasta", "target_fasta", "fasta"), "예측 대상 서열")
@@ -194,6 +207,7 @@ BUILDERS: dict[str, Callable[[StageInput], dict[str, Any]]] = {
     "proteinmpnn": _proteinmpnn,
     "design": _proteinmpnn,
     "soluprot": _soluprot,
+    "surrogate": _surrogate,
     "af2": _af2,
 }
 

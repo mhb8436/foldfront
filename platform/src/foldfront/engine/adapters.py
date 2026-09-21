@@ -18,9 +18,10 @@ from __future__ import annotations
 import asyncio
 import random
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 import httpx
+import numpy as np
 
 from foldfront.engine.router import Route
 
@@ -191,11 +192,99 @@ class MockAdapter:
             "af2": {"plddt": round(rng.uniform(60.0, 95.0), 2), "rmsd": round(rng.uniform(0.5, 3.0), 2)},
             "novelty": {"novel": rng.randint(1, 20)},
             "diffdock": {"poses": rng.randint(5, 20), "best_score": round(rng.uniform(-9, -4), 2)},
+            "surrogate": {
+                "kept_count": rng.randint(8, 20),
+                "pruned_count": rng.randint(20, 100),
+                "mean_soluprot": round(rng.uniform(0.3, 0.8), 3),
+                "mean_plddt": round(rng.uniform(60.0, 90.0), 1),
+            },
         }
         result = dict(table.get(route.model_id, {"ok": True}))
         result["_mock"] = True
         result["_model"] = f"{route.model_id}:{route.version}"
         return result
+
+
+# ---------------------------------------------------------------- surrogate (local)
+
+
+def _default_embedder() -> Callable[[list[str]], np.ndarray]:
+    """Embed sequences with the ESM endpoint. Cheap next to AF2, but still a
+    remote call, so it needs the endpoint and key - the same bar the GPU models
+    hold. In dev the mock adapter stands in and this is never built."""
+    from foldfront.core.config import get_settings
+
+    s = get_settings()
+    if not (s.esm_endpoint_id and s.runpod_api_key):
+        raise AdapterError(
+            "대리모델 triage 에는 ESM 임베딩이 필요합니다. "
+            "ESM_ENDPOINT_ID 와 RUNPOD_API_KEY 를 설정하십시오 "
+            "(개발에서는 --mock 워커가 이 단계를 대신합니다)."
+        )
+    from pipeline_mcp.clients.esm_embedding import ESMEmbeddingRunPodClient
+    from pipeline_mcp.clients.runpod import RunPodClient
+
+    client = ESMEmbeddingRunPodClient(
+        runpod=RunPodClient(api_key=s.runpod_api_key), endpoint_id=s.esm_endpoint_id
+    )
+    return client.embed
+
+
+@dataclass
+class SurrogateAdapter:
+    """Runs surrogate triage in-process for the 'local' transport.
+
+    Embeds the candidate sequences (ESM endpoint), scores each with the two
+    exported MLPs and keeps a Top-K. Unlike the GPU adapters it does the work
+    here, on the CPU, and is picked only outside mock mode. The embedding call
+    and sklearn prediction are both blocking, so they run off the event loop.
+    """
+
+    embed: Callable[[list[str]], np.ndarray] | None = None
+
+    async def invoke(self, route: Route, payload: dict[str, Any]) -> dict[str, Any]:
+        from foldfront.engine import surrogate
+
+        items = payload.get("items") or []
+        ids = [str(it.get("id")) for it in items]
+        seqs = [str(it.get("sequence") or "") for it in items]
+        top_k = int(payload.get("top_k") or 0)
+        if not ids:
+            raise AdapterError("triage 할 후보 서열이 없습니다")
+        embed = self.embed or _default_embedder()
+
+        by_id = {str(it.get("id")): str(it.get("sequence") or "") for it in items}
+
+        def _run() -> dict[str, Any]:
+            emb = np.asarray(embed(seqs))
+            scored = surrogate.score(ids, emb)
+            kept, pruned = surrogate.triage(scored, top_k or len(scored))
+            #  The kept sequences, as FASTA, become this stage's designed_fasta.
+            #  A later stage wins in the merged context (engine/dag.context_for),
+            #  so the expensive predictors downstream read only what triage kept -
+            #  which is the whole point: the pruned candidates never reach AF2.
+            kept_fasta = "\n".join(f">{s.id}\n{by_id.get(s.id, '')}" for s in kept)
+            return {
+                "scored": [
+                    {
+                        "id": s.id,
+                        "soluprot": round(s.soluprot, 4),
+                        "plddt": round(s.plddt, 2),
+                        "score": round(s.score, 4),
+                    }
+                    for s in scored
+                ],
+                "kept": [s.id for s in kept],
+                "pruned": [s.id for s in pruned],
+                "kept_count": len(kept),
+                "pruned_count": len(pruned),
+                "designed_fasta": kept_fasta,
+            }
+
+        try:
+            return await asyncio.to_thread(_run)
+        except surrogate.SurrogateError as exc:
+            raise AdapterError(str(exc)) from exc
 
 
 # ---------------------------------------------------------------- selection
@@ -215,6 +304,7 @@ class AdapterRegistry:
         self._mock = mock_adapter or MockAdapter()
         self._runpod = RunPodAdapter(api_key=runpod_api_key or "")
         self._http = HttpAdapter()
+        self._surrogate = SurrogateAdapter()
 
     def pick(self, route: Route) -> Adapter:
         if self.mock:
@@ -223,6 +313,8 @@ class AdapterRegistry:
             return self._runpod
         if route.transport == "http":
             return self._http
+        if route.transport == "local":
+            return self._surrogate
         raise AdapterError(
             f"{route.transport} 전송은 아직 직접 실행하지 않는다 "
             f"— 컨테이너 실행은 기관 쿠버네티스 연계로 처리한다"

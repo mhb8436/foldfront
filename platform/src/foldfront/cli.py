@@ -44,6 +44,7 @@ SEED_MODELS = [
     ("design", ModelKind.SEQUENCE, 1),
     ("proteinmpnn", ModelKind.SEQUENCE, 1),
     ("soluprot", ModelKind.SOLUBILITY, 0),
+    ("surrogate", ModelKind.SURROGATE, 0),
     ("af2", ModelKind.STRUCTURE, 1),
     ("colabfold", ModelKind.STRUCTURE, 1),
     ("diffdock", ModelKind.DOCKING, 1),
@@ -101,18 +102,61 @@ def binding_workflow() -> Workflow:
     )
 
 
+def triage_workflow() -> Workflow:
+    """A design pipeline with surrogate triage before the expensive predictor.
+
+    The design stage makes a large pool; the surrogate scores every candidate
+    from a cheap embedding and keeps a Top-K; only those reach SoluProt and AF2.
+    This is the resource-aware triage the original is named for, made a stage
+    rather than a preset - it can sit anywhere on the graph.
+    """
+    return Workflow(
+        workflow_id="triage-pipeline",
+        name="대리모델 선별 설계",
+        description="설계 후보를 대리모델로 선별해 Top-K 만 값비싼 예측으로 보낸다",
+        is_template=True,
+        nodes=[
+            WorkflowNode(node_id="msa", kind=NodeKind.MODEL, model_id="msa",
+                         position={"x": 0, "y": 80}),
+            WorkflowNode(node_id="design", kind=NodeKind.MODEL, model_id="design",
+                         position={"x": 180, "y": 80}),
+            WorkflowNode(node_id="triage", kind=NodeKind.MODEL, model_id="surrogate",
+                         label="대리모델 선별", position={"x": 360, "y": 80}),
+            WorkflowNode(node_id="soluprot", kind=NodeKind.MODEL, model_id="soluprot",
+                         position={"x": 540, "y": 80}),
+            WorkflowNode(node_id="af2", kind=NodeKind.MODEL, model_id="af2",
+                         position={"x": 720, "y": 80}),
+            WorkflowNode(node_id="novelty", kind=NodeKind.MODEL, model_id="novelty",
+                         position={"x": 900, "y": 80}),
+        ],
+        edges=[
+            WorkflowEdge(source="msa", target="design"),
+            WorkflowEdge(source="design", target="triage"),
+            WorkflowEdge(source="triage", target="soluprot"),
+            WorkflowEdge(source="soluprot", target="af2"),
+            WorkflowEdge(source="af2", target="novelty"),
+        ],
+    )
+
+
 async def cmd_seed() -> None:
     repos = Repos()
     await ensure_indexes()
     for model_id, kind, gpu in SEED_MODELS:
+        #  The surrogate runs in-process on the CPU, so it is routed to a local
+        #  runner rather than a GPU endpoint.
+        local = kind is ModelKind.SURROGATE
         await repos.models.register(ModelVersion(
             model_id=model_id, version="v1", kind=kind,
-            endpoint_id=f"ep-{model_id}", active=True, is_default=True,
+            endpoint_id=None if local else f"ep-{model_id}",
+            local_runner="surrogate" if local else None,
+            active=True, is_default=True,
             resources=ResourceSpec(gpu_count=gpu, gpu_memory_gb=24.0 if gpu else None),
         ))
     await repos.workflows.save(builtin_pipeline_workflow())
     await repos.workflows.save(binding_workflow())
-    print(f"모델 {len(SEED_MODELS)}종 · 워크플로 2종을 등록했다")
+    await repos.workflows.save(triage_workflow())
+    print(f"모델 {len(SEED_MODELS)}종 · 워크플로 3종을 등록했다")
 
 
 #  Real design results from the original case studies, under
