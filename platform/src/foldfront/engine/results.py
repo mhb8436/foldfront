@@ -115,6 +115,21 @@ def _structure(reply: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _docking(reply: dict[str, Any]) -> dict[str, Any]:
+    """Poses become an interface, a score and a ranking.
+
+    The template for binding has been registered since the DAG engine went
+    in; nothing read what came back. See engine/binding.py, which also says
+    why the score is a ranking key and not an affinity.
+    """
+    from foldfront.engine.binding import Unavailable, read_docking
+
+    try:
+        return read_docking(reply)
+    except Unavailable:  # pragma: no cover - 원본을 뗀 구성
+        return {}
+
+
 def _first_text(reply: dict[str, Any], *keys: str) -> str | None:
     """The first of these keys holding text worth parsing."""
     for key in keys:
@@ -133,6 +148,7 @@ INTERPRETERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "msa": _msa,
     "mmseqs": _msa,
     "af2": _structure,
+    "diffdock": _docking,
     "colabfold": _structure,
     "esmfold": _structure,
 }

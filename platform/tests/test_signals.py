@@ -158,3 +158,33 @@ def test_거의_전부_고정되면_설계_여지가_없다고_한다():
 
     assert [s.level for s in signals] == ["warning"]
     assert "설계 여지" in signals[0].message
+
+
+def test_pose_가_전부_기준에_못_미치면_경고한다():
+    signals = read_signals(_run(_ok(
+        "dock", "diffdock", poses=5, acceptable_poses=0,
+        best_confidence=-2.4, best_interface_residues=2,
+    )))
+
+    assert [s.level for s in signals] == ["warning"]
+    assert "기준에 못 미칩니다" in signals[0].message
+
+
+def test_확신도는_높은데_닿는_잔기가_없으면_짚어준다():
+    """자세가 맞는 것과 잘 결합하는 것은 다른 말이다."""
+    signals = read_signals(_run(_ok(
+        "dock", "diffdock", poses=3, acceptable_poses=1,
+        best_confidence=1.4, best_interface_residues=3,
+    )))
+
+    assert [s.level for s in signals] == ["warning"]
+    assert "확신도만 보고 고르지 마십시오" in signals[0].advice
+
+
+def test_좋은_결합은_아무_말도_하지_않는다():
+    signals = read_signals(_run(_ok(
+        "dock", "diffdock", poses=5, acceptable_poses=4,
+        best_confidence=1.2, best_interface_residues=18,
+    )))
+
+    assert signals == []

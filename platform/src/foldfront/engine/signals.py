@@ -31,6 +31,11 @@ from dataclasses import dataclass
 from typing import Any, Callable, Iterable
 
 from foldfront.db.models import Run, RunStatus, StageState
+from foldfront.engine.binding import (
+    CONFIDENCE_GOOD,
+    CONFIDENCE_POOR,
+    INTERFACE_MINIMAL,
+)
 from foldfront.engine.verify import PLDDT_TOLERANCE
 
 #  The original's cutoffs, kept as named constants so a reader can see at a
@@ -210,6 +215,51 @@ def _design(stage: StageState, m: dict[str, Any]) -> Iterable[Signal]:
         )
 
 
+def _docking(stage: StageState, m: dict[str, Any]) -> Iterable[Signal]:
+    poses = _num(m, "poses")
+    if poses is None:
+        return
+    if poses <= 0:
+        yield Signal(
+            stage.name, "error",
+            "결합 pose 를 하나도 내지 못했습니다.",
+            "리간드 입력과 단백질 구조를 확인하십시오.",
+            {"poses": 0}, "foldfront",
+        )
+        return
+
+    acceptable = _num(m, "acceptable_poses")
+    if acceptable is not None and acceptable <= 0:
+        yield Signal(
+            stage.name, "warning",
+            f"pose {int(poses)}개가 모두 기준에 못 미칩니다.",
+            "확신도가 낮거나 인터페이스가 없습니다. 결합 부위를 지정하거나 리간드를 확인하십시오.",
+            {"poses": poses, "acceptable": 0,
+             "confidence_floor": CONFIDENCE_POOR, "interface_floor": INTERFACE_MINIMAL},
+            "foldfront",
+        )
+        return
+
+    #  A pose the model is sure of that buries nothing is a confident
+    #  prediction of a weak interaction, and the two numbers have to be
+    #  read together or it looks like a hit.
+    confidence = _num(m, "best_confidence")
+    residues = _num(m, "best_interface_residues")
+    if (
+        confidence is not None and confidence >= CONFIDENCE_GOOD
+        and residues is not None and residues <= INTERFACE_MINIMAL
+    ):
+        yield Signal(
+            stage.name, "warning",
+            f"가장 좋은 pose 가 확신도는 높으나 (confidence {confidence:.2f}) "
+            f"닿는 잔기가 {int(residues)}개뿐입니다.",
+            "자세는 맞을 수 있으나 결합이 약합니다. 확신도만 보고 고르지 마십시오.",
+            {"best_confidence": confidence, "best_interface_residues": residues,
+             "interface_floor": INTERFACE_MINIMAL},
+            "foldfront",
+        )
+
+
 def _rfd3(stage: StageState, m: dict[str, Any]) -> Iterable[Signal]:
     count = _num(m, "backbones")
     if count is not None and count <= 0:
@@ -234,6 +284,7 @@ RULES: dict[str, Rule] = {
     "design": _design,
     "proteinmpnn": _design,
     "rfd3": _rfd3,
+    "diffdock": _docking,
 }
 
 
