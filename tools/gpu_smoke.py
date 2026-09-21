@@ -134,9 +134,22 @@ async def main() -> int:
         for sig in read_signals(run):
             print(f"  품질 신호   [{sig.level}] {sig.message}")
 
-        #  What the requirement actually asks for from this stage.
-        print(f"  {expect} 를 받았는가: "
-              f"{'예' if shown or metrics else '아니오 — 응답이 비었습니다'}")
+        #  What the requirement actually asks for from this stage. Checked
+        #  against the metric the interpreter produces, not against "did
+        #  anything come back" - the first run of this said 예 for a reply
+        #  that was `{"output": null}`, which is the opposite of the truth.
+        EXPECTED_METRIC = {
+            "proteinmpnn": "sequences", "design": "sequences",
+            "msa": "depth", "rfd3": "backbones", "bioemu": "structures",
+            "af2": "plddt", "colabfold": "plddt", "diffdock": "poses",
+        }
+        wanted = EXPECTED_METRIC.get(model_id)
+        got = metrics.get(wanted) if wanted else None
+        if got is None:
+            print(f"  ✗ {expect} 를 받지 못했습니다 — 지표 `{wanted}` 가 없습니다")
+            failures += 1
+        else:
+            print(f"  ✓ {expect}: {wanted}={got}")
 
     print(f"\n{'━' * 66}")
     print(f"{len(picked)}종 시도 · 실패 {failures}건")

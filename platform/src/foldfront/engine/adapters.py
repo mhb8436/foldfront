@@ -36,44 +36,96 @@ class Adapter(Protocol):
 # ---------------------------------------------------------------- RunPod
 
 
+#  What RunPod calls a job that has not finished. `/runsync` answers with one
+#  of these when its own wait runs out, which it does long before a cold
+#  start finishes pulling a multi-gigabyte model image.
+_PENDING = {"IN_QUEUE", "IN_PROGRESS"}
+_FAILED = {"FAILED", "CANCELLED", "TIMED_OUT"}
+
+
 @dataclass
 class RunPodAdapter:
     """Calls a RunPod serverless endpoint, as the original does.
 
-    `/runsync` waits for the result; `/run` returns a job id to poll. The
-    synchronous one is right here because the queue already provides the
-    asynchrony - polling inside a worker that is itself a queue consumer would
-    only add a second mechanism doing the same thing.
+    `/runsync` does not wait for the result. It waits for about ninety
+    seconds and then answers `{"id": ..., "status": "IN_QUEUE"}` with no
+    output at all - which is most of the time on a first call, because the
+    worker is still pulling the image. This adapter read that as a success
+    and passed `{"output": None}` down the chain, where it became a stage
+    that succeeded with no metrics. The mock adapter never produced that
+    shape, so only a call to a real endpoint could find it.
+
+    So: submit, and if the answer is not final, poll `/status/{id}` until it
+    is. Polling here rather than in the worker because the worker has
+    already leased this job - handing it back to the queue would mean paying
+    for the cold start again.
     """
 
     api_key: str
     base_url: str = "https://api.runpod.ai/v2"
     timeout: float = 600.0
+    poll_interval: float = 5.0
 
     async def invoke(self, route: Route, payload: dict[str, Any]) -> dict[str, Any]:
         if not self.api_key:
             raise AdapterError("RUNPOD_API_KEY 가 없습니다")
 
-        url = f"{self.base_url}/{route.target}/runsync"
         headers = {"Authorization": f"Bearer {self.api_key}"}
-        timeout = min(route.timeout_seconds, self.timeout)
+        budget = min(route.timeout_seconds, self.timeout)
+        deadline = asyncio.get_running_loop().time() + budget
 
-        try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                resp = await client.post(url, json={"input": payload}, headers=headers)
-        except httpx.HTTPError as exc:
-            raise AdapterError(f"RunPod 호출에 실패했습니다: {exc}") from exc
+        async with httpx.AsyncClient(timeout=min(120.0, budget)) as client:
+            body = await self._post(
+                client, f"{self.base_url}/{route.target}/runsync",
+                {"input": payload}, headers,
+            )
+            job_id = str(body.get("id") or "")
 
-        if resp.status_code >= 400:
-            raise AdapterError(f"RunPod 오류입니다 {resp.status_code}: {resp.text[:200]}")
+            while str(body.get("status", "")).upper() in _PENDING:
+                if asyncio.get_running_loop().time() >= deadline:
+                    #  Say which job, so it can be looked up or cancelled.
+                    raise AdapterError(
+                        f"RunPod 작업이 {budget:.0f}초 안에 끝나지 않았습니다"
+                        f"{f' (job {job_id})' if job_id else ''}. "
+                        "워커가 GPU 를 받지 못했거나 이미지를 아직 내려받는 중입니다"
+                    )
+                if not job_id:
+                    raise AdapterError(f"RunPod 응답에 작업 식별자가 없습니다: {body}")
+                await asyncio.sleep(self.poll_interval)
+                body = await self._post(
+                    client, f"{self.base_url}/{route.target}/status/{job_id}",
+                    None, headers,
+                )
 
-        body = resp.json()
         status = str(body.get("status", "")).upper()
-        if status in {"FAILED", "CANCELLED", "TIMED_OUT"}:
+        if status in _FAILED:
             raise AdapterError(f"RunPod 작업이 실패했습니다: {body.get('error') or status}")
 
         output = body.get("output")
+        if output is None:
+            #  Completed with nothing in it. Treated as a failure rather than
+            #  an empty result, because every stage downstream reads the
+            #  output and an empty one fails later, further from the cause.
+            raise AdapterError(
+                f"RunPod 작업이 {status or '알 수 없는 상태'} 로 끝났으나 결과가 비었습니다"
+                f"{f' (job {job_id})' if job_id else ''}"
+            )
         return output if isinstance(output, dict) else {"output": output}
+
+    async def _post(
+        self, client: httpx.AsyncClient, url: str,
+        json_body: dict[str, Any] | None, headers: dict[str, str],
+    ) -> dict[str, Any]:
+        try:
+            resp = await client.post(url, json=json_body, headers=headers)
+        except httpx.HTTPError as exc:
+            raise AdapterError(f"RunPod 호출에 실패했습니다: {exc}") from exc
+        if resp.status_code >= 400:
+            raise AdapterError(f"RunPod 오류입니다 {resp.status_code}: {resp.text[:200]}")
+        body = resp.json()
+        if not isinstance(body, dict):
+            raise AdapterError(f"RunPod 응답이 객체가 아닙니다: {str(body)[:120]}")
+        return body
 
 
 # ---------------------------------------------------------------- HTTP worker
