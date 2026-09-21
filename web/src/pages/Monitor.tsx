@@ -75,6 +75,13 @@ export function Monitor() {
         <Stat label="전체" value={jobs.data?.total ?? 0} caption="작업 큐 누적" />
       </div>
 
+      {/*  When a run is chosen its detail comes first, above the list. Rendered
+          after the list it sat below every row, so selecting a run looked like
+          nothing happened until you scrolled past the whole table. */}
+      {selected && (
+        <RunDetail key={selected} runId={selected} onClose={() => setSelected(null)} onOpen={setSelected} />
+      )}
+
       <Panel
         title="실행 목록"
         description={`${runs.data?.count ?? 0}건`}
@@ -122,8 +129,6 @@ export function Monitor() {
           <Empty>실행 기록이 없습니다.</Empty>
         )}
       </Panel>
-
-      {selected && <RunDetail key={selected} runId={selected} onClose={() => setSelected(null)} onOpen={setSelected} />}
     </>
   )
 }
