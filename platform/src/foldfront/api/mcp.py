@@ -10,22 +10,29 @@ tools/list answers with the original 62 alongside the ones added here.
 tools/call splits on the name: platform.* is handled locally, everything else
 goes to the original dispatcher.
 
-That dispatcher needs a PipelineRunner, which needs an execution environment
-that is not settled yet. It is built lazily and its failure is returned as a
-reason rather than swallowed, so listing keeps working meanwhile - a surface
-that answers "not configured" is more use than one that answers nothing.
+That dispatcher needs a PipelineRunner, and a PipelineRunner needs a storage
+root. It was built without one, which raised TypeError before any tool ran:
+the reason 62 of the 70 listed tools returned an error instead of a result.
+
+It gets the root now, and the run the call names is projected out of MongoDB
+into it first (engine/legacy_view.py), so a tool written against the
+filesystem can read a run this platform started. Role and run-scope checks
+happen here, because the original tools have no idea who is calling.
 """
 
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends
 
 from foldfront.core.auth import CurrentIdentity, require
+from foldfront.core.config import get_settings
 from foldfront.db.models import Role, Workflow
 from foldfront.db.repositories import Repos
+from foldfront.engine.legacy_view import LegacyProjector
 from foldfront.engine.dag import build_graph
 from foldfront.engine.router import ModelRouter
 from foldfront.engine.service import ExecutionService
@@ -168,21 +175,120 @@ def _upstream_definitions() -> list[dict[str, Any]]:
         return []
 
 
-def _call_upstream(name: str, args: dict[str, Any]) -> Any:
-    """Run an original tool, reporting a runner that cannot be built."""
+#  Tools that change or start something. They are refused for a viewer, and
+#  the ones that start a model are refused outright: routing, queueing and
+#  accounting for a run belong to this platform's engine, and a second path
+#  into a GPU that the queue knows nothing about would run work nobody is
+#  holding a lease for. `platform.run_start` is the way in.
+_UPSTREAM_STARTS_WORK = frozenset({
+    "pipeline.run", "pipeline.run_af2", "pipeline.run_diffdock",
+    "pipeline.diffdock", "pipeline.af2_predict", "pipeline.run_from_prompt",
+    "pipeline.cath_launch_batch", "pipeline.cath_launch_training",
+})
+
+_UPSTREAM_WRITES = frozenset({
+    "pipeline.save_project", "pipeline.save_round", "pipeline.save_report",
+    "pipeline.save_workflow_session", "pipeline.submit_feedback",
+    "pipeline.submit_experiment", "pipeline.delete_project",
+    "pipeline.delete_round", "pipeline.delete_run", "pipeline.archive_project",
+    "pipeline.archive_round", "pipeline.restore_project", "pipeline.restore_round",
+    "pipeline.cancel_run", "pipeline.model_provider_update",
+    "pipeline.runpod_update_endpoint", "pipeline.cath_stop_job",
+    "pipeline.cath_delete_job", "pipeline.chat.send", "chat.send",
+})
+
+
+def _runner_root() -> str:
+    """Where the original looks for runs. The same root this platform writes."""
+    return str(Path(get_settings().output_root).resolve())
+
+
+async def _call_upstream(name: str, args: dict[str, Any], identity: Any) -> Any:
+    """Run an original tool against a projected view of this platform's data.
+
+    Three things stand between the call and the dispatcher.
+
+    **The runner needs a storage root.** It is a required field, so building
+    one without it raised TypeError and every original tool answered with
+    that instead of a result. That was the whole of why 62 of the 70 listed
+    tools did nothing.
+
+    **The run has to exist on disk.** The original resolves
+    `<output_root>/<run_id>` and reads request.json out of it. A run started
+    here lives in MongoDB, so it is projected first - which is why the
+    analysis tools can read a run they never wrote.
+
+    **The caller has to be allowed.** The original tools know nothing about
+    roles; the check has to happen here or not at all.
+    """
+    if name in _UPSTREAM_STARTS_WORK:
+        return {
+            "ok": False,
+            "error": (
+                f"{name} 은(는) 이 경로로 실행하지 않습니다. "
+                "모델 실행은 platform.run_start 로 큐를 거칩니다"
+            ),
+        }
+
+    if name in _UPSTREAM_WRITES and not _may_write(identity):
+        return {"ok": False, "error": f"{name} 을(를) 부를 권한이 없습니다"}
+
     try:
         from pipeline_mcp.pipeline import PipelineRunner
         from pipeline_mcp.tools import ToolDispatcher
     except Exception as exc:
         return {"ok": False, "error": f"원본 도구를 불러오지 못했습니다: {exc}"}
 
+    #  Project the run the call names, so the tool finds a directory to read.
+    run_id = str(args.get("run_id") or "").strip()
+    projected: dict[str, Any] | None = None
+    if run_id:
+        allowed = await _may_see_run(identity, run_id)
+        if not allowed:
+            return {"ok": False, "error": f"{run_id} 을(를) 볼 권한이 없습니다"}
+        view = await LegacyProjector(Repos()).project_if_present(run_id)
+        projected = view.as_dict() if view else None
+
     try:
-        dispatcher = ToolDispatcher(runner=PipelineRunner())
+        dispatcher = ToolDispatcher(runner=PipelineRunner(output_root=_runner_root()))
     except Exception as exc:
-        #  Needs an execution environment - endpoints, a storage root
         return {"ok": False, "error": f"실행 러너를 세우지 못했습니다: {exc}"}
 
-    return dispatcher.call_tool(name, args)
+    try:
+        result = dispatcher.call_tool(name, args)
+    except Exception as exc:
+        #  The original raises ValueError for a missing argument and for a
+        #  run it cannot find. Both are answers, not faults of this layer.
+        return {"ok": False, "error": str(exc), "tool": name}
+
+    if projected and isinstance(result, dict):
+        #  So a reader can tell a value read from a projected run from one
+        #  read off a directory the original itself wrote.
+        result.setdefault("_projected", projected)
+    return result
+
+
+def _may_write(identity: Any) -> bool:
+    roles = tuple(getattr(identity, "roles", ()) or ())
+    return bool({Role.RESEARCHER, Role.ADMIN, Role.SERVICE} & set(roles))
+
+
+async def _may_see_run(identity: Any, run_id: str) -> bool:
+    """Whether this caller may read that run.
+
+    An admin or a service account sees every run. Anyone else sees a run they
+    own, and a run with no owner - runs made before ownership was recorded,
+    and the seeded ones - because refusing those would hide the only data a
+    fresh installation has.
+    """
+    roles = set(tuple(getattr(identity, "roles", ()) or ()))
+    if {Role.ADMIN, Role.SERVICE} & roles:
+        return True
+    run = await Repos().runs.get(run_id)
+    if run is None:
+        return True  # let the tool say "not found" in its own words
+    owner = run.owner_id
+    return owner is None or owner == getattr(identity, "user_id", None)
 
 
 # ---------------------------------------------------------------- JSON-RPC
@@ -215,7 +321,7 @@ async def mcp_rpc(identity: CurrentIdentity, message: dict[str, Any] = Body(...)
         try:
             if name.startswith("platform."):
                 return ok(_text(await _call_platform(name, args, identity)))
-            return ok(_text(_call_upstream(name, args)))
+            return ok(_text(await _call_upstream(name, args, identity)))
         except KeyError:
             return err(-32601, f"없는 도구입니다: {name}")
         except Exception as exc:

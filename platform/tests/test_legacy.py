@@ -174,7 +174,11 @@ async def test_아티팩트에_단계와_종류를_붙인다(repos: Repos, legac
     await LegacyMigrator(repos).migrate_root(legacy_root)
 
     arts = await repos.artifacts.list("run-20260901-abc")
+    #  Paths are relative to the storage root, so a download resolves them
+    #  the same way whether the run was migrated or run here.
     by_path = {a.path: a for a in arts}
+    assert all(p.startswith("run-") for p in by_path), sorted(by_path)
+    by_path = {a.path.split("/", 1)[1]: a for a in arts}
 
     assert by_path["af2/ranked_0.pdb"].kind == "pdb"
     assert by_path["af2/ranked_0.pdb"].stage == "af2"

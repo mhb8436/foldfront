@@ -359,7 +359,11 @@ class LegacyMigrator:
             docs.append(Artifact(
                 run_id=run_id,
                 stage=_stage_of(rel),
-                path=str(rel),
+                #  Relative to the storage root, not to the run directory.
+                #  That is what serves a download and what the projector
+                #  writes beside; a path relative to the run would be looked
+                #  for one level too high and never found.
+                path=str(Path(run_id) / rel),
                 kind=_kind_of(path),
                 size_bytes=size,
                 user_visible=not rel.name.startswith("."),
