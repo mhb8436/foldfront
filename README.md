@@ -1,174 +1,176 @@
 # foldfront
 
-> 단백질 설계 모델을 사용자 정의 DAG 워크플로우로 연계하여 **실행 · 비교 · 관리**하는 통합 엔지니어링 플랫폼
+단백질 설계 모델을 워크플로로 엮어 실행하고, 결과를 비교하며, 실행 이력을 관리하는 플랫폼입니다.
 
-**foldfront**는 다양한 단백질 설계 AI 모델을 방향성 비순환 그래프(DAG, Directed Acyclic Graph) 기반의 워크플로우로 유연하게 조합·실행하고, 실험 결과의 1:1 대조 분석 및 모델 버전 라이프사이클을 체계적으로 관리하는 통합 플랫폼입니다.  
-한국생명공학연구원(KRIBB)의 [RAPID](https://github.com/sblabkribb/protein_pipeline) v1.0.29 (MIT · Yaeseong Park, KRIBB)의 검증된 도메인 알고리즘을 온전히 계승하여 높은 신뢰성과 확장성을 제공합니다.
+한국생명공학연구원의 [RAPID](https://github.com/sblabkribb/protein_pipeline) v1.0.29 를 승계했습니다.
+단백질 계산과 판정 규칙은 원본 그대로 쓰고, 그 위에 실행·저장·권한·관제 계층을 올렸습니다.
 
----
-
-## 1. 개요 (Overview)
-
-단백질 설계(Protein Redesign)는 다중 서열 정렬(MSA), 백본 구조 생성, 서열 설계, 용해도(Solubility) 스크리닝, 구조 예측 및 신규성 검증에 이르는 다단계 파이프라인을 유기적으로 연결하는 고도화된 연구 프로세스입니다. 각 단계별 AI 모델마다 요구하는 컴퓨팅 자원과 런타임 환경이 상이하며, 연구 목적과 가설에 따라 파이프라인의 실행 순서와 분기 조건이 수시로 변경됩니다.
-
-foldfront는 이러한 복잡한 엔드포인트 파이프라인을 **코드 작성 없이 직관적인 웹 GUI 콘솔에서 통합 제어**할 수 있는 환경을 제공합니다.
-
-- **직관적인 노드 기반 워크플로우 설계**: 캔버스 기반 노드 인터페이스를 통해 파이프라인을 시각적으로 구성하며, **병렬 분기 · 조건부 분기 · 재사용 가능한 워크플로우 템플릿**을 지원합니다.
-- **사전 무결성 검증 (Static Integrity Validation)**: 순환 참조(Cyclic Reference), 고립 노드(Orphan Node), 조건식 누락, 미등록 모델 등 그래프 결함을 **파이프라인 실행 전(저장 시점)에 선제 검출**하여 고비용 GPU 및 컴퓨팅 자원의 불필요한 낭비를 원천 차단합니다.
-- **모델 레지스트리 (Model Registry) 기반 식별자 관리**: 모델 식별자(ID) 기반의 메타데이터 관리 체계를 적용하여, 신규 모델 도입 시 소스 코드 변경이나 환경 변수 재설정 없이 레지스트리 등록만으로 즉시 파이프라인에 편입할 수 있습니다.
-- **실행(Run) 단위 결과 대조 및 감사 추적 (Audit Trail)**: 실행 파라미터, 산출물, 평가 지표(Metric), 이력 로그를 Run 단위로 표준화하여 적재하며, 다중 실행 결과 간(Run-to-Run) 1:1 대조 분석 및 성과 지표 비교를 지원합니다.
-
----
-
-## 2. Upstream 프로젝트 계승 및 호환성
-
-본 플랫폼은 **RAPID**(*Reproducible Pipeline for Solubility-Oriented Protein Redesign with Resource-Aware Surrogate Triage*, v1.0.29 · `df2140a` · MIT · DOI [10.5281/zenodo.20619413](https://doi.org/10.5281/zenodo.20619413))를 모태로 개발되었습니다.
-
-단백질 설계의 핵심 도메인 로직은 안정적으로 계승하고, 그 상위에 대규모 작업 스케줄링과 유연한 인터페이스를 위한 **엔터프라이즈 실행 계층 및 데이터 계층을 구축**했습니다.
-
-- `pipeline-mcp/`의 핵심 도메인 모듈(`bio/`, `clients/`)을 **수정 없이 원형 그대로 유지**하여, Upstream 프로젝트의 기능 갱신 시 재개발 비용 없이 최신 릴리스를 즉시 병합(Merge)할 수 있습니다.
-- `frontend/` 디렉터리에 원본 바닐라 JS 콘솔을 보존하여 신규 플랫폼과의 기능 동등성(Parity) 검증 및 교차 검증 기준으로 활용합니다.
-- 상세한 이관 내역은 [`UPSTREAM.md`](UPSTREAM.md)를 참조하십시오. 원본 기술 가이드는 배포본에 동봉합니다.
-
-```bash
-# Upstream(v1.0.29) 대비 변경 사항 요약 확인
-git diff upstream-v1.0.29 --stat
+```
+msa → rfd3 → bioemu → design → soluprot → af2 → novelty
 ```
 
+원본은 이 순서를 코드에 고정합니다. foldfront 에서는 연구자가 캔버스에서 직접 엮습니다.
+분기와 병렬을 넣고, 중간에 사람이 확인하고 넘어가는 지점을 둘 수 있습니다.
+
 ---
 
-## 3. 시스템 아키텍처 및 구성 (Architecture)
+## 무엇을 할 수 있나
+
+**워크플로를 직접 구성합니다.** 모델 실행 · 변환 · 조건 분기 · 병렬 분기 · 합류 · 검토 지점
+여섯 가지 노드를 캔버스에 놓고 잇습니다. 순환이나 끊어진 노드, 빈 조건식은 저장할 때
+걸러 내므로 GPU 시간을 쓰기 전에 알 수 있습니다.
+
+**실행을 사람이 제어합니다.** 검토 지점에 닿으면 실행이 멈추고, 승인해야 다음으로
+넘어갑니다. 일시중지하면 새 작업만 막고 이미 나간 작업은 끝까지 갑니다. 특정 단계만
+다시 돌릴 수 있으며, 이때 그 아래 단계도 함께 되돌려 옛 값이 남지 않게 합니다.
+중간 지점에서 갈라 새 실행을 만들 수도 있습니다.
+
+**결과를 견줍니다.** 설계 후보를 가중 합산 점수로 줄 세우고, 야생형과 몇 자리나
+다른지 함께 봅니다. 백본 출처별로 묶어 어느 접근이 나았는지 비교합니다. 두 실행을
+나란히 놓고 단계별 지표와 3차원 구조를 견줍니다.
+
+**수치를 해석해 줍니다.** 정렬이 얕거나 용해도 통과율이 낮거나 pLDDT 가 기준 밑이면
+경고와 함께 다음에 무엇을 바꿀지 제시합니다. 판정에 쓴 값과 기준을 함께 보여 주므로
+그 판단에 동의하지 않을 수도 있습니다.
+
+**문장으로 시작할 수 있습니다.** 「rfd3 로 백본을 만들고 용해도로 거른 뒤 af2 까지」라고
+쓰면 워크플로 초안을 만들어 스튜디오에서 엽니다. 저장하거나 실행하지는 않습니다.
+
+**외부 GPU 를 관제합니다.** RunPod 엔드포인트의 상태와 워커, 대기 작업, 사용량과 비용을
+보고 워커 수를 조정합니다.
+
+화면은 무채색입니다. 색을 갖는 것은 실행 상태뿐이고 나머지는 굵기와 괘선과 형태로
+구분하므로, 흑백으로 인쇄하거나 복사해도 정보가 사라지지 않습니다.
+
+---
+
+## 시작하기
+
+### 필요한 것
+
+- Python 3.12 이상, Node.js 20 이상
+- [uv](https://docs.astral.sh/uv/), npm
+- Docker (MongoDB 용)
+
+### 설치와 실행
+
+```bash
+# 1. MongoDB
+docker compose -f platform/docker-compose.yml up -d
+
+# 2. 백엔드
+uv sync --extra dev
+uv run python -m foldfront.cli seed           # 기본 모델과 워크플로 템플릿 등록
+uv run uvicorn foldfront.api.app:app --port 18090
+
+# 3. 워커 (별도 터미널)
+uv run python -m foldfront.cli worker --mock  # GPU 없이 돌려 볼 때는 --mock
+
+# 4. 웹 콘솔 (별도 터미널)
+cd web && npm install && npm run dev
+```
+
+콘솔은 <http://localhost:5173>, API 문서는 <http://localhost:18090/docs> 입니다.
+
+### 둘러보기
+
+```bash
+uv run python -m foldfront.cli demo 6         # 모의 실행 6건을 만들어 화면을 채웁니다
+uv run python -m foldfront.cli demo-gate      # 검토 지점에서 멈춘 실행 1건
+```
+
+`--mock` 으로 만든 수치는 난수입니다. 화면에 모의임을 표시하며 실제 값이 아닙니다.
+
+### 명령 목록
+
+| 명령 | 설명 |
+|---|---|
+| `foldfront.cli seed` | 기본 모델과 워크플로 템플릿을 등록합니다 |
+| `foldfront.cli demo <N>` | 모의 실행 N 건을 만듭니다 |
+| `foldfront.cli demo-gate` | 검토 지점에서 멈춘 실행을 하나 만듭니다 |
+| `foldfront.cli worker [--mock]` | 큐의 작업을 가져와 실행합니다 |
+| `foldfront.cli migrate <경로>` | 기존 파일 기반 실행 결과를 데이터베이스로 옮깁니다 |
+| `foldfront.cli status` | 적재 현황을 출력합니다 |
+
+### 모델 연결
+
+모델은 RunPod 서버리스 엔드포인트나 자체 호스팅 HTTP 워커에서 돕니다.
+`.env` 에 자격 증명과 엔드포인트를 넣으면 연결됩니다.
+
+```env
+RUNPOD_API_KEY=
+PROTEINMPNN_ENDPOINT_ID=
+MMSEQS_ENDPOINT_ID=
+COLABFOLD_ENDPOINT_ID=
+```
+
+엔드포인트 하나만 연결해도 그 단계는 실제로 돕니다.
+
+```bash
+uv run python tools/gpu_smoke.py    # 실제 호출을 한 번 해 보고 단계별로 결과를 찍습니다
+```
+
+그 밖의 환경 변수는 `MONGO_URI` · `MONGO_DB` · `API_PORT` · `JOB_LEASE_SECONDS` ·
+`LOCAL_LLM_URL` 입니다. 루트 또는 `platform/.env` 에 둡니다.
+
+---
+
+## 구조
 
 ```
 foldfront/
-├── platform/           백엔드 코어 — Python 3.12 · uv · FastAPI · MongoDB (패키지: foldfront)
-├── web/                웹 콘솔 — React 18 · TypeScript · Vite · shadcn/ui · Tailwind CSS v4
-├── pipeline-mcp/       RAPID 원본 모듈 — 단백질 도메인 로직 원천
-├── frontend/           레거시 웹 콘솔 — 기능 동등성 검증용 참조 코드
-└── docs/               기술 문서 (저장소에 포함하지 않으며 배포본에 동봉합니다)
+├── platform/      백엔드 — Python 3.12 · FastAPI · MongoDB
+├── web/           웹 콘솔 — React · TypeScript · Vite · shadcn/ui · Tailwind
+├── pipeline-mcp/  RAPID 원본 — 단백질 도메인 로직
+├── frontend/      원본 콘솔 — 기능 대조용
+└── tools/         화면 캡처 · 부하 시험 · GPU 점검
 ```
 
-### 주요 계층별 아키텍처 명세
-
-| 계층 (Layer) | 구성 모듈 | 주요 기능 및 엔지니어링 특징 |
+| 계층 | 위치 | 하는 일 |
 |---|---|---|
-| **DAG 엔진** | `platform/.../engine/dag.py` | 위상 정렬(Topological Sort) 알고리즘 기반 실행 순서 스케줄링 및 동일 뎁스 노드 병렬 디스패치. 보안 취약점(`eval`)을 배제하고 안전한 AST 파서 기반의 조건 분기식 처리 |
-| **모델 레지스트리** | `platform/.../engine/router.py` | 모델 식별자를 실제 연산 환경(RunPod 서버리스, HTTP 워커, 로컬 컨테이너)으로 동적 라우팅. 비활성화 모델, 미승인 버전, 자원 임계치 초과 요청에 대한 사전 인가 통제 |
-| **분산 작업 큐** | `platform/.../engine/worker.py` | 임대(Lease) 기반 작업 락(Lock) 메커니즘을 적용한 무상태(Stateless) 워커 구조. 노드 장애나 서비스 재기동 시에도 태스크 유실 없이 자동 복구 및 재할당 |
-| **데이터 영속 계층** | `platform/.../db/models.py` | MongoDB 기반 15종 도메인 문서 스키마 및 47개 최적화 인덱스 구성. 레거시 Run 디렉터리 데이터를 무손실 적재하는 CLI 마이그레이터 내장 |
-| **RESTful API** | `platform/.../api/routes.py` | OpenAPI 3.1 표준 규격의 57개 엔드포인트 제공. 원본 MCP 도구 62종과 신규 도구 8종을 단일 JSON-RPC 표면(`POST /mcp`)으로 통합 제공 |
-| **웹 콘솔 UI** | `web/` | 실행 준비, 워크플로우 스튜디오, 실행 감시, 결과 분석, 품질 신호, 모델 관리, 외부 GPU 운영, 설계 Copilot, 프로젝트·회차, 운영, 이용자 관리 등 12개 업무 화면 제공 |
+| DAG 엔진 | `engine/dag.py` | 위상 정렬로 실행 순서를 정하고 같은 층은 함께 내보냅니다. 조건식은 `eval` 없이 AST 로 읽습니다 |
+| 모델 라우팅 | `engine/router.py` | 모델 식별자를 실행 위치로 해석합니다. 비활성·미승인·자원 초과는 실행 전에 막습니다 |
+| 작업 큐 | `engine/worker.py` | 점유 기반이라 워커가 죽어도 기한이 지나면 자동 회수됩니다 |
+| 원본 도구 연결 | `engine/legacy_view.py` | 실행을 원본 도구가 읽는 형식으로 변환해 원본 도구를 그대로 호출합니다 |
+| 외부 인터페이스 | `api/` | REST(OpenAPI 3.1) · MCP JSON-RPC (`POST /mcp`) |
 
-> **디자인 원칙**: 전문 연구원의 장시간 데이터 판독 피로도를 최소화하기 위해 **모노크롬(Monochrome) 기반의 고대비 미니멀 UI**를 적용했습니다. 상태 인디케이터(5종)에만 정밀하게 정의된 강조 색상을 사용하여 이상 징후를 즉각 식별할 수 있으며, 흑백 출력물이나 화면 캡처 보고서에서도 정보 손실이 발생하지 않습니다. (상세 규격은 화면정의서에 있습니다)
-
----
-
-## 4. 주요 기능 (Capabilities)
-
-### 파이프라인 구성 및 실행 제어
-
-| 기능 | 설명 |
-|---|---|
-| **자유형 DAG 워크플로우** | 모델 실행 · 변환 · 조건 분기 · 병렬 분기 · 합류 · **검토 지점** 등 6종 노드를 캔버스에서 조합합니다. 노드 유형은 색상이 아닌 형태로 구분하여 흑백 출력 시에도 판별이 가능합니다 |
-| **검토 지점 (Review Gate)** | 지정 단계에서 실행을 정지하고 담당자 승인 후 진행합니다. 반려 시 사유 입력을 강제하며, 승인·반려 이력(처리자·시각·의견)을 감사 기록에 보존합니다 |
-| **일시중지 및 재개** | 신규 작업 투입만 차단하고 진행 중인 작업은 완료를 보장합니다. 재개 시 최초 개시 시각을 갱신하지 않아 실행 이력의 정합성을 유지합니다 |
-| **단계 재실행** | 지정 단계와 하위 단계를 함께 초기화하여 재실행합니다. 폐기된 시도의 산출물이 잔존하지 않으며, 단계별 시도 횟수를 추적합니다 |
-| **분기 실행 (Fork)** | 특정 단계 지점에서 분기하여 신규 실행을 생성합니다. 그래프상 선행 노드가 모두 성공한 경우에만 승계하며, 원본 실행은 변경하지 않습니다 |
-| **정합성 자동 복구** | 실행 문서와 작업 큐의 상태 불일치를 탐지하여 복구합니다. 기록이 확인된 작업만 반영하며 임의의 결과를 생성하지 않습니다 |
-
-### 분석 및 의사결정 지원
-
-| 기능 | 설명 |
-|---|---|
-| **후보군 순위 (Hit List)** | 용해도 · pLDDT · RMSD · WT 차이 4종 가중치 기반 순위를 산출합니다. 가중치는 화면에서 즉시 조정 가능하며, 연산은 원본 알고리즘을 그대로 사용합니다 |
-| **WT Diff** | 야생형 대비 변이 잔기 수를 비교 구간 길이와 함께 제시하여 변이 비율을 정량적으로 판단할 수 있습니다 |
-| **백본 소스 간 비교** | RFD3 · BioEmu · 원본 구조 등 백본 생성 소스별 후보 수와 최고 점수를 대조합니다. 소스 필터링 시에도 전체 기준 순위를 유지합니다 |
-| **실행 간 비교** | 두 실행의 단계별 상태·지표를 병렬 대조하며, 3차원 구조를 브라우저에서 동시 열람합니다 |
-| **품질 신호** | 단계별 지표를 원본 판정 기준(`agent_panel`)으로 평가하여 경고와 후속 조치를 제시합니다. 판정 근거가 된 실측값과 임계값, 판정 출처를 함께 표기합니다 |
-| **결과 교차 검증** | 구조 예측 결과의 pLDDT를 반환된 PDB 파일에서 재측정하고, 출발 백본과의 RMSD를 재계산하여 보고값과의 정합성을 검증합니다 |
-
-### 운영 및 연계
-
-| 기능 | 설명 |
-|---|---|
-| **설계 Copilot** | 자연어 요청으로 워크플로우 초안을 생성합니다(원본 `plan_from_prompt` 승계). 질의응답은 해당 설치의 실행 데이터·용어·품질 신호만을 근거로 답변하며, 근거 목록을 함께 제시합니다. 실행을 직접 시작하지 않습니다 |
-| **외부 GPU 운영** | RunPod 서버리스 엔드포인트의 상태 · 워커 · 대기 작업 · 사용량 · 비용을 조회하고 워커 수를 조정합니다. 자격 증명 미설정과 연결 실패를 구분하여 표시합니다 |
-| **MCP 표준 인터페이스** | 원본 도구 62종과 신규 도구 8종을 단일 JSON-RPC 표면으로 제공합니다. 호출 시 실행 데이터를 원본 도구가 요구하는 형식으로 자동 변환하며, 역할 및 실행 접근 범위를 검증합니다 |
-| **보안** | OIDC/SSO 인증, 역할 4종 및 실행 단위 접근 범위 통제, 세션 종료(발급 시각 기준 토큰 무효화), 쓰기·조회·로그인 감사 기록, 전송 구간 TLS 종단 및 보안 헤더를 적용합니다 |
+인증은 OIDC/SSO 를 씁니다. 역할과 별개로 실행 단위 접근 범위가 걸리며,
+산출물 반출과 로그인·로그아웃은 감사 기록에 남습니다.
 
 ---
 
-## 5. 빠른 시작 (Quick Start)
+## 원본 승계
 
-### 시스템 요구사항
-- **Runtime**: Python 3.12 이상, Node.js 20 이상
-- **Package Manager**: [uv](https://docs.astral.sh/uv/) (Python 권장), npm
-- **Database**: Docker 기반 MongoDB 6.0+
+**RAPID** — *Reproducible Pipeline for Solubility-Oriented Protein Redesign with
+Resource-Aware Surrogate Triage*, v1.0.29 · `df2140a` · MIT ·
+DOI [10.5281/zenodo.20619413](https://doi.org/10.5281/zenodo.20619413)
 
-### 단계별 설치 및 구동
+`pipeline-mcp/` 아래는 **고치지 않습니다.** 의존성으로 포함해 직접 호출하므로
+원본의 후속 변경을 그대로 병합할 수 있습니다. `frontend/` 의 원본 콘솔도
+기능 대조용으로 남겨 두었습니다.
 
 ```bash
-# 1. 데이터베이스(MongoDB) 컨테이너 기동
+git diff upstream-v1.0.29 --stat        # 원본 대비 변경 요약
+```
+
+승계 기록은 [`UPSTREAM.md`](UPSTREAM.md) 에 있습니다.
+
+---
+
+## 시험
+
+```bash
 docker compose -f platform/docker-compose.yml up -d
 
-# 2. 백엔드 가상환경 구축 및 서비스 실행
-uv sync --extra dev
-uv run python -m foldfront.cli seed          # 기본 모델 레지스트리 및 표준 워크플로우 템플릿 초기화
-uv run uvicorn foldfront.api.app:app --port 18090
-
-# 3. 백그라운드 태스크 워커 기동 (별도 터미널 세션)
-# ※ 연동된 GPU 환경이 없는 경우 --mock 플래그를 사용하여 모의 모드로 구동
-uv run python -m foldfront.cli worker --mock
-
-# 4. 웹 프론트엔드 콘솔 기동 (별도 터미널 세션)
-cd web && npm install && npm run dev         # 기본 접속 경로: http://localhost:5173
+uv run pytest platform/tests -q     # 서버 — 실제 MongoDB 에 붙어 돕니다
+cd web && npm test                  # 화면
+cd web && npm run typecheck         # 타입
+cd web && npm run e2e               # 브라우저 통합 시나리오
 ```
-
-- **OpenAPI 대화형 문서 (Swagger)**: <http://localhost:18090/docs>
-- **시스템 상태 점검 (Health Check)**: <http://localhost:18090/healthz>
-
-### 운영 관리 CLI 가이드
-
-| CLI 명령어 | 설명 |
-|---|---|
-| `uv run python -m foldfront.cli seed` | 기본 모델 메타데이터 및 사전 정의 워크플로우 템플릿을 데이터베이스에 등록합니다. |
-| `uv run python -m foldfront.cli demo <N>` | 테스트 및 시연을 위한 모의 실행 이력(Run) 데이터 N건을 자동 생성합니다. |
-| `uv run python -m foldfront.cli worker [--mock]` | 큐에 등록된 파이프라인 작업을 폴링하여 순차 실행합니다. (`--mock`: 더미 어댑터 구동) |
-| `uv run python -m foldfront.cli migrate <경로>` | 기존 레거시 파일 기반 실행 결과 디렉터리를 DB로 무손실 이관합니다. (원본 데이터 보존) |
-| `uv run python -m foldfront.cli status` | 현재 시스템 적재 데이터 현황 및 서비스 상태 요약을 콘솔에 출력합니다. |
-
-*※ 주요 환경 변수(`MONGO_URI`, `MONGO_DB`, `API_HOST`, `API_PORT`, `RUNPOD_API_KEY`, `JOB_LEASE_SECONDS`)는 루트 또는 `platform/.env` 파일에서 통합 관리됩니다.*
 
 ---
 
-## 6. 테스트 및 품질 검증 (Verification)
+## 라이선스
 
-```bash
-# 백엔드 단위 및 통합 테스트 수행 (584개 테스트 케이스 · 실 MongoDB 연동)
-uv run --directory platform pytest -q
-
-# 프론트엔드 컴포넌트 단위 테스트 수행 (177개 테스트 케이스)
-cd web && npm test
-
-# 프론트엔드 정적 타입 검사 및 빌드 검증
-cd web && npm run typecheck && npm run build
-
-# 브라우저 기반 통합 시나리오 검증 (6종)
-cd web && npm run e2e
-```
-
-### 회귀 방지 규칙 (Enforced by Test)
-
-아래 항목은 테스트로 강제되며, 위반 시 빌드가 실패합니다.
-
-- 모든 쓰기 경로는 감사 로그를 기록해야 하며, 예외는 사유를 명시해야 합니다
-- 모든 조회 경로는 인증을 요구해야 합니다
-- 실행 데이터를 조회하는 경로는 실행 단위 접근 범위를 검증해야 합니다
-- MCP 도구 동작 종수가 기준치 이하로 감소하지 않아야 합니다
-- MongoDB 인덱스 정의가 문서 스키마와 일치해야 합니다
-
----
-
-## 7. 라이선스 및 인용 (License & Citation)
-
-본 프로젝트는 **MIT 라이선스**를 따릅니다. 원본 RAPID의 저작권 고지는 [`LICENSE`](LICENSE) 파일에 명시되어 있으며, 본 소프트웨어 또는 연구 산출물을 인용할 경우 [`CITATION.cff`](CITATION.cff)를 참조하시기 바랍니다.
+MIT. 원본 RAPID 의 저작권 고지는 [`LICENSE`](LICENSE) 에 있습니다.
+인용은 [`CITATION.cff`](CITATION.cff) 를 참조하십시오.
