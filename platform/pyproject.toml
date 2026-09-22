@@ -2,6 +2,8 @@
 name = "foldfront"
 version = "0.1.0"
 description = "단백질 설계 모델을 자유형 DAG 워크플로로 조합해 실행·비교·관리한다"
+license = "BUSL-1.1"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = [
     "pipeline-mcp",

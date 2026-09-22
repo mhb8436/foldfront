@@ -180,5 +180,19 @@ cd web && npm run e2e               # 브라우저 통합 시나리오
 
 ## 라이선스
 
-MIT. 원본 RAPID 의 저작권 고지는 [`LICENSE`](LICENSE) 에 있습니다.
-인용은 [`CITATION.cff`](CITATION.cff) 를 참조하십시오.
+**경로마다 라이선스가 다릅니다.** 전문은 [`NOTICE`](NOTICE) 에 있습니다.
+
+| 경로 | 저작권자 | 라이선스 |
+|---|---|---|
+| `pipeline-mcp/` `frontend/` | Yaeseong Park, 한국생명공학연구원(KRIBB) | **MIT** — [`LICENSE`](LICENSE) |
+| `platform/` `web/` | 주식회사 크래프틱시스템즈 | **BUSL 1.1** — [`LICENSE-foldfront`](LICENSE-foldfront) |
+
+`pipeline-mcp/` 와 `frontend/` 는 RAPID v1.0.29 를 승계한 것으로 MIT 조건을 그대로
+유지합니다. 승계 경위는 [`UPSTREAM.md`](UPSTREAM.md), 인용은 [`CITATION.cff`](CITATION.cff)
+를 참조하십시오.
+
+`platform/` 과 `web/` 은 주식회사 크래프틱시스템즈가 새로 작성해 보유하는 자산이며
+Business Source License 1.1 로 배포합니다. 열람·수정·재배포와 평가·연구·시험 목적의
+사용은 누구에게나 열려 있고, 비영리 연구·교육기관이 스스로 설치해 쓰는 것도 허용합니다.
+제3자가 유상 용역·납품·재판매·관리형 호스팅의 일부로 제공하려면 별도의 상용 라이선스
+계약이 필요합니다. 2030-09-22 부로 Apache License 2.0 으로 전환됩니다.

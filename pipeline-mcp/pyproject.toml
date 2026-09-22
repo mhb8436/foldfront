@@ -5,6 +5,8 @@
 name = "pipeline-mcp"
 version = "1.0.29"
 description = "RAPID — 현행 단백질 설계 파이프라인 (승계 대상)"
+#  승계한 원본의 라이선스다. 루트 LICENSE 의 MIT 고지를 그대로 따른다 — NOTICE 참조.
+license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     "requests>=2.31.0",
