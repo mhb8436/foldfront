@@ -16,6 +16,9 @@ rfd3-runpod/
 /data/
 /logs/*
 !/logs/.gitkeep
+#  경로를 가리지 않고 로그를 막는다. 이미 추적 중인 원본 pipeline-mcp/soluprot.log 는
+#  승계 증빙이라 그대로 둔다 — gitignore 는 추적 중인 파일에 영향을 주지 않는다.
+*.log
 /_ops/
 /_ops/jobs/
 /batch_success_*.csv

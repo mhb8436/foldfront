@@ -15,7 +15,8 @@
 
 ## 라이선스 준수
 
-MIT License 조건에 따라 **원본 저작권 고지와 라이선스 사본을 `LICENSE` 에 그대로 유지**한다.
+MIT License 조건에 따라 **원본 저작권 고지와 라이선스 사본을 `LICENSE-MIT-upstream` 에
+전문 그대로 유지**한다. 내용은 원본과 바이트 단위로 동일하다. 경로별 라이선스는 `NOTICE` 를 참조한다.
 원본 `README.md` 는 `upstream-v1.0.29` 태그에 그대로 남아 있다 — `git show upstream-v1.0.29:README.md`.
 `CITATION.cff` 의 인용 요청에 따라 산출물과 문서에서 원본을 인용한다.
 

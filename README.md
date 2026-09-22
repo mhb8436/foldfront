@@ -184,8 +184,8 @@ cd web && npm run e2e               # 브라우저 통합 시나리오
 
 | 경로 | 저작권자 | 라이선스 |
 |---|---|---|
-| `pipeline-mcp/` `frontend/` | Yaeseong Park, 한국생명공학연구원(KRIBB) | **MIT** — [`LICENSE`](LICENSE) |
-| `platform/` `web/` | 주식회사 크래프틱시스템즈 | **BUSL 1.1** — [`LICENSE-foldfront`](LICENSE-foldfront) |
+| `pipeline-mcp/` `frontend/` | Yaeseong Park, 한국생명공학연구원(KRIBB) | **MIT** — [`LICENSE-MIT-upstream`](LICENSE-MIT-upstream) |
+| `platform/` `web/` | 주식회사 크래프틱시스템즈 | **BUSL 1.1** — [`LICENSE`](LICENSE) |
 
 `pipeline-mcp/` 와 `frontend/` 는 RAPID v1.0.29 를 승계한 것으로 MIT 조건을 그대로
 유지합니다. 승계 경위는 [`UPSTREAM.md`](UPSTREAM.md), 인용은 [`CITATION.cff`](CITATION.cff)
