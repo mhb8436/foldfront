@@ -4,6 +4,15 @@
 
 한국생명공학연구원(KRIBB)의 오픈소스 단백질 엔지니어링 파이프라인인 [RAPID](https://github.com/sblabkribb/protein_pipeline) v1.0.29를 기반으로 개발되었습니다. 검증된 단백질 연산 로직과 판정 규칙은 그대로 계승하고, 그 상위에 **워크플로 엔진·분산 스케줄링·결과 분석·RBAC 권한 관리·GPU 인프라 관제 계층**을 새롭게 구축했습니다.
 
+<p align="center">
+  <img src="assets/foldfront-demo.gif" width="960" alt="워크플로 스튜디오에서 조건 분기 노드를 열고, 실행 준비에서 서열을 넣어 실행한 뒤, 실행 감시에서 단계 진척을 확인하고, 결과 분석에서 두 실행의 구조를 나란히 비교하는 화면">
+</p>
+
+<p align="center"><sub>
+워크플로 스튜디오 → 실행 준비 → 실행 감시 → 결과 분석. 화면의 실행과 수치는 <code>--mock</code> 워커로 만든 모의 데이터이며 실제 연산 결과가 아닙니다.
+다시 찍기: <code>node tools/record_demo.mjs</code>
+</sub></p>
+
 ```
 [MSA] ──> [RFdiffusion] ──> [BioEmu] ──> [ProteinMPNN] ──> [SoluProt] ──> [AlphaFold2] ──> [Novelty Analysis]
 ```
