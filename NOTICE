@@ -22,7 +22,7 @@ foldfront — 저작권 및 라이선스 고지
     명칭     RAPID — Reproducible Pipeline for Solubility-Oriented Protein
              Redesign with Resource-Aware Surrogate Triage
     버전     v1.0.29 (2026-07-13)
-    기준     df2140a84012c280a8d967535a5343fa020d3964 · 태그 upstream-v1.0.29
+    기준     df2140a84012c280a8d967535a5343fa020d3964
     저작권   Copyright (c) 2026 Yaeseong Park,
              Korea Research Institute of Bioscience and Biotechnology (KRIBB)
     라이선스 MIT
@@ -30,8 +30,12 @@ foldfront — 저작권 및 라이선스 고지
 
 MIT License 조건에 따라 **원본 저작권 고지와 라이선스 사본을
 [`LICENSE-MIT-upstream`](LICENSE-MIT-upstream) 에 전문 그대로 유지한다.** 지우거나 고치지
-않는다. 파일 이름만 옮겼을 뿐 내용은 원본과 바이트 단위로 동일하다 —
-`diff <(git show upstream-v1.0.29:LICENSE) LICENSE-MIT-upstream` 으로 확인할 수 있다. 승계 경위는 [`UPSTREAM.md`](UPSTREAM.md),
+않는다. 파일 이름만 옮겼을 뿐 내용은 원본과 바이트 단위로 동일하다. 원본 저장소의
+기준 커밋과 비교하면 아무것도 출력되지 않는다.
+
+    diff <(curl -sL https://raw.githubusercontent.com/sblabkribb/protein_pipeline/df2140a84012c280a8d967535a5343fa020d3964/LICENSE) LICENSE-MIT-upstream
+
+승계 경위는 [`UPSTREAM.md`](UPSTREAM.md),
 원본 README 는 원본 저장소의 기준 커밋에서 그대로 볼 수 있다 —
 [`protein_pipeline@df2140a/README.md`](https://github.com/sblabkribb/protein_pipeline/blob/df2140a84012c280a8d967535a5343fa020d3964/README.md).
 
@@ -47,6 +51,8 @@ MIT License 는 sublicense 를 명시적으로 허용한다. 따라서 이 저�
 `platform/` (백엔드 · uv · FastAPI · MongoDB) 와 `web/` (React 콘솔) 은
 **주식회사 크래프틱시스템즈가 자체 비용으로 작성해 보유하는 자산**이다.
 원본에 존재하지 않던 것이며, 작성 시점은 커밋 이력이 입증한다.
+아래 명령의 `upstream-v1.0.29` 는 원격에 없는 로컬 태그다. 붙이는 방법은
+[`UPSTREAM.md`](UPSTREAM.md) 「원본과의 차이를 확인하는 방법」에 있다.
 
     git log upstream-v1.0.29..HEAD --oneline    # 작성 이력
     git diff upstream-v1.0.29 --stat            # 원본 대비 변경 요약
